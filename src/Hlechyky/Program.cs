@@ -32,6 +32,7 @@ builder.Services.AddSingleton<LastFmClient>();
 builder.Services.AddSingleton<LiquidsoapClient>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
+builder.Services.AddSingleton<Games>();
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 

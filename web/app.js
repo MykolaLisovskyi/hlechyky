@@ -17,6 +17,34 @@
   let unread = 0;
   let chatTab = 'chat';
   let libTab = 'history';
+  let tables = [];
+  // Реєстр ігор у вкладці «Ігри»: додати нову — рядок сюди і рядок у Games.Known на сервері.
+  // Дошку малює спільний код за розміром поля з сервера; discs — фішки падають у колонку.
+  const GAMES = [
+    {
+      id: 'ttt', name: 'Хрестики-нолики', marks: { x: '✕', o: '◯' },
+      hint: 'Стіл рівно на двох: хто поставив — за ✕, хто сів другим — за ◯. Решта дивиться.',
+      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2.3 2.3 6.9 6.9 M6.9 2.3 2.3 6.9" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <circle cx="11.1" cy="11.1" r="3" stroke="var(--ok)" stroke-width="1.8" fill="none"/>
+      </svg>`,
+    },
+    {
+      id: 'c4', name: 'Чотири в ряд', marks: { x: 'жовті', o: 'зелені' }, discs: true,
+      hint: 'Теж на двох: кидаєш фішку в колонку, вона падає вниз. Виграє той, хто перший збере чотири підряд.',
+      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="2.6" cy="13.4" r="2.1" fill="var(--accent)"/>
+        <circle cx="6.4" cy="9.6" r="2.1" fill="var(--accent)"/>
+        <circle cx="10.2" cy="5.8" r="2.1" fill="var(--accent)"/>
+        <circle cx="14" cy="2" r="2.1" fill="var(--accent)"/>
+        <circle cx="2.6" cy="5.8" r="2.1" fill="var(--ok)"/>
+        <circle cx="6.4" cy="2" r="2.1" fill="var(--ok)"/>
+      </svg>`,
+    },
+  ];
+  const gameOf = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
+  const markOf = (t, m) => gameOf(t.game).marks[m];
+  let gameTab = GAMES.some((g) => g.id === localStorage.getItem('gameTab')) ? localStorage.getItem('gameTab') : GAMES[0].id;
   let queueDur = [];
 
   const dj = () => state?.djName || 'Дядько Глек';
@@ -463,6 +491,61 @@
     }
   }
 
+  // ---------- кубик і команди чату ----------
+  // Нова команда: рядок сюди і гілка в ChatCommands.Run на сервері.
+  const COMMANDS = [
+    { cmd: '/roll', args: '[N | A-B]', help: 'кинути кубик: /roll — 1–6, /roll 100 — 1–100, /roll 2-12 — свої межі' },
+  ];
+  // Грані малюємо крапками самі: юнікодні ⚀⚁⚂ у кожному шрифті сидять у своєму квадраті по-своєму
+  // і в плитці стоять криво. Індекси — клітинки сітки 3×3 зліва направо.
+  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const isFace = (min, max) => min === 1 && max === 6;
+  const pipsHtml = (v) => Array.from({ length: 9 }, (_, i) => `<i${PIPS[v].includes(i) ? ' class="on"' : ''}></i>`).join('');
+  function paintDie(el, v, min, max) {
+    if (isFace(min, max)) el.innerHTML = pipsHtml(v); else el.textContent = String(v);
+  }
+
+  /// Кубик падає згори і крутиться, поки не вляжеться на своє число.
+  function rollDie(el, min, max, value) {
+    el.classList.add('rolling');
+    const until = performance.now() + 850;
+    const tick = () => {
+      if (performance.now() >= until) {
+        paintDie(el, value, min, max);
+        el.classList.remove('rolling');
+        el.classList.add('landed');
+        return;
+      }
+      paintDie(el, min + Math.floor(Math.random() * (max - min + 1)), min, max);
+      setTimeout(tick, 70);
+    };
+    tick();
+  }
+
+  function showCmdHint(typed) {
+    const box = $('cmdHint');
+    const q = (typed || '/').toLowerCase();
+    const list = COMMANDS.filter((c) => c.cmd.startsWith(q.split(' ')[0]) || q === '/');
+    if (!list.length) { box.hidden = true; return; }
+    box.innerHTML = list.map((c) => `<div class="cmd" data-cmd="${c.cmd}">
+        <b>${esc(c.cmd)}</b> <span class="muted small">${esc(c.args)}</span>
+        <div class="muted small">${esc(c.help)}</div>
+      </div>`).join('');
+    box.querySelectorAll('.cmd').forEach((el) => el.onclick = () => {
+      $('chatInput').value = el.dataset.cmd + ' ';
+      $('chatInput').focus();
+      showCmdHint(el.dataset.cmd);
+    });
+    box.hidden = false;
+  }
+  const hideCmdHint = () => { $('cmdHint').hidden = true; };
+  $('cmdBtn').onclick = () => ($('cmdHint').hidden ? showCmdHint($('chatInput').value) : hideCmdHint());
+  $('chatInput').addEventListener('input', () => {
+    const v = $('chatInput').value;
+    if (v.startsWith('/')) showCmdHint(v); else hideCmdHint();
+  });
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCmdHint(); });
+
   // ---------- chat + log ----------
   const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
   function chatVisible() { return chatTab === 'chat' && (!isMobile() || document.body.classList.contains('view-chat')) && !document.hidden; }
@@ -470,13 +553,22 @@
     unread = n;
     for (const id of ['chatBadge', 'mChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
   }
-  function addMessage(m, scroll = true) {
+  function addMessage(m, scroll = true, live = false) {
     const isLog = m.kind === 'system';
     const box = isLog ? $('log') : $('messages');
     const el = document.createElement('div');
     const mine = sameNick(m.nick, me.nick);
-    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj' : mine ? 'mine' : '');
-    if (m.kind === 'dj') {
+    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj' : m.kind === 'dice' ? 'dice' : mine ? 'mine' : '');
+    if (m.kind === 'dice') {
+      const [, value, min, max] = /🎲 (\d+) \((\d+)–(\d+)\)/.exec(m.text) || [];
+      const [v, lo, hi] = [+value, +min, +max];
+      el.classList.toggle('mine', mine);
+      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="die${isFace(lo, hi) ? ' face' : ''}"></span>`
+        + `<span class="muted small">з ${lo}–${hi}</span><span class="time">${tm(m.at)}</span>`;
+      const die = el.querySelector('.die');
+      paintDie(die, v, lo, hi);
+      if (live) rollDie(die, lo, hi, v);
+    } else if (m.kind === 'dj') {
       el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
@@ -493,7 +585,9 @@
     const text = $('chatInput').value.trim();
     if (!text || !conn) return;
     if (chatTab !== 'chat') setChatTab('chat');
-    conn.invoke('SendChat', text).then(() => { $('chatInput').value = ''; }).catch((err) => toast('Не відправилось: ' + err.message, 'err'));
+    conn.invoke('SendChat', text)
+      .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); })
+      .catch((err) => toast('Не відправилось: ' + err.message, 'err'));
   };
   function setChatTab(tab) {
     chatTab = tab;
@@ -506,17 +600,105 @@
   }
   $('chatTabs').querySelectorAll('button').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
-  // mobile: one column at a time
+
+  // ---------- ігри ----------
+  const mySeat = (t) => (sameNick(t.x, me.nick) ? 'x' : sameNick(t.o, me.nick) ? 'o' : null);
+  const seated = () => tables.some((t) => mySeat(t));
+
+  async function game(method, ...args) {
+    if (!conn || conn.state !== 'Connected') { toast('Зв\'язку з сервером нема', 'err'); return; }
+    try {
+      const r = await conn.invoke(method, ...args);
+      if (!r.ok) toast(r.message, 'err');
+      else if (r.message) toast(r.message, 'ok');
+    } catch (e) { toast('Не вийшло: ' + e.message, 'err'); }
+  }
+
+  function tableStatus(t) {
+    const seat = mySeat(t);
+    if (t.winner === 'draw') return 'Нічия';
+    if (t.winner) return `Перемога: ${t.winner === 'x' ? t.x : t.o}`;
+    if (!t.x || !t.o) return 'Чекаємо на другого гравця';
+    if (seat && t.turn === seat) return 'Твій хід';
+    return `Ходить ${t.turn === 'x' ? t.x : t.o}`;
+  }
+
+  function seatHtml(t, mark) {
+    const nick = mark === 'x' ? t.x : t.o;
+    const turn = t.x && t.o && !t.winner && t.turn === mark;
+    const chip = gameOf(t.game).discs ? '●' : markOf(t, mark);
+    return `<span class="gseat ${mark}${nick ? '' : ' free'}${turn ? ' turn' : ''}">${chip} ${esc(nick || 'вільно')}</span>`;
+  }
+
+  function tableHtml(t) {
+    const g = gameOf(t.game);
+    const seat = mySeat(t);
+    const myTurn = seat && t.x && t.o && !t.winner && t.turn === seat;
+    // У грі з фішками ходом називають колонку, а сервер сам кладе фішку на дно.
+    const cells = t.cells.map((c, i) => {
+      const win = t.line && t.line.includes(i);
+      const col = i % t.width;
+      const free = g.discs ? !t.cells[col] : !c;
+      return `<button class="cell${c ? ' ' + c : ''}${win ? ' win' : ''}" data-id="${t.id}" data-i="${g.discs ? col : i}"`
+        + `${myTurn && free ? '' : ' disabled'}>${c && !g.discs ? markOf(t, c) : ''}</button>`;
+    }).join('');
+    const btns = [];
+    if (!seat && (!t.x || !t.o) && !seated()) btns.push(`<button class="primary" data-act="SitTable" data-id="${t.id}">Сісти за ${t.x ? markOf(t, 'o') : markOf(t, 'x')}</button>`);
+    if (seat && t.winner) btns.push(`<button class="primary" data-act="Rematch" data-id="${t.id}">Ще раз</button>`);
+    if (seat) btns.push(`<button class="ghost" data-act="LeaveTable" data-id="${t.id}">Встати</button>`);
+    else if (t.x && t.o) btns.push('<span class="muted small">Стіл зайнятий, дивишся збоку</span>');
+    return `<div class="gtable${seat ? ' mine' : ''}">
+        <div class="gseats">${g.icon}${seatHtml(t, 'x')}<span class="vs">проти</span>${seatHtml(t, 'o')}</div>
+        <div class="board${g.discs ? ' discs' : ''}" style="--cols: ${t.width}">${cells}</div>
+        <div class="gstatus${t.winner ? ' done' : ''}${myTurn ? ' my' : ''}">${esc(tableStatus(t))}</div>
+        <div class="gbtns">${btns.join('')}</div>
+      </div>`;
+  }
+
+  function setGameTab(id) {
+    gameTab = id;
+    localStorage.setItem('gameTab', id);
+    renderGames();
+  }
+
+  function renderGames() {
+    const box = $('games');
+    const g = GAMES.find((x) => x.id === gameTab) || GAMES[0];
+    const mine = tables.filter((t) => t.game === g.id);
+    box.innerHTML = `<div class="tabs gtabs">${GAMES.map((x) => {
+        const n = tables.filter((t) => t.game === x.id).length;
+        return `<button data-game="${x.id}" class="${x.id === g.id ? 'on' : ''}">${x.icon}${esc(x.name)}${n ? ` <span class="count">${n}</span>` : ''}</button>`;
+      }).join('')}</div>
+      <div class="ghead">
+        <div class="muted small">${esc(g.hint)}</div>
+        <button id="newTable" class="primary">+ Стіл</button>
+      </div>` + (mine.length
+        ? `<div class="gtables">${mine.map(tableHtml).join('')}</div>`
+        : `<div class="empty">Столів поки нема. Постав перший і клич когось у балачках.</div>`);
+    box.querySelectorAll('[data-game]').forEach((b) => b.onclick = () => setGameTab(b.dataset.game));
+    $('newTable').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => game('CreateTable', g.id));
+    box.querySelectorAll('.cell').forEach((b) => b.onclick = () => game('PlayMove', b.dataset.id, +b.dataset.i));
+    box.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => game(b.dataset.act, b.dataset.id));
+  }
+
+  // Ефір / Ігри / Балачки. На широкому екрані Ігри займають місце Ефіру, а балачки лишаються
+  // збоку, щоб було з ким перемовитись; на телефоні видно рівно одну колонку.
   function setView(v) {
-    document.body.classList.toggle('view-main', v === 'main');
-    document.body.classList.toggle('view-chat', v === 'chat');
+    for (const name of ['main', 'games', 'chat']) document.body.classList.toggle('view-' + name, v === name);
     $('mtabMain').classList.toggle('on', v === 'main');
+    $('mtabGames').classList.toggle('on', v === 'games');
     $('mtabChat').classList.toggle('on', v === 'chat');
+    $('vsMain').classList.toggle('on', v !== 'games');
+    $('vsGames').classList.toggle('on', v === 'games');
+    if (v === 'games') renderGames();
     if (v === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
   $('mtabMain').onclick = () => setView('main');
+  $('mtabGames').onclick = () => setView('games');
   $('mtabChat').onclick = () => setView('chat');
+  $('vsMain').onclick = () => setView('main');
+  $('vsGames').onclick = () => setView('games');
   document.addEventListener('visibilitychange', () => { if (chatVisible()) setUnread(0); });
 
   // ---------- search / add ----------
@@ -783,8 +965,9 @@
       .withAutomaticReconnect()
       .build();
     conn.on('state', (s) => { state = s; render(); });
-    conn.on('chat', (m) => addMessage(m));
+    conn.on('chat', (m) => addMessage(m, true, true));
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
+    conn.on('games', (list) => { tables = list; renderGames(); });
     conn.on('chatHistory', (list) => {
       $('messages').innerHTML = '';
       $('log').innerHTML = '';

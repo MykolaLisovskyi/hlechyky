@@ -10,6 +10,10 @@
 <body class="view-main">
 <header>
   <div class="brand"><img src="/static/icon.svg" alt=""><span id="siteName">Глечики</span></div>
+  <div class="vswitch">
+    <button id="vsMain" class="on">📻 Ефір</button>
+    <button id="vsGames">🎮 Ігри</button>
+  </div>
   <div class="player">
     <button id="playBtn" class="primary" title="Слухати ефір прямо тут">▶ Врубити</button>
     <input id="volume" type="range" min="0" max="1" step="0.02" value="0.8" title="Гучність">
@@ -70,6 +74,10 @@
     </section>
   </div>
 
+  <section class="panel" id="colGames">
+    <div id="games" class="games"></div>
+  </section>
+
   <section class="panel chat" id="colChat">
     <div class="tabs" id="chatTabs">
       <button data-tab="chat" class="on">Балачки <span id="chatBadge" class="chip badge" hidden>0</span></button>
@@ -78,8 +86,10 @@
     <div id="online" class="online"></div>
     <div id="messages" class="messages"></div>
     <div id="log" class="messages" hidden></div>
+    <div id="cmdHint" class="cmdhint" hidden></div>
     <form id="chatForm">
-      <input id="chatInput" type="text" placeholder="Отут тяпати…" maxlength="500" autocomplete="off">
+      <button id="cmdBtn" class="ghost icon" type="button" title="Команди чату">/</button>
+      <input id="chatInput" type="text" placeholder="Отут тяпати… або / для команд" maxlength="500" autocomplete="off">
       <button class="primary" type="submit" title="Відправити">→</button>
     </form>
   </section>
@@ -87,6 +97,7 @@
 
 <nav class="mtabs">
   <button id="mtabMain" class="on"><span class="ico">📻</span>Ефір</button>
+  <button id="mtabGames"><span class="ico">🎮</span>Ігри</button>
   <button id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
 </nav>
 
