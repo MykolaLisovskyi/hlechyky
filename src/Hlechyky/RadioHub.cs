@@ -75,6 +75,14 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games
     public Task<GameResult> PlayMove(string id, int cell) => ApplyAsync(games.Move(id ?? "", Nick(), cell));
     public Task<GameResult> Rematch(string id) => ApplyAsync(games.Rematch(id ?? "", Nick()));
 
+    /// <summary>Кадри змійки летять лише тим, хто на цей стіл дивиться.</summary>
+    public static string TableGroup(string id) => "table:" + id;
+    public Task WatchTable(string id) => Groups.AddToGroupAsync(Context.ConnectionId, TableGroup(id ?? ""));
+    public Task UnwatchTable(string id) => Groups.RemoveFromGroupAsync(Context.ConnectionId, TableGroup(id ?? ""));
+
+    /// <summary>Поворот змійки. Нічого не відповідаємо: наступний тик і так намалює, що вийшло.</summary>
+    public void SnakeTurn(string id, int dir) => games.Turn(id ?? "", Nick(), dir);
+
     /// <summary>Вдалий хід бачать усі; те, чим варто похвалитись, іде ще й у Журнал.</summary>
     async Task<GameResult> ApplyAsync(GameResult r)
     {

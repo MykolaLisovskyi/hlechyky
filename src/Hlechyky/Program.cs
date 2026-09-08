@@ -35,6 +35,7 @@ builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Games>();
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
+builder.Services.AddHostedService<SnakeEngine>();
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));

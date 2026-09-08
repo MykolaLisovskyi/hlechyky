@@ -30,6 +30,14 @@
       </svg>`,
     },
     {
+      id: 'snake', name: 'Змійка', marks: { x: 'жовта', o: 'зелена' }, realtime: true,
+      hint: 'Дуель на двох: стрілки або WASD, поле зі стінами. Врізався в стіну, у себе чи в суперника — програв.',
+      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2 13h4.2a2.6 2.6 0 0 0 0-5.2H5.2a2.6 2.6 0 0 1 0-5.2H9" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="13.2" cy="3.2" r="2.1" fill="var(--clay)"/>
+      </svg>`,
+    },
+    {
       id: 'c4', name: 'Чотири в ряд', marks: { x: 'жовті', o: 'зелені' }, discs: true,
       hint: 'Теж на двох: кидаєш фішку в колонку, вона падає вниз. Виграє той, хто перший збере чотири підряд.',
       icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
@@ -614,11 +622,80 @@
     } catch (e) { toast('Не вийшло: ' + e.message, 'err'); }
   }
 
+  // ---------- змійка ----------
+  const SNAKE = { w: 26, h: 18, px: 16, tickMs: 120 };
+  const css = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  const frames = {};          // останній кадр на стіл, щоб перемалювати після ререндера
+  const watched = new Set();  // столи, кадри яких ми зараз просимо
+
+  /// waiting — стіл ще чекає на другого гравця, тоді відлік не показуємо: він і не йде.
+  function drawSnake(f, waiting) {
+    const cv = $('snake-' + f.id);
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const { w, px } = SNAKE;
+    const at = (c) => [(c % w) * px, Math.floor(c / w) * px];
+    ctx.fillStyle = css('--bg2', '#16291f');
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    const [ax, ay] = at(f.apple);
+    ctx.fillStyle = css('--clay', '#c5763a');
+    ctx.beginPath();
+    ctx.arc(ax + px / 2, ay + px / 2, px / 2 - 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    const snake = (cells, head, body) => cells.forEach((c, i) => {
+      const [x, y] = at(c);
+      ctx.fillStyle = i ? body : head;
+      ctx.beginPath();
+      ctx.roundRect(x + 1, y + 1, px - 2, px - 2, i ? 3 : 6);
+      ctx.fill();
+    });
+    snake(f.a, css('--accent', '#f4c542'), css('--accent2', '#d9a92f'));
+    snake(f.b, css('--ok', '#7bd389'), '#4f9a5e');
+
+    if ((f.startIn > 0 && !waiting) || f.winner) {
+      ctx.fillStyle = 'rgba(15, 31, 24, .62)';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = css('--text', '#ecf1ea');
+      ctx.font = '700 46px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = f.startIn > 0 ? String(Math.ceil((f.startIn * SNAKE.tickMs) / 1000)) : '';
+      if (label) ctx.fillText(label, cv.width / 2, cv.height / 2);
+    }
+  }
+
+  /// Кадри просимо лише для тих столів, які зараз видно: інакше сервер сипле десять повідомлень на секунду дарма.
+  function syncWatch() {
+    const want = new Set(document.body.classList.contains('view-games')
+      ? tables.filter((t) => t.snake).map((t) => t.id) : []);
+    for (const id of [...watched]) if (!want.has(id)) { watched.delete(id); conn?.invoke('UnwatchTable', id).catch(() => {}); }
+    for (const id of want) if (!watched.has(id)) { watched.add(id); conn?.invoke('WatchTable', id).catch(() => {}); }
+  }
+
+  const DIRS = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 };
+  function steer(dir) {
+    const t = tables.find((x) => x.snake && mySeat(x) && x.x && x.o && !x.winner);
+    if (!t || !conn) return false;
+    conn.invoke('SnakeTurn', t.id, dir).catch(() => {});
+    return true;
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = DIRS[e.code];
+    if (dir !== undefined && steer(dir)) e.preventDefault();
+  });
+
   function tableStatus(t) {
     const seat = mySeat(t);
-    if (t.winner === 'draw') return 'Нічия';
+    if (t.winner === 'draw') return gameOf(t.game).realtime ? 'Лоб у лоб — нічия' : 'Нічия';
     if (t.winner) return `Перемога: ${t.winner === 'x' ? t.x : t.o}`;
     if (!t.x || !t.o) return 'Чекаємо на другого гравця';
+    if (gameOf(t.game).realtime) {
+      if (t.snake && t.snake.startIn > 0) return 'Готуйсь…';
+      return seat ? 'Стрілки або WASD' : 'Дивишся збоку';
+    }
     if (seat && t.turn === seat) return 'Твій хід';
     return `Ходить ${t.turn === 'x' ? t.x : t.o}`;
   }
@@ -635,21 +712,33 @@
     const seat = mySeat(t);
     const myTurn = seat && t.x && t.o && !t.winner && t.turn === seat;
     // У грі з фішками ходом називають колонку, а сервер сам кладе фішку на дно.
-    const cells = t.cells.map((c, i) => {
+    // У змійки клітинок нема взагалі — там канвас, тому сітку не рахуємо.
+    const cells = g.realtime ? '' : t.cells.map((c, i) => {
       const win = t.line && t.line.includes(i);
       const col = i % t.width;
       const free = g.discs ? !t.cells[col] : !c;
       return `<button class="cell${c ? ' ' + c : ''}${win ? ' win' : ''}" data-id="${t.id}" data-i="${g.discs ? col : i}"`
         + `${myTurn && free ? '' : ' disabled'}>${c && !g.discs ? markOf(t, c) : ''}</button>`;
     }).join('');
+    const board = g.realtime
+      ? `<canvas class="snakeboard" id="snake-${t.id}" width="${SNAKE.w * SNAKE.px}" height="${SNAKE.h * SNAKE.px}"></canvas>`
+        + (seat ? `<div class="dpad">
+            <button data-dir="3" aria-label="вгору">↑</button>
+            <button data-dir="2" aria-label="ліворуч">←</button>
+            <button data-dir="1" aria-label="вниз">↓</button>
+            <button data-dir="0" aria-label="праворуч">→</button>
+          </div>` : '')
+      : `<div class="board${g.discs ? ' discs' : ''}" style="--cols: ${t.width}">${cells}</div>`;
+    const score = g.realtime && t.snake
+      ? `<div class="gscore"><b>${t.snake.winsA}</b> : <b>${t.snake.winsB}</b></div>` : '';
     const btns = [];
     if (!seat && (!t.x || !t.o) && !seated()) btns.push(`<button class="primary" data-act="SitTable" data-id="${t.id}">Сісти за ${t.x ? markOf(t, 'o') : markOf(t, 'x')}</button>`);
     if (seat && t.winner) btns.push(`<button class="primary" data-act="Rematch" data-id="${t.id}">Ще раз</button>`);
     if (seat) btns.push(`<button class="ghost" data-act="LeaveTable" data-id="${t.id}">Встати</button>`);
     else if (t.x && t.o) btns.push('<span class="muted small">Стіл зайнятий, дивишся збоку</span>');
     return `<div class="gtable${seat ? ' mine' : ''}">
-        <div class="gseats">${g.icon}${seatHtml(t, 'x')}<span class="vs">проти</span>${seatHtml(t, 'o')}</div>
-        <div class="board${g.discs ? ' discs' : ''}" style="--cols: ${t.width}">${cells}</div>
+        <div class="gseats">${g.icon}${seatHtml(t, 'x')}${score || '<span class="vs">проти</span>'}${seatHtml(t, 'o')}</div>
+        ${board}
         <div class="gstatus${t.winner ? ' done' : ''}${myTurn ? ' my' : ''}">${esc(tableStatus(t))}</div>
         <div class="gbtns">${btns.join('')}</div>
       </div>`;
@@ -679,6 +768,9 @@
     $('newTable').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => game('CreateTable', g.id));
     box.querySelectorAll('.cell').forEach((b) => b.onclick = () => game('PlayMove', b.dataset.id, +b.dataset.i));
     box.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => game(b.dataset.act, b.dataset.id));
+    box.querySelectorAll('.dpad button').forEach((b) => b.onclick = () => steer(+b.dataset.dir));
+    syncWatch();
+    mine.filter((t) => t.snake).forEach((t) => drawSnake(frames[t.id] || t.snake, !t.x || !t.o));
   }
 
   // Ефір / Ігри / Балачки. На широкому екрані Ігри займають місце Ефіру, а балачки лишаються
@@ -690,7 +782,7 @@
     $('mtabChat').classList.toggle('on', v === 'chat');
     $('vsMain').classList.toggle('on', v !== 'games');
     $('vsGames').classList.toggle('on', v === 'games');
-    if (v === 'games') renderGames();
+    if (v === 'games') renderGames(); else syncWatch();
     if (v === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
@@ -968,6 +1060,7 @@
     conn.on('chat', (m) => addMessage(m, true, true));
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     conn.on('games', (list) => { tables = list; renderGames(); });
+    conn.on('snake', (f) => { frames[f.id] = f; drawSnake(f); });
     conn.on('chatHistory', (list) => {
       $('messages').innerHTML = '';
       $('log').innerHTML = '';
@@ -975,7 +1068,12 @@
       $('messages').scrollTop = $('messages').scrollHeight;
       $('log').scrollTop = $('log').scrollHeight;
     });
-    conn.onreconnected(() => { conn.invoke('SetNick', me.nick).catch(() => {}); toast('Знову на зв\'язку', 'ok'); });
+    conn.onreconnected(() => {
+      conn.invoke('SetNick', me.nick).catch(() => {});
+      watched.clear();
+      syncWatch();
+      toast('Знову на зв\'язку', 'ok');
+    });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
     conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
     conn.start().then(() => loadLib()).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
