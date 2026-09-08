@@ -24,6 +24,13 @@ public sealed class SnakeState
     public List<int> B { get; } = [];
     public int DirA { get; set; }
     public int DirB { get; set; }
+    /// <summary>
+    /// Повороти, натиснуті між тиками. Без черги два швидкі натиски злипаються в один: після «вгору»
+    /// встигає записатись «вліво», перевірене проти «вгору», і на тику змійка йде вліво — собі в бік.
+    /// Тому кожен наступний поворот міряємо від останнього в черзі, а не від того, що зараз в ефірі.
+    /// </summary>
+    readonly Queue<int> _turnsA = new(), _turnsB = new();
+    const int MaxQueued = 2;
     public int Apple { get; set; }
     /// <summary>Рахунок за столом; переживає «Ще раз», бо цікаво грати до трьох.</summary>
     public int WinsA { get; set; }
@@ -45,22 +52,28 @@ public sealed class SnakeState
         for (var i = 0; i < StartLen; i++) B.Add(Cell(W - 1 - StartLen + i, yB));  // дзеркально
         DirA = 0;
         DirB = 2;
+        _turnsA.Clear();
+        _turnsB.Clear();
         Apple = Cell(W / 2, H / 2);
         StartIn = StartTicks;
     }
 
-    /// <summary>Гравець просить повернути. Розворот на 180° ігноруємо — це була б миттєва смерть.</summary>
+    /// <summary>Гравець просить повернути. Розворот на 180° і повтор того самого ігноруємо.</summary>
     public void Turn(string seat, int dir)
     {
         if (dir is < 0 or > 3) return;
-        var cur = seat == "x" ? DirA : DirB;
-        if ((dir + 2) % 4 == cur) return;
-        if (seat == "x") DirA = dir; else DirB = dir;
+        var queue = seat == "x" ? _turnsA : _turnsB;
+        if (queue.Count >= MaxQueued) return;   // далі вже не пам'ять гравця, а хвіст лагу
+        var last = queue.Count > 0 ? queue.Last() : seat == "x" ? DirA : DirB;
+        if (dir == last || (dir + 2) % 4 == last) return;
+        queue.Enqueue(dir);
     }
 
     /// <summary>Один крок обох змійок. Повертає, хто цього тика загинув.</summary>
     public (bool DeadA, bool DeadB) Step()
     {
+        if (_turnsA.Count > 0) DirA = _turnsA.Dequeue();
+        if (_turnsB.Count > 0) DirB = _turnsB.Dequeue();
         var (nextA, okA) = Ahead(A[0], DirA);
         var (nextB, okB) = Ahead(B[0], DirB);
         var growA = okA && nextA == Apple;
