@@ -1,0 +1,26 @@
+# Локальна розробка: Icecast + liquidsoap однією командою, без окремого Icecast власника (D:\radio).
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml logs -f liquidsoap
+# Паролі Icecast беруться з .env (ICECAST_SOURCE_PASSWORD), решта за замовчуванням "hackme": це локальний Icecast на 127.0.0.1.
+services:
+  icecast:
+    image: libretime/icecast:2.4.4
+    container_name: hlechyky-icecast
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_ADMIN_PASSWORD:-hackme}
+      ICECAST_RELAY_PASSWORD: ${ICECAST_RELAY_PASSWORD:-hackme}
+      ICECAST_PASSWORD: ${ICECAST_PASSWORD:-hackme}
+      ICECAST_HOSTNAME: localhost
+
+  liquidsoap:
+    extends:
+      file: docker-compose.yml
+      service: liquidsoap
+    depends_on:
+      - icecast
+    environment:
+      ICECAST_HOST: icecast

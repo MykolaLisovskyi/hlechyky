@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Глечики</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="view-main">
+<header>
+  <div class="brand"><img src="/static/icon.svg" alt=""><span id="siteName">Глечики</span></div>
+  <div class="player">
+    <button id="playBtn" class="primary" title="Слухати ефір прямо тут">▶ Врубити</button>
+    <input id="volume" type="range" min="0" max="1" step="0.02" value="0.8" title="Гучність">
+    <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="who">
+    <span id="liqStatus" class="chip ok" title="Стан ефіру">ефір</span>
+    <span id="nickBtn" class="nick" title="Змінити нік">…</span>
+  </div>
+</header>
+
+<main>
+  <div class="col" id="colMain">
+    <section class="panel now-panel">
+      <h2>В ефірі</h2>
+      <div id="banner" class="banner" hidden></div>
+      <div id="now" class="now"></div>
+      <div id="flyLayer"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Закинути пісню</h2>
+      <div class="add">
+        <div class="row">
+          <input id="q" type="search" placeholder="Назва, виконавець або посилання (YouTube, YT Music, Spotify…)" autocomplete="off">
+          <button id="addBtn" class="primary">Закинути</button>
+        </div>
+        <div id="results" class="results"></div>
+        <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Черга <span id="queueCount" class="count"></span></h2>
+      <ul id="queue" class="queue"></ul>
+    </section>
+
+    <section class="panel dj-panel">
+      <div class="dj-head">
+        <img src="/static/glek.svg" alt="">
+        <div>
+          <h2><span id="djName">Дядько Глек</span> радить</h2>
+          <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+        </div>
+      </div>
+      <div id="sugCards" class="sug-cards"></div>
+    </section>
+
+    <section class="panel">
+      <div class="tabs" id="libTabs">
+        <button data-tab="history" class="on">Що вже було</button>
+        <button data-tab="likes">❤ Улюблене</button>
+        <button data-tab="playlists">Плейлисти</button>
+        <button data-tab="top">Хто скільки</button>
+      </div>
+      <div id="lib"></div>
+    </section>
+  </div>
+
+  <section class="panel chat" id="colChat">
+    <div class="tabs" id="chatTabs">
+      <button data-tab="chat" class="on">Балачки <span id="chatBadge" class="chip badge" hidden>0</span></button>
+      <button data-tab="log">Журнал</button>
+    </div>
+    <div id="online" class="online"></div>
+    <div id="messages" class="messages"></div>
+    <div id="log" class="messages" hidden></div>
+    <form id="chatForm">
+      <input id="chatInput" type="text" placeholder="Отут тяпати…" maxlength="500" autocomplete="off">
+      <button class="primary" type="submit" title="Відправити">→</button>
+    </form>
+  </section>
+</main>
+
+<nav class="mtabs">
+  <button id="mtabMain" class="on"><span class="ico">📻</span>Ефір</button>
+  <button id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
+</nav>
+
+<div id="toasts" class="toasts"></div>
+
+<div id="nickModal" class="modal" hidden>
+  <form id="nickForm" class="card">
+    <h3><img src="/static/glek.svg" alt="">Хто прийшов?</h3>
+    <input id="nickInput" type="text" maxlength="24" placeholder="як тебе кликати" autocomplete="nickname">
+    <button id="nickSave" class="primary" type="submit">Заходжу</button>
+  </form>
+</div>
+
+<div id="plModal" class="modal" hidden>
+  <div class="card">
+    <h3>У який плейлист?</h3>
+    <div id="plPick" class="pick"></div>
+    <form id="plNewForm" class="row">
+      <input id="plNewName" type="text" maxlength="40" placeholder="або новий плейлист…" autocomplete="off">
+      <button class="primary" type="submit">Створити</button>
+    </form>
+    <button id="plClose" class="ghost" type="button">Закрити</button>
+  </div>
+</div>
+
+<!-- drop a link anywhere on the page -->
+<div id="drop" class="drop" hidden>
+  <div class="drop-card">
+    <span class="note n1">🎵</span><span class="note n2">🎶</span><span class="note n3">🎵</span>
+    <div class="drop-jar"><img src="/static/glek.svg" alt=""></div>
+    <div class="drop-title">Кидай сюди</div>
+    <div class="drop-sub">YouTube, YT Music, Spotify — закину в чергу</div>
+    <div class="drop-url" hidden></div>
+  </div>
+</div>
+
+<audio id="audio" preload="none"></audio>
+<script src="/static/signalr.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

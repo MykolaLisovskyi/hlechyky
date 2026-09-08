@@ -1,0 +1,17 @@
+# secrets and local state
+appsettings.Local.json
+liquidsoap/.env
+data/
+cache/
+logs/
+# binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
+tools/
+# build output
+bin/
+obj/
+build/
+# IDE and generated
+.vs/
+.idea/
+*.user
+Hlechyky.vbs

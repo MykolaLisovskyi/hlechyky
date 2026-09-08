@@ -1,0 +1,34 @@
+{
+	# Сертифікати й стан Caddy живуть у проєкті, а не в %AppData%
+	storage file_system {
+		root {$HLECHYKY_ROOT}/data/caddy
+	}
+	log {
+		output file {$HLECHYKY_ROOT}/logs/caddy.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+		level INFO
+	}
+}
+
+# www → без www
+www.hlechyky.pp.ua {
+	redir https://hlechyky.pp.ua{uri} permanent
+}
+
+hlechyky.pp.ua {
+	# Потоки Icecast: віддавати байти одразу, без буферизації і без таймаутів на відповідь
+	@stream path /radio.mp3 /spotify.mp3
+	handle @stream {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+
+	# Все інше: сайт, API, SignalR (websocket проксується сам)
+	handle {
+		encode zstd gzip
+		reverse_proxy 127.0.0.1:8080
+	}
+}

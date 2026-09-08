@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Дядько Глек: глиняний глечик з вусами і в навушниках -->
+  <defs>
+    <linearGradient id="clay" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d4884a"/>
+      <stop offset="1" stop-color="#a65a2a"/>
+    </linearGradient>
+  </defs>
+  <!-- handle -->
+  <path d="M92 44 C118 44 120 88 94 96" fill="none" stroke="#5a2f14" stroke-width="14" stroke-linecap="round"/>
+  <path d="M92 44 C118 44 120 88 94 96" fill="none" stroke="#c5763a" stroke-width="8" stroke-linecap="round"/>
+  <!-- body -->
+  <path d="M46 22 h36 v10 c14 6 24 22 24 42 c0 22 -14 40 -42 40 c-28 0 -42 -18 -42 -40 c0 -20 10 -36 24 -42 z"
+        fill="url(#clay)" stroke="#5a2f14" stroke-width="3" stroke-linejoin="round"/>
+  <!-- rim -->
+  <rect x="42" y="16" width="44" height="12" rx="5" fill="#c5763a" stroke="#5a2f14" stroke-width="3"/>
+  <ellipse cx="64" cy="19" rx="16" ry="3" fill="#3a1c0a" opacity=".55"/>
+  <!-- highlight -->
+  <path d="M34 62 c0 -12 6 -22 14 -27" fill="none" stroke="#f1b57a" stroke-width="4" stroke-linecap="round" opacity=".55"/>
+  <!-- vyshyvanka band -->
+  <path d="M28 44 h72" stroke="#f4c542" stroke-width="3"/>
+  <path d="M28 50 h72" stroke="#2f6b3a" stroke-width="3"/>
+  <g fill="#e2492f">
+    <path d="M40 43 l4 4 l-4 4 l-4 -4 z"/><path d="M52 43 l4 4 l-4 4 l-4 -4 z"/><path d="M64 43 l4 4 l-4 4 l-4 -4 z"/>
+    <path d="M76 43 l4 4 l-4 4 l-4 -4 z"/><path d="M88 43 l4 4 l-4 4 l-4 -4 z"/>
+  </g>
+  <!-- oseledets -->
+  <path d="M60 17 c-4 -10 -18 -12 -26 -4 c8 -4 16 -2 20 6" fill="#2b1a0e"/>
+  <!-- headphones -->
+  <path d="M26 74 C22 40 106 40 102 74" fill="none" stroke="#1f2a24" stroke-width="6" stroke-linecap="round"/>
+  <rect x="16" y="66" width="16" height="26" rx="6" fill="#1f2a24" stroke="#f4c542" stroke-width="2.5"/>
+  <rect x="96" y="66" width="16" height="26" rx="6" fill="#1f2a24" stroke="#f4c542" stroke-width="2.5"/>
+  <!-- eyes -->
+  <ellipse cx="52" cy="70" rx="8" ry="8.5" fill="#fff8ec"/>
+  <ellipse cx="76" cy="70" rx="8" ry="8.5" fill="#fff8ec"/>
+  <circle cx="54" cy="71" r="4" fill="#1a1a1a"/>
+  <circle cx="78" cy="71" r="4" fill="#1a1a1a"/>
+  <circle cx="55.5" cy="69.5" r="1.3" fill="#fff"/>
+  <circle cx="79.5" cy="69.5" r="1.3" fill="#fff"/>
+  <!-- brows -->
+  <path d="M43 58 l16 3" stroke="#2b1a0e" stroke-width="4" stroke-linecap="round"/>
+  <path d="M85 58 l-16 3" stroke="#2b1a0e" stroke-width="4" stroke-linecap="round"/>
+  <!-- cheeks -->
+  <circle cx="42" cy="84" r="5" fill="#f08a6a" opacity=".55"/>
+  <circle cx="86" cy="84" r="5" fill="#f08a6a" opacity=".55"/>
+  <!-- nose -->
+  <ellipse cx="64" cy="82" rx="4.5" ry="3.5" fill="#8d4a22"/>
+  <!-- mustache -->
+  <path d="M64 88 c-6 -6 -18 -4 -24 4 c-4 6 -8 10 -12 8 c4 -2 6 -8 10 -12 c8 -8 22 -8 26 0 c4 -8 18 -8 26 0 c4 4 6 10 10 12 c-4 2 -8 -2 -12 -8 c-6 -8 -18 -10 -24 -4 z" fill="#2b1a0e"/>
+  <!-- smile -->
+  <path d="M56 100 q8 6 16 0" fill="none" stroke="#5a2f14" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

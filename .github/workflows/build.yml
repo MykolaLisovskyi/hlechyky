@@ -1,0 +1,15 @@
+# Збирає сервер на кожен push у main і на кожен pull request. Зламана збірка = червоний хрестик у PR.
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build src/Hlechyky/Hlechyky.csproj -c Release --nologo
