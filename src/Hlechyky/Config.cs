@@ -86,11 +86,20 @@ public sealed class LastFmOptions
 public sealed class AutoDjOptions
 {
     public bool Enabled { get; set; } = true;
-    public int RecentSeeds { get; set; } = 10;
-    public int LikeSeeds { get; set; } = 4;
     public int NoRepeatHours { get; set; } = 6;
     public int MaxDurationSeconds { get; set; } = 720;
     public string SeedQuery { get; set; } = "";
+    /// <summary>
+    /// Скільки треків Глек може поставити «від себе» поспіль, перш ніж сід візьметься не з ефіру,
+    /// а з людського замовлення. Без цієї стелі він блукає від власних виборів і не вертається. 0 — без стелі.
+    /// </summary>
+    public int MaxSelfChain { get; set; } = 3;
+    /// <summary>Кожен N-й авто-трек — із власного архіву кімнати, а не з ютубного радіо. 0 — не витягувати.</summary>
+    public int ArchiveEvery { get; set; } = 5;
+    /// <summary>Наскільки тиснути смаком кімнати (свої артисти, звична мова). 0 — не тиснути зовсім.</summary>
+    public double TasteBias { get; set; } = 1;
+    /// <summary>Перебити мовний нахил вручну: <c>cyr</c>, <c>lat</c>. Порожньо — рахувати з того, що замовляють люди.</summary>
+    public string PreferScript { get; set; } = "";
 }
 
 public sealed class DjBotOptions

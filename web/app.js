@@ -437,13 +437,13 @@
     const list = state.suggestions || [];
     const a = state.autoNext;
     const seed = state.suggestSeed;
-    const sig = JSON.stringify([list.map((s) => s.itemId), a && [a.itemId, a.status, a.error], seed && seed.id, state.now.track && state.now.track.id, state.queue.length, state.djName]);
+    const sig = JSON.stringify([list.map((s) => s.itemId), a && [a.itemId, a.status, a.error], seed && seed.id, state.suggestSeedNote, state.now.track && state.now.track.id, state.queue.length, state.djName]);
     if (sig === sugSig) { tick(); return; }
     sugSig = sig;
     const label = (t) => (t.artist ? `${t.artist} — ${t.title}` : t.title);
     const onAir = seed && state.now.track && state.now.track.id === seed.id;
     $('djSub').textContent = seed
-      ? `Підбирає під ${onAir ? 'те, що зараз грає' : 'останнє, що грало'}: ${label(seed)}`
+      ? `Підбирає під ${state.suggestSeedNote || (onAir ? 'те, що зараз грає' : 'останнє, що грало')}: ${label(seed)}`
       : 'Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради';
     const card = (s, next) => `<div class="sug ${next ? 'next' : ''} ${sugSeen.has(s.itemId) ? '' : 'fade'}" data-id="${s.itemId}">
         ${s.track.thumbUrl ? `<img src="${esc(s.track.thumbUrl)}" alt="">` : '<div class="noimg"></div>'}

@@ -31,7 +31,7 @@ dotnet run --project src\Hlechyky
 
 Розділ "Структура" в [README.md](README.md) описує все дерево. Коротко:
 
-- `src/Hlechyky/` сервер. `Endpoints.cs` це HTTP API, `RadioEngine.cs` черга і те, що в ефірі, `AutoDj.cs` поради Дядька Глека, `RadioHub.cs` SignalR (усе, що летить у браузери), `Db.cs` SQLite.
+- `src/Hlechyky/` сервер. `Endpoints.cs` це HTTP API, `RadioEngine.cs` черга і те, що в ефірі, `AutoDj.cs` поради Дядька Глека, `RoomTaste.cs` смак кімнати і якорі проти дрейфу, `RadioHub.cs` SignalR (усе, що летить у браузери), `Db.cs` SQLite.
 - `web/` фронт без збірки: `index.html`, `app.js`, `static/style.css`. Зберіг файл, натиснув F5 у браузері, готово. Сервер віддає статику з `no-cache`.
 - `liquidsoap/radio.liq` аудіоконвеєр. Коментарі там і розділ "Чому раніше одна пісня грала двічі" в README описують граблі, на які вже наступали. Перш ніж чіпати, прочитай.
 - Налаштування підхоплюються без рестарту, `appsettings.Local.json` перекриває `appsettings.json`.

@@ -37,6 +37,7 @@ public sealed class RadioEngine : BackgroundService
     readonly YtMusicClient _ytm;
     readonly LiquidsoapClient _liq;
     readonly AutoDj _autoDj;
+    readonly RoomTaste _taste;
     readonly LastFmClient _lastFm;
     readonly Presence _presence;
     readonly IHubContext<RadioHub> _hub;
@@ -82,14 +83,16 @@ public sealed class RadioEngine : BackgroundService
     /// <summary>Identity of the seed the current suggestions were built from: "t:{trackId}", "s:{spotify title}" or "none".</summary>
     string? _suggestSeedKey;
     TrackInfo? _suggestSeed;
+    /// <summary>Під що саме підбирали: «те, що зараз грає», «останнє, що грало» чи «те, що тут замовляли».</summary>
+    string _suggestSeedNote = "";
     (string Title, TrackInfo? Seed)? _spotifySeed;
 
-    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, LiquidsoapClient liq, AutoDj autoDj, LastFmClient lastFm,
+    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
         Presence presence, IHubContext<RadioHub> hub, ILogger<RadioEngine> log,
         IOptionsMonitor<SiteOptions> site, IOptionsMonitor<YtDlpOptions> yt, IOptionsMonitor<AutoDjOptions> adj,
         IOptionsMonitor<IcecastOptions> ice, IOptionsMonitor<VoiceOptions> voice)
     {
-        _db = db; _ytdlp = ytdlp; _ytm = ytm; _liq = liq; _autoDj = autoDj; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
+        _db = db; _ytdlp = ytdlp; _ytm = ytm; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
         _site = site; _yt = yt; _adj = adj; _ice = ice; _voice = voice;
     }
 
@@ -116,6 +119,7 @@ public sealed class RadioEngine : BackgroundService
                 AutoNext = _autoNext is { } a ? ToDto(a) : null,
                 Suggestions = _suggestions.Select(ToDto).ToList(),
                 SuggestSeed = _suggestSeed,
+                SuggestSeedNote = _suggestSeedNote,
                 Online = _presence.Online,
                 LiquidsoapOk = _liqOk,
                 Listeners = _listeners,
@@ -511,6 +515,7 @@ public sealed class RadioEngine : BackgroundService
             HashSet<string> exclude;
             int need;
             TrackInfo? seed;
+            bool seedFromUser, fresh;
             string? spotifyTitle;
             lock (_lock)
             {
@@ -526,16 +531,46 @@ public sealed class RadioEngine : BackgroundService
                 if (_now.Track is not null) exclude.Add(_now.Track.Id);
                 if (_autoNext is not null) exclude.Add(_autoNext.Track.Id);
                 need = SuggestionTarget - _suggestions.Count;
+                fresh = _suggestions.Count == 0;
                 seed = _now.Source is "user" or "autodj" && !VoiceService.IsVoice(_now.Track?.Id) ? _now.Track : null;
+                seedFromUser = seed is not null && _now.Source == "user";
                 spotifyTitle = seed is null && _spotifyLive ? _spotifyTitle : null;
             }
             if (need <= 0) return;
             seed ??= await SpotifySeedAsync(spotifyTitle) ?? _autoDj.FallbackSeed();
-            var picks = await _autoDj.PickManyAsync(seed, exclude, need, CancellationToken.None);
+            var o = _adj.CurrentValue;
+
+            // Трек поставила людина — її вибір і є смак кімнати, тягнути нема куди. А от коли в ефірі
+            // вибір самого Глека (чи взагалі нічого), додаємо якір: інакше він сідиться від себе ж і
+            // за ніч заїжджає невідомо куди. Після MaxSelfChain своїх поспіль сід лишається сам якір.
+            TrackInfo? anchor = null;
+            var chain = _db.AutoPlaysSinceUser();
+            if (!seedFromUser)
+            {
+                var taken = new HashSet<string>(exclude);
+                if (seed is not null) taken.Add(seed.Id);
+                anchor = _taste.Anchor(taken);
+                if (anchor is not null && o.MaxSelfChain > 0 && chain >= o.MaxSelfChain) seed = null;
+            }
+
+            var picks = new List<AutoDj.Pick>();
+            // кожен N-й авто-трек — своє, давно забуте; рахуємо від останнього людського замовлення
+            if (fresh && o.ArchiveEvery > 0 && (chain + 1) % o.ArchiveEvery == 0 && _autoDj.ArchivePick(exclude) is { } fromArchive)
+            {
+                picks.Add(fromArchive);
+                exclude.Add(fromArchive.Track.Id);
+                need--;
+            }
+            if (need > 0)
+                picks.AddRange(await _autoDj.PickManyAsync(new AutoDj.Seeds(seed, anchor, seedFromUser ? 0.5 : 1), exclude, need, CancellationToken.None));
+
             lock (_lock)
             {
                 if (key != _suggestSeedKey) return; // the track changed meanwhile; these were built for the old one
-                _suggestSeed = seed;
+                _suggestSeed = seed ?? anchor;
+                _suggestSeedNote = seed is null ? "те, що тут замовляли"
+                    : _now.Track is not null && _now.Track.Id == seed.Id ? "те, що зараз грає"
+                    : "останнє, що грало";
                 if (picks.Count == 0) _suggestRetryAt = DateTime.UtcNow.AddSeconds(45);
                 foreach (var p in picks)
                     if (_suggestions.Count < SuggestionTarget && _suggestions.All(s => s.Track.Id != p.Track.Id))

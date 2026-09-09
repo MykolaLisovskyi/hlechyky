@@ -62,8 +62,10 @@ public sealed class StateSnapshot
     public required List<QueueItemDto> Queue { get; init; }
     public QueueItemDto? AutoNext { get; init; }
     public List<QueueItemDto> Suggestions { get; init; } = new();
-    /// <summary>The track the suggestions were built from (what is on air, or the last thing that played).</summary>
+    /// <summary>The track the suggestions were built from (what is on air, the last thing that played, or an anchor from the room's own requests).</summary>
     public TrackInfo? SuggestSeed { get; init; }
+    /// <summary>Звідки цей сід узявся — рядком, щоб панель не гадала.</summary>
+    public string SuggestSeedNote { get; init; } = "";
     public required List<string> Online { get; init; }
     public required bool LiquidsoapOk { get; init; }
     public required int Listeners { get; init; }

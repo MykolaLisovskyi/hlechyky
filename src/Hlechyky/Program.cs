@@ -36,6 +36,7 @@ builder.Services.AddSingleton<YtDlpService>();
 builder.Services.AddSingleton<VoiceService>();
 builder.Services.AddSingleton<LastFmClient>();
 builder.Services.AddSingleton<LiquidsoapClient>();
+builder.Services.AddSingleton<RoomTaste>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<RadioEngine>();

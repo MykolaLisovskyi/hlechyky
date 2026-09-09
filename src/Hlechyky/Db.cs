@@ -281,6 +281,71 @@ public sealed class Db
         return list;
     }
 
+    /// <summary>
+    /// Треки, які ставили люди, найсвіжіші перші. Це і є смак кімнати: те, що Дядько Глек накрутив
+    /// собі сам, сюди не потрапляє, інакше він би вчився на власному дрейфі. Голосові не музика.
+    /// </summary>
+    public List<TrackInfo> RecentUserTracks(int n)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT {TrackCols}, MAX(p.id) AS m FROM plays p JOIN tracks t ON t.id = p.track_id
+            WHERE p.source = 'user' AND t.id NOT LIKE 'voice-%'
+            GROUP BY t.id ORDER BY m DESC LIMIT $n
+            """, ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<TrackInfo>();
+        while (r.Read()) list.Add(ReadTrack(r));
+        return list;
+    }
+
+    /// <summary>Артисти, яких кімната ставила сама або лайкала — «свої» для авто-DJ.</summary>
+    public List<string> TasteArtists(int n)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, """
+            SELECT t.artist FROM plays p JOIN tracks t ON t.id = p.track_id
+            WHERE p.source = 'user' AND t.id NOT LIKE 'voice-%'
+            UNION
+            SELECT t.artist FROM likes l JOIN tracks t ON t.id = l.track_id
+            LIMIT $n
+            """, ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
+    /// <summary>Скільки треків Глек поставив сам після останнього людського замовлення. Переживає рестарт.</summary>
+    public int AutoPlaysSinceUser()
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, """
+            SELECT COUNT(*) FROM plays
+            WHERE source = 'autodj' AND id > COALESCE((SELECT MAX(id) FROM plays WHERE source = 'user'), 0)
+            """);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    /// <summary>Своє, давно забуте: треки з власних замовлень чи лайків, яких не було в ефірі від $since.</summary>
+    public List<TrackInfo> ArchiveTracks(DateTimeOffset since, int n)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT {TrackCols} FROM tracks t JOIN plays p ON p.track_id = t.id
+            WHERE t.id NOT LIKE 'voice-%'
+            GROUP BY t.id
+            HAVING MAX(p.started_at) < $since
+               AND (SUM(CASE WHEN p.source = 'user' THEN 1 ELSE 0 END) > 0
+                    OR EXISTS (SELECT 1 FROM likes l WHERE l.track_id = t.id))
+            ORDER BY RANDOM() LIMIT $n
+            """, ("$since", since.ToUniversalTime().ToString("o")), ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<TrackInfo>();
+        while (r.Read()) list.Add(ReadTrack(r));
+        return list;
+    }
+
     public List<NickCount> TopRequesters(int days)
     {
         using var c = Open();
