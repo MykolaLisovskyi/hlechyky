@@ -13,9 +13,12 @@ public sealed class Presence
     public void Set(string connId, string nick) => _conns[connId] = nick;
     public void Remove(string connId) { _conns.TryRemove(connId, out _); _listening.TryRemove(connId, out _); }
     /// <summary>Плеєр на сторінці грає (вкладка сама каже про «Врубити» і «Стоп»).</summary>
-    public void SetListening(string connId, bool on) { if (on) _listening[connId] = 0; else _listening.TryRemove(connId, out _); }
+    /// <returns>Чи щось змінилося: повторне «граю» від тієї ж вкладки розсилки стану не варте.</returns>
+    public bool SetListening(string connId, bool on) => on ? _listening.TryAdd(connId, 0) : _listening.TryRemove(connId, out _);
     /// <summary>Ніки, у яких зараз грає плеєр на сайті. ETS2 і VLC сюди не потрапляють — їх видно лише в Icecast.</summary>
-    public List<string> Listening => _listening.Keys.Select(Get).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    public List<string> Listening => _listening.Keys.Select(Get).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>Скільки вкладок сайту тягнуть потік: Icecast рахує кожну, тож решта його числа — ETS2, VLC тощо.</summary>
+    public int ListeningTabs => _listening.Count;
     public string? Get(string connId) => _conns.TryGetValue(connId, out var n) ? n : null;
     public List<string> Online => _conns.Values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     public int Count => Online.Count;
@@ -126,6 +129,8 @@ public sealed class RadioEngine : BackgroundService
                 SuggestSeed = _suggestSeed,
                 SuggestSeedNote = _suggestSeedNote,
                 Online = _presence.Online,
+                ListeningNicks = _presence.Listening,
+                ListeningTabs = _presence.ListeningTabs,
                 LiquidsoapOk = _liqOk,
                 Listeners = _listeners,
                 StreamDelaySeconds = _site.CurrentValue.StreamDelaySeconds,

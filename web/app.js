@@ -193,7 +193,6 @@
     banner.textContent = 'Ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
     $('liqStatus').className = 'chip ' + (state.liquidsoapOk ? 'ok' : 'err');
     $('liqStatus').textContent = state.liquidsoapOk ? 'ефір' : 'ефір ↓';
-    $('listeners').textContent = '🎧 ' + state.listeners;
 
     if (n.source === 'user' || n.source === 'autodj') {
       const t = n.track || {};
@@ -481,9 +480,31 @@
     tick();
   }
 
-  function renderOnline() {
-    $('online').innerHTML = state.online.map((n) => `<span class="chip">${esc(n)}</span>`).join('') || '<span class="muted small">нікого</span>';
+  // Хто в навушниках: ніки з плеєром на сайті плюс решта підключень до потоку (ETS2, VLC), яких по імені не видно.
+  function listenersText() {
+    const nicks = state.listeningNicks || [];
+    const others = Math.max(0, (state.listeners || 0) - (state.listeningTabs || 0));
+    const parts = [];
+    if (nicks.length) parts.push('Слухають: ' + nicks.join(', '));
+    if (others && state.listeningTabs !== undefined) parts.push(`${nicks.length ? 'ще ' : 'Слухають '}${others} через ETS2/VLC/інший плеєр`);
+    else if (others) parts.push(`Слухають ${others}`);
+    return parts.join('; ') || 'Зараз ніхто не слухає';
   }
+
+  function renderOnline() {
+    const nicks = state.listeningNicks || [];
+    const listens = (n) => nicks.some((x) => sameNick(x, n));
+    const shown = Math.max(state.listeners || 0, nicks.length);
+    const chip = $('listeners');
+    chip.textContent = '🎧 ' + shown + (nicks.length ? ' · ' + nicks.join(', ') : '');
+    chip.title = listenersText();
+    chip.classList.toggle('on', shown > 0);
+    const people = state.online.slice().sort((a, b) => listens(b) - listens(a));
+    $('online').innerHTML = people.map((n) => listens(n)
+      ? `<span class="chip listening" title="${esc(n)} зараз слухає ефір">🎧 ${esc(n)}</span>`
+      : `<span class="chip" title="на сайті, але плеєр вимкнений">${esc(n)}</span>`).join('') || '<span class="muted small">нікого</span>';
+  }
+  $('listeners').onclick = () => { if (state) toast(listenersText()); };
 
   function render() {
     if (!state) return;

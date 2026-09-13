@@ -72,7 +72,11 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     }
 
     /// <summary>Вкладка каже, що її плеєр грає чи замовк: так рейтинг знає, хто саме слухав трек.</summary>
-    public void SetListening(bool on) => presence.SetListening(Context.ConnectionId, on);
+    public async Task SetListening(bool on)
+    {
+        // Решта кімнати бачить, хто саме зараз у навушниках.
+        if (presence.SetListening(Context.ConnectionId, on)) await Clients.All.SendAsync("state", engine.Snapshot());
+    }
 
     public async Task SetNick(string nick)
     {

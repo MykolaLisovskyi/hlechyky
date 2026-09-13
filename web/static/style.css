@@ -280,6 +280,10 @@ button.vplay { padding: 3px 8px; }
 .online { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
 .online .chip { background: var(--panel2); color: var(--text); }
 .online .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.online .chip.listening { color: var(--accent); background: #3a2d0a; }
+.online .chip.listening::before { display: none; }
+#listeners { cursor: pointer; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+#listeners.on { color: var(--accent); }
 
 /* ---- ігри ---- */
 /* Тут лишається тільки місце під вкладку: усе, що всередині неї, — у web/games/core.css. */

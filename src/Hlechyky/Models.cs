@@ -77,6 +77,10 @@ public sealed class StateSnapshot
     /// <summary>Звідки цей сід узявся — рядком, щоб панель не гадала.</summary>
     public string SuggestSeedNote { get; init; } = "";
     public required List<string> Online { get; init; }
+    /// <summary>Ніки, у яких плеєр на сайті зараз грає.</summary>
+    public List<string> ListeningNicks { get; init; } = new();
+    /// <summary>Скільки вкладок сайту слухають (Icecast бачить кожну окремо).</summary>
+    public int ListeningTabs { get; init; }
     public required bool LiquidsoapOk { get; init; }
     public required int Listeners { get; init; }
     public required int StreamDelaySeconds { get; init; }
