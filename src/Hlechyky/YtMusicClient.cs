@@ -140,6 +140,89 @@ public sealed partial class YtMusicClient(ILogger<YtMusicClient> log)
         return best;
     }
 
+    const string ArtistsFilter = "EgWKAQIgAWoKEAkQChAFEAMQBA==";
+
+    /// <summary>Id сторінки артиста (UC…) за іменем; лише точний збіг імені, щоб не взяти однофамільця.</summary>
+    public async Task<string?> ArtistIdAsync(string name, CancellationToken ct)
+    {
+        var want = Norm(FirstArtist(name));
+        if (want.Length == 0) return null;
+        var body = Body();
+        body["query"] = FirstArtist(name);
+        body["params"] = ArtistsFilter;
+        var root = await PostAsync("search", body, ct);
+        var sections = root?["contents"]?["tabbedSearchResultsRenderer"]?["tabs"]?.AsArray().FirstOrDefault()
+            ?["tabRenderer"]?["content"]?["sectionListRenderer"]?["contents"]?.AsArray();
+        foreach (var sec in sections ?? [])
+            foreach (var it in sec?["musicShelfRenderer"]?["contents"]?.AsArray() ?? [])
+            {
+                var r = it?["musicResponsiveListItemRenderer"];
+                var id = ArtistBrowseId(r?["navigationEndpoint"]);
+                var title = RunsText(r?["flexColumns"]?.AsArray().FirstOrDefault()?["musicResponsiveListItemFlexColumnRenderer"]?["text"]);
+                if (id is not null && Norm(title) == want) return id;
+            }
+        return null;
+    }
+
+    /// <summary>
+    /// Сторінка артиста: «Найпопулярніші пісні» і «Схожі виконавці». Заголовки полиць локалізовані,
+    /// тож розпізнаємо їх за вмістом: пісні — список із videoId, схожі — карусель, де картки ведуть на артистів.
+    /// </summary>
+    public async Task<YtArtist?> ArtistAsync(string browseId, CancellationToken ct)
+    {
+        var body = Body();
+        body["browseId"] = browseId;
+        return ParseArtist(browseId, await PostAsync("browse", body, ct));
+    }
+
+    public static YtArtist? ParseArtist(string browseId, JsonNode? root)
+    {
+        var name = RunsText(root?["header"]?["musicImmersiveHeaderRenderer"]?["title"] ?? root?["header"]?["musicVisualHeaderRenderer"]?["title"]);
+        var sections = root?["contents"]?["singleColumnBrowseResultsRenderer"]?["tabs"]?.AsArray().FirstOrDefault()
+            ?["tabRenderer"]?["content"]?["sectionListRenderer"]?["contents"]?.AsArray();
+        if (sections is null) return null;
+        var top = new List<SearchResult>();
+        var related = new List<YtArtistRef>();
+        foreach (var sec in sections)
+        {
+            if (sec?["musicShelfRenderer"] is { } shelf && top.Count == 0)
+            {
+                foreach (var it in shelf["contents"]?.AsArray() ?? [])
+                {
+                    var r = it?["musicResponsiveListItemRenderer"];
+                    var id = r?["playlistItemData"]?["videoId"]?.GetValue<string>();
+                    var cols = r?["flexColumns"]?.AsArray();
+                    if (id is null || cols is null || cols.Count < 2) continue;
+                    string Col(int i) => i < cols.Count ? RunsText(cols[i]?["musicResponsiveListItemFlexColumnRenderer"]?["text"]) : "";
+                    var title = Col(0);
+                    if (string.IsNullOrWhiteSpace(title)) continue;
+                    var album = Col(3);
+                    top.Add(new SearchResult(id, title, Col(1), album.Length > 0 ? album : null, 0,
+                        LastThumb(r!["thumbnail"]?["musicThumbnailRenderer"]?["thumbnail"]?["thumbnails"])));
+                }
+            }
+            else if (sec?["musicCarouselShelfRenderer"]?["contents"]?.AsArray() is { } cards && related.Count == 0)
+            {
+                foreach (var card in cards)
+                {
+                    var r = card?["musicTwoRowItemRenderer"];
+                    var id = ArtistBrowseId(r?["navigationEndpoint"]);
+                    var title = RunsText(r?["title"]);
+                    if (id is null || title.Length == 0) break; // не артисти — не та карусель
+                    related.Add(new YtArtistRef(id, title));
+                }
+            }
+        }
+        return new YtArtist(browseId, name, top, related);
+    }
+
+    static string? ArtistBrowseId(JsonNode? nav)
+    {
+        var be = nav?["browseEndpoint"];
+        var type = be?["browseEndpointContextSupportedConfigs"]?["browseEndpointContextMusicConfig"]?["pageType"]?.GetValue<string>();
+        return type == "MUSIC_PAGE_TYPE_ARTIST" ? be?["browseId"]?.GetValue<string>() : null;
+    }
+
     static string RunsText(JsonNode? textNode)
     {
         var runs = textNode?["runs"]?.AsArray();

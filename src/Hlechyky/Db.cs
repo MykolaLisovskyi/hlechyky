@@ -38,6 +38,10 @@ public sealed class Db
         CREATE TABLE IF NOT EXISTS play_listeners(
             play_id INTEGER NOT NULL, nick TEXT NOT NULL, PRIMARY KEY(play_id, nick)) WITHOUT ROWID;
         CREATE INDEX IF NOT EXISTS ix_plays_track ON plays(track_id);
+        CREATE TABLE IF NOT EXISTS dj_feedback(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, artist_key TEXT NOT NULL, seed_id TEXT, kind TEXT NOT NULL,
+            nick TEXT, created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS ix_dj_feedback_created ON dj_feedback(created_at);
         """;
 
     /// <summary>
@@ -693,6 +697,27 @@ public sealed class Db
         using var r = cmd.ExecuteReader();
         var list = new List<ChatMessage>();
         while (r.Read()) list.Add(new ChatMessage(r.GetInt64(0), r.GetString(1), r.GetString(2), Ts(r.GetString(4)), r.GetString(3)));
+        return list;
+    }
+
+    // ---- що кімнаті не зайшло з порад Глека ----
+
+    /// <summary>«Не те» чи швидкий скіп авто-треку: артист і сід, від якого порада прийшла.</summary>
+    public void AddDjFeedback(string artistKey, string? seedId, string kind, string? nick)
+    {
+        using var c = Open();
+        Exec(c, "INSERT INTO dj_feedback(artist_key, seed_id, kind, nick, created_at) VALUES($a, $s, $k, $n, $now)",
+            ("$a", artistKey), ("$s", seedId), ("$k", kind), ("$n", nick), ("$now", Now()));
+    }
+
+    public List<(string ArtistKey, string? SeedId)> DjFeedbackSince(DateTimeOffset since)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "SELECT artist_key, seed_id FROM dj_feedback WHERE created_at >= $s",
+            ("$s", since.ToUniversalTime().ToString("o")));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string?)>();
+        while (r.Read()) list.Add((r.GetString(0), Str(r, 1)));
         return list;
     }
 

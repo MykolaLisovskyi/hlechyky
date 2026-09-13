@@ -23,6 +23,8 @@ public sealed class QueueItem
     public string? Reason { get; init; }
     /// <summary>"suggestion" when a person queued it from the DJ's suggestions, else null.</summary>
     public string? Via { get; init; }
+    /// <summary>Трек-сід, від якого Глек це підібрав: «Не те» чи швидкий скіп послаблюють і його.</summary>
+    public string? SeedId { get; init; }
 }
 
 public sealed class NowPlaying
@@ -42,11 +44,19 @@ public sealed class NowPlaying
     public bool SpotifyLive { get; set; }
     public string? SpotifyTitle { get; set; }
     public long PlayId { get; set; }
+    /// <summary>Від якого сіда Глек підібрав цей авто-трек (для швидкого скіпу); клієнту не потрібне.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? SeedId { get; set; }
 }
 
 public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind);
 
 public sealed record SearchResult(string Id, string Title, string Artist, string? Album, int DurationSec, string? ThumbUrl);
+
+public sealed record YtArtistRef(string Id, string Name);
+
+/// <summary>Сторінка артиста в YouTube Music: його найпопулярніші пісні і схожі виконавці.</summary>
+public sealed record YtArtist(string Id, string Name, List<SearchResult> TopSongs, List<YtArtistRef> Related);
 
 public sealed record QueueItemDto(string ItemId, TrackInfo Track, string RequestedBy, string Status, string? Error, string Kind, string? Reason, string? Via, DateTimeOffset AddedAt);
 

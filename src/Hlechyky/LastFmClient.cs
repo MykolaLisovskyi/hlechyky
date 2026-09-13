@@ -41,6 +41,12 @@ public sealed class LastFmClient(IOptionsMonitor<LastFmOptions> options, Db db, 
             var node = JsonNode.Parse(text);
             if (node?["error"] is not null)
             {
+                // 6 — «такого нема»: це теж відповідь, і питати щоразу наново нема чого
+                if (node["error"]?.ToString() == "6")
+                {
+                    db.CacheSet(cacheKey, text);
+                    return node;
+                }
                 log.LogWarning("Last.fm {Method} error: {Msg}", method, node["message"]);
                 return null;
             }
@@ -105,6 +111,15 @@ public sealed class LastFmClient(IOptionsMonitor<LastFmOptions> options, Db db, 
             list.Add(new SimilarTrack(ar, name, 1.0 - 0.5 * i++ / Math.Max(limit, 1)));
         }
         return list;
+    }
+
+    /// <summary>Скільки людей слухали артиста на Last.fm: 0 — такого там нема, null — не вдалося спитати.</summary>
+    public async Task<int?> ArtistListenersAsync(string artist, CancellationToken ct)
+    {
+        var n = await CallAsync("artist.getInfo", new() { ["artist"] = artist, ["autocorrect"] = "1" }, ct);
+        if (n is null) return null;
+        if (n["error"] is not null) return 0;
+        return (int)Math.Min(int.MaxValue, ToDouble(n["artist"]?["stats"]?["listeners"]));
     }
 
     static double ToDouble(JsonNode? n)

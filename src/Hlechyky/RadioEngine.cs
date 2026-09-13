@@ -385,12 +385,19 @@ public sealed class RadioEngine : BackgroundService
     {
         string? label;
         string queue;
+        TrackInfo? quickAuto = null;
+        string? seedId;
         lock (_lock)
         {
             if (_now.Source is not ("user" or "autodj")) return (false, "Зараз нема що скіпати");
             if (_now.SkipPending) return (true, "Уже перемикаю");
             queue = _now.Source == "user" ? "userq" : "autoq";
             label = _now.Track?.Label;
+            // авто-трек скіпнули, ледь він заграв — це «не те», а не «вже набридло»
+            if (_now.Source == "autodj" && _now.Track is not null && !VoiceService.IsVoice(_now.Track.Id)
+                && DateTimeOffset.UtcNow - _now.StartedAt < TimeSpan.FromSeconds(_adj.CurrentValue.QuickSkipSeconds))
+                quickAuto = _now.Track;
+            seedId = _now.SeedId;
         }
         try { await _liq.SkipAsync(queue); }
         catch (Exception ex) { return (false, "liquidsoap не відповідає: " + ex.Message); }
@@ -399,6 +406,7 @@ public sealed class RadioEngine : BackgroundService
             _now.SkipPending = true;
             if (_now.PlayId > 0) _db.EndPlay(_now.PlayId, skipped: true);
         }
+        if (quickAuto is not null) _autoDj.Reject(quickAuto, seedId, "skip", nick);
         SystemChat($"{nick} скіпає {label}");
         Broadcast();
         return (true, "Скіп, перемикаю");
@@ -458,6 +466,7 @@ public sealed class RadioEngine : BackgroundService
         }
         if (auto is not null) DropFromLiquidsoap("autoq", auto);
         _log.LogInformation("{Nick} dismissed {What} {Label}", nick, auto is null ? "suggestion" : "auto-next", s.Track.Label);
+        if (s.Reason != "з нашого архіву") _autoDj.Reject(s.Track, s.SeedId, "dismiss", nick);
         if (auto is not null) SystemChat($"{nick} відхиляє {s.Track.Label}, {Dj} шукає інше");
         EnsureSuggestions();
         Broadcast();
@@ -545,17 +554,26 @@ public sealed class RadioEngine : BackgroundService
             seed ??= await SpotifySeedAsync(spotifyTitle) ?? _autoDj.FallbackSeed();
             var o = _adj.CurrentValue;
 
-            // Трек поставила людина — її вибір і є смак кімнати, тягнути нема куди. А от коли в ефірі
-            // вибір самого Глека (чи взагалі нічого), додаємо якір: інакше він сідиться від себе ж і
-            // за ніч заїжджає невідомо куди. Після MaxSelfChain своїх поспіль сід лишається сам якір.
-            TrackInfo? anchor = null;
+            // Трек поставила людина — її вибір і є смак кімнати, від нього й шукаємо. А от коли в ефірі
+            // вибір самого Глека (чи взагалі нічого), основа — два людські замовлення-якорі: від себе
+            // він сідитись не має, інакше за ніч заїжджає невідомо куди. Власний вибір лише трохи
+            // підмішується, щоб перехід не рвався, а після MaxSelfChain своїх поспіль — і того нема.
+            var seeds = new List<AutoDj.Seed>();
             var chain = _db.AutoPlaysSinceUser();
-            if (!seedFromUser)
+            if (seedFromUser) seeds.Add(new AutoDj.Seed(seed!, 1));
+            else
             {
                 var taken = new HashSet<string>(exclude);
+                taken.UnionWith(_autoDj.WornOutSeeds());
                 if (seed is not null) taken.Add(seed.Id);
-                anchor = _taste.Anchor(taken);
-                if (anchor is not null && o.MaxSelfChain > 0 && chain >= o.MaxSelfChain) seed = null;
+                foreach (var weight in new[] { 1.0, 0.75 })
+                {
+                    if (_taste.Anchor(taken) is not { } anchor) break;
+                    seeds.Add(new AutoDj.Seed(anchor, weight));
+                    taken.Add(anchor.Id);
+                }
+                if (seed is not null && (seeds.Count == 0 || (o.SelfSeedWeight > 0 && (o.MaxSelfChain <= 0 || chain < o.MaxSelfChain))))
+                    seeds.Add(new AutoDj.Seed(seed, seeds.Count == 0 ? 1 : o.SelfSeedWeight));
             }
 
             var picks = new List<AutoDj.Pick>();
@@ -567,19 +585,31 @@ public sealed class RadioEngine : BackgroundService
                 need--;
             }
             if (need > 0)
-                picks.AddRange(await _autoDj.PickManyAsync(new AutoDj.Seeds(seed, anchor, seedFromUser ? 0.5 : 1), exclude, need, CancellationToken.None));
+            {
+                var found = await _autoDj.PickManyAsync(new AutoDj.Seeds(seeds, seedFromUser ? 0.5 : 1), exclude, need, CancellationToken.None);
+                picks.AddRange(found);
+                // суддя якості відсіяв усе — краще своє з архіву, ніж тиша чи сміття
+                foreach (var p in found) exclude.Add(p.Track.Id);
+                for (var i = found.Count; i < need && _autoDj.ArchivePick(exclude) is { } more; i++)
+                {
+                    picks.Add(more);
+                    exclude.Add(more.Track.Id);
+                }
+            }
 
             lock (_lock)
             {
                 if (key != _suggestSeedKey) return; // the track changed meanwhile; these were built for the old one
-                _suggestSeed = seed ?? anchor;
-                _suggestSeedNote = seed is null ? "те, що тут замовляли"
-                    : _now.Track is not null && _now.Track.Id == seed.Id ? "те, що зараз грає"
+                var main = seeds.FirstOrDefault()?.Track;
+                _suggestSeed = main;
+                _suggestSeedNote = main is null ? ""
+                    : !seedFromUser && main.Id != seed?.Id ? "те, що тут замовляли"
+                    : _now.Track is not null && _now.Track.Id == main.Id ? "те, що зараз грає"
                     : "останнє, що грало";
                 if (picks.Count == 0) _suggestRetryAt = DateTime.UtcNow.AddSeconds(45);
                 foreach (var p in picks)
                     if (_suggestions.Count < SuggestionTarget && _suggestions.All(s => s.Track.Id != p.Track.Id))
-                        _suggestions.Add(new QueueItem { Track = p.Track, RequestedBy = "auto-DJ", Kind = "suggestion", Reason = p.Reason, Status = ItemStatus.Ready });
+                        _suggestions.Add(new QueueItem { Track = p.Track, RequestedBy = "auto-DJ", Kind = "suggestion", Reason = p.Reason, SeedId = p.SeedId, Status = ItemStatus.Ready });
             }
             Broadcast();
             await TickSafeAsync(); // a queue that ran dry takes the first one straight away
@@ -661,7 +691,7 @@ public sealed class RadioEngine : BackgroundService
             {
                 Track = track, Source = kind, ItemId = itemId, StartedAt = DateTimeOffset.UtcNow,
                 RequestedBy = item?.Kind == "user" ? item.RequestedBy : null,
-                Reason = item?.Reason, Via = item?.Via, DurationSec = track?.DurationSec ?? 0,
+                Reason = item?.Reason, Via = item?.Via, DurationSec = track?.DurationSec ?? 0, SeedId = item?.SeedId,
             };
         }
         if (item?.Kind == "user") PersistQueue();
@@ -944,7 +974,7 @@ public sealed class RadioEngine : BackgroundService
         {
             _db.UpsertTrack(pick.Track);
             // same ItemId as the suggestion card, so in the UI it just turns into "next" instead of being redrawn
-            var item = new QueueItem { ItemId = pick.ItemId, Track = pick.Track, RequestedBy = "auto-DJ", Kind = "autodj", Reason = pick.Reason, Status = ItemStatus.Downloading };
+            var item = new QueueItem { ItemId = pick.ItemId, Track = pick.Track, RequestedBy = "auto-DJ", Kind = "autodj", Reason = pick.Reason, SeedId = pick.SeedId, Status = ItemStatus.Downloading };
             lock (_lock) _autoNext = item;
             Broadcast();
             await _dlGate.WaitAsync();

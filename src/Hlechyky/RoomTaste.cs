@@ -74,6 +74,9 @@ public sealed class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> options)
         return cyr ? "cyr" : lat ? "lat" : "";
     }
 
+    /// <summary>Артист уже звучав у кімнаті з людського замовлення або є в лайках.</summary>
+    public bool IsKnown(string artist) => Current.Artists.Contains(AutoDj.ArtistKey(artist));
+
     /// <summary>
     /// Наскільки підняти чи притиснути кандидата під смак кімнати.
     /// </summary>

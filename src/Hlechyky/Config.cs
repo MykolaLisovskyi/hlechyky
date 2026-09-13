@@ -102,6 +102,23 @@ public sealed class AutoDjOptions
     public double TasteBias { get; set; } = 1;
     /// <summary>Перебити мовний нахил вручну: <c>cyr</c>, <c>lat</c>. Порожньо — рахувати з того, що замовляють люди.</summary>
     public string PreferScript { get; set; } = "";
+    /// <summary>
+    /// Вага власного вибору Глека в ефірі, коли поради вже будуються від людських замовлень. Трохи —
+    /// щоб перехід не рвався; більше — і він знову сідиться від себе. 0 — не зважати на нього зовсім.
+    /// </summary>
+    public double SelfSeedWeight { get; set; } = 0.3;
+    /// <summary>Вага радіо YouTube Music від треку. Саме туди лізуть контент-ферми, тож основа — схожі артисти.</summary>
+    public double RadioWeight { get; set; } = 0.6;
+    /// <summary>Фільтр якості: артист мусить бути відомий Last.fm чи MusicBrainz або вже звучати в кімнаті.</summary>
+    public bool QualityGate { get; set; } = true;
+    /// <summary>Скільки слухачів на Last.fm достатньо, щоб артист пройшов без MusicBrainz.</summary>
+    public int MinListeners { get; set; } = 5000;
+    /// <summary>Те саме для кириличних треків: своя сцена на Last.fm сильно недорахована.</summary>
+    public int MinListenersCyr { get; set; } = 1000;
+    /// <summary>Скільки годин пам'ятати «Не те» і швидкі скіпи авто-треків.</summary>
+    public int FeedbackHours { get; set; } = 48;
+    /// <summary>Скіп авто-треку раніше за стільки секунд — сигнал «не те», а не «вже набридло».</summary>
+    public int QuickSkipSeconds { get; set; } = 45;
 }
 
 public sealed class DjBotOptions
