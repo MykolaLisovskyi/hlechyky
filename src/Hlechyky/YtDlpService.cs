@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky;
 
 /// <summary>Wrapper around the yt-dlp binary: metadata, audio download into the cache, flat playlists.</summary>
-public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, ILogger<YtDlpService> log)
+public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, Db db, ILogger<YtDlpService> log)
 {
     YtDlpOptions O => options.CurrentValue;
     string Bin => Paths.Resolve(O.BinaryPath);
@@ -108,18 +108,52 @@ public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, ILogger<
         return new TrackInfo(id, title, artist, dur, Str(n["thumbnail"]), Str(n["webpage_url"]) ?? url, Str(n["album"]));
     }
 
-    public string? FindCached(string id)
+    /// <summary>Скачали новий файл у кеш — TrackCache перевіряє ліміт.</summary>
+    public event Action? Downloaded;
+
+    static readonly HashSet<string> AudioExt = new(StringComparer.OrdinalIgnoreCase) { ".m4a", ".mp3", ".opus", ".ogg", ".oga", ".webm", ".flac", ".wav", ".aac", ".mka" };
+
+    public static bool IsAudio(string fileName) => AudioExt.Contains(Path.GetExtension(fileName));
+
+    /// <summary>
+    /// Файл треку в кеші: за власним id, за тим, що записано в базі, або та сама пісня під іншим id
+    /// (<see cref="SongKey"/>). null — треба качати.
+    /// </summary>
+    public string? FindCached(string id) => FindCached(id, null);
+
+    string? FindCached(string id, TrackInfo? known)
     {
         Directory.CreateDirectory(CacheDir);
-        return Directory.EnumerateFiles(CacheDir, id + ".*")
-            .FirstOrDefault(f => !f.EndsWith(".part") && !f.EndsWith(".ytdl") && !f.EndsWith(".webp") && !f.EndsWith(".jpg") && !f.EndsWith(".json"));
+        var own = Directory.EnumerateFiles(CacheDir, id + ".*").FirstOrDefault(IsAudio);
+        if (own is not null || VoiceService.IsVoice(id)) return own;
+        if (db.TrackFile(id) is { } recorded && File.Exists(recorded) && IsAudio(recorded)) return recorded;
+        var t = known ?? db.GetTrack(id);
+        if (t is null) return null;
+        var key = SongKey.Of(t.Artist, t.Title);
+        if (key.Length == 0) return null;
+        foreach (var (otherId, duration, path) in db.SameSongFiles(key, t.Id))
+        {
+            if (!SongKey.SameDuration(duration, t.DurationSec)) continue;
+            var file = path is not null && File.Exists(path) && IsAudio(path)
+                ? path
+                : Directory.EnumerateFiles(CacheDir, otherId + ".*").FirstOrDefault(IsAudio);
+            if (file is not null) return file;
+        }
+        return null;
     }
 
     /// <summary>Downloads best audio for the track into the cache, returns the file path.</summary>
     public async Task<string> DownloadAsync(TrackInfo t, CancellationToken ct)
     {
-        var cached = FindCached(t.Id);
-        if (cached is not null) return cached;
+        var cached = FindCached(t.Id, t);
+        if (cached is not null)
+        {
+            // свіжа позначка: TrackCache не видалить файл, який щойно взяли в чергу
+            try { File.SetLastWriteTimeUtc(cached, DateTime.UtcNow); } catch (IOException) { /* не біда */ }
+            if (!Path.GetFileNameWithoutExtension(cached).Equals(t.Id, StringComparison.Ordinal))
+                log.LogInformation("{Id}: та сама пісня вже є в кеші ({File}), не качаю", t.Id, Path.GetFileName(cached));
+            return cached;
+        }
         var args = BaseArgs();
         args.AddRange([
             "-f", "bestaudio[ext=m4a]/bestaudio/best",
@@ -131,9 +165,12 @@ public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, ILogger<
         ]);
         var (code, o, e) = await RunWithCookieFallbackAsync(args, TimeSpan.FromSeconds(O.TimeoutSeconds), ct);
         var path = o.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
-        if (path is not null && File.Exists(path)) return path;
-        cached = FindCached(t.Id);
-        if (cached is not null) return cached;
+        if (path is null || !File.Exists(path)) path = Directory.EnumerateFiles(CacheDir, t.Id + ".*").FirstOrDefault(IsAudio);
+        if (path is not null)
+        {
+            Downloaded?.Invoke();
+            return path;
+        }
         log.LogWarning("yt-dlp download failed ({Code}) for {Url}: {Err}", code, t.SourceUrl, e);
         throw new InvalidOperationException(code != 0 ? Short(e) : "yt-dlp не повернув файл");
     }

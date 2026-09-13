@@ -41,6 +41,8 @@ builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
+builder.Services.AddSingleton<TrackCache>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TrackCache>());
 builder.Services.AddSingleton<DjBrain>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
 builder.Services.AddHlechykyGames();

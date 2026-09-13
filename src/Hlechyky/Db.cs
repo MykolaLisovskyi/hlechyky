@@ -35,6 +35,9 @@ public sealed class Db
         CREATE TABLE IF NOT EXISTS playlist_tracks(
             playlist_id INTEGER NOT NULL, track_id TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL,
             PRIMARY KEY(playlist_id, track_id));
+        CREATE TABLE IF NOT EXISTS play_listeners(
+            play_id INTEGER NOT NULL, nick TEXT NOT NULL, PRIMARY KEY(play_id, nick)) WITHOUT ROWID;
+        CREATE INDEX IF NOT EXISTS ix_plays_track ON plays(track_id);
         """;
 
     /// <summary>
@@ -94,6 +97,25 @@ public sealed class Db
         Exec(c, GamesSchema);
         // migrations for DBs created before these columns existed
         try { Exec(c, "ALTER TABLE plays ADD COLUMN via TEXT"); } catch (SqliteException) { /* exists */ }
+        // справжня довжина файлу (каталог YouTube бреше на секунду-дві) і пік підключень до потоку за трек
+        try { Exec(c, "ALTER TABLE plays ADD COLUMN duration_sec INTEGER"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE plays ADD COLUMN stream_peak INTEGER"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE tracks ADD COLUMN song_key TEXT"); } catch (SqliteException) { /* exists */ }
+        Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
+        BackfillSongKeys(c);
+    }
+
+    /// <summary>Ключ пісні рахується в C#: SQLite-івський lower() не знає кирилиці.</summary>
+    static void BackfillSongKeys(SqliteConnection c)
+    {
+        var rows = new List<(string Id, string Key)>();
+        using (var cmd = Cmd(c, "SELECT id, artist, title FROM tracks WHERE song_key IS NULL"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) rows.Add((r.GetString(0), SongKey.Of(r.GetString(1), r.GetString(2))));
+        if (rows.Count == 0) return;
+        using var tx = c.BeginTransaction();
+        foreach (var (id, key) in rows) Exec(c, "UPDATE tracks SET song_key=$k WHERE id=$id", ("$k", key), ("$id", id));
+        tx.Commit();
     }
 
     SqliteConnection Open()
@@ -158,19 +180,74 @@ public sealed class Db
     {
         using var c = Open();
         Exec(c, """
-            INSERT INTO tracks(id, title, artist, album, duration_sec, thumb_url, source_url, created_at)
-            VALUES($id, $title, $artist, $album, $dur, $thumb, $src, $now)
+            INSERT INTO tracks(id, title, artist, album, duration_sec, thumb_url, source_url, created_at, song_key)
+            VALUES($id, $title, $artist, $album, $dur, $thumb, $src, $now, $key)
             ON CONFLICT(id) DO UPDATE SET title=excluded.title, artist=excluded.artist, album=excluded.album,
-                duration_sec=excluded.duration_sec, thumb_url=excluded.thumb_url, source_url=excluded.source_url
+                duration_sec=excluded.duration_sec, thumb_url=excluded.thumb_url, source_url=excluded.source_url, song_key=excluded.song_key
             """,
             ("$id", t.Id), ("$title", t.Title), ("$artist", t.Artist), ("$album", t.Album),
-            ("$dur", t.DurationSec), ("$thumb", t.ThumbUrl), ("$src", t.SourceUrl), ("$now", Now()));
+            ("$dur", t.DurationSec), ("$thumb", t.ThumbUrl), ("$src", t.SourceUrl), ("$now", Now()), ("$key", SongKey.Of(t.Artist, t.Title)));
     }
 
     public void SetTrackFile(string id, string path)
     {
         using var c = Open();
         Exec(c, "UPDATE tracks SET file_path=$p WHERE id=$id", ("$p", path), ("$id", id));
+    }
+
+    // ---- кеш файлів ----
+
+    public string? TrackFile(string id)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "SELECT file_path FROM tracks WHERE id=$id", ("$id", id));
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>Інші id тієї самої пісні: їхня тривалість і записаний файл (може вже не існувати).</summary>
+    public List<(string Id, int DurationSec, string? FilePath)> SameSongFiles(string songKey, string exceptId)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "SELECT id, duration_sec, file_path FROM tracks WHERE song_key=$k AND id<>$id AND id NOT LIKE 'voice-%'",
+            ("$k", songKey), ("$id", exceptId));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, int, string?)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetInt32(1), Str(r, 2)));
+        return list;
+    }
+
+    /// <summary>Файл видалили з кешу: стираємо його в усіх треків, що на нього посилались.</summary>
+    public void ForgetTrackFile(string path)
+    {
+        var name = Path.GetFileName(path);
+        using var c = Open();
+        var ids = new List<string>();
+        using (var cmd = Cmd(c, "SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+                if (Path.GetFileName(r.GetString(1)).Equals(name, StringComparison.OrdinalIgnoreCase)) ids.Add(r.GetString(0));
+        foreach (var id in ids) Exec(c, "UPDATE tracks SET file_path=NULL WHERE id=$id", ("$id", id));
+    }
+
+    public sealed record CacheStat(string TrackId, string? FilePath, int Plays, DateTimeOffset? LastPlayed, int Likes, bool InPlaylist);
+
+    /// <summary>Усе, що TrackCache зважує перед видаленням: повтори, останнє програвання, лайки, плейлисти.</summary>
+    public List<CacheStat> CacheStats()
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, """
+            SELECT t.id, t.file_path,
+                   (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id),
+                   (SELECT MAX(p.started_at) FROM plays p WHERE p.track_id = t.id),
+                   (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id),
+                   EXISTS (SELECT 1 FROM playlist_tracks x WHERE x.track_id = t.id)
+            FROM tracks t WHERE t.id NOT LIKE 'voice-%'
+            """);
+        using var r = cmd.ExecuteReader();
+        var list = new List<CacheStat>();
+        while (r.Read())
+            list.Add(new CacheStat(r.GetString(0), Str(r, 1), r.GetInt32(2), r.IsDBNull(3) ? null : Ts(r.GetString(3)), r.GetInt32(4), r.GetInt64(5) != 0));
+        return list;
     }
 
     public TrackInfo? GetTrack(string id)
@@ -199,6 +276,68 @@ public sealed class Db
         using var c = Open();
         Exec(c, "UPDATE plays SET ended_at=$now, skipped=$s WHERE id=$id AND ended_at IS NULL",
             ("$now", Now()), ("$s", skipped ? 1 : 0), ("$id", id));
+    }
+
+    /// <summary>Справжня довжина треку, щойно liquidsoap її знає: від неї рахується, скільки дослухали.</summary>
+    public void SetPlayDuration(long id, int sec)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE plays SET duration_sec=$d WHERE id=$id", ("$d", sec), ("$id", id));
+    }
+
+    /// <summary>Хто слухав трек (ніки з увімкненим плеєром на сайті) і пік підключень до потоку, разом з ETS2 та VLC.</summary>
+    public void NotePlayListeners(long id, int streamListeners, IEnumerable<string> nicks)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE plays SET stream_peak=MAX(COALESCE(stream_peak, 0), $n) WHERE id=$id", ("$n", streamListeners), ("$id", id));
+        foreach (var nick in nicks)
+            Exec(c, "INSERT OR IGNORE INTO play_listeners(play_id, nick) VALUES($id, $n)", ("$id", id), ("$n", nick));
+    }
+
+    public sealed record TrackRating(TrackInfo Track, int Plays, int Skips, int? Completion, int Listeners, List<string> ListenerNicks,
+        int StreamPeak, int Likes, DateTimeOffset LastPlayed);
+
+    /// <summary>
+    /// Рейтинг треків за період. Дослуховування — середнє по програваннях: скільки секунд прозвучало з довжини
+    /// файлу (без обрізання «на секунду раніше»: хто дограв без 10 секунд, дограв). Голосові не музика.
+    /// </summary>
+    public List<TrackRating> TrackRatings(int days, string sort, int n)
+    {
+        var order = sort switch
+        {
+            "completion" => "completion DESC, plays DESC",
+            "listeners" => "listeners DESC, plays DESC",
+            "likes" => "likes DESC, plays DESC",
+            _ => "plays DESC, completion DESC",
+        };
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            WITH p AS (
+                SELECT p.id, p.track_id, p.skipped, p.started_at, p.stream_peak,
+                       (julianday(p.ended_at) - julianday(p.started_at)) * 86400 AS played,
+                       COALESCE(NULLIF(p.duration_sec, 0), NULLIF(t.duration_sec, 0)) AS dur
+                FROM plays p JOIN tracks t ON t.id = p.track_id
+                WHERE p.started_at >= $since AND p.ended_at IS NOT NULL AND p.track_id NOT LIKE 'voice-%'
+            ), agg AS (
+                SELECT track_id, COUNT(*) AS plays, SUM(skipped) AS skips, MAX(started_at) AS last_played,
+                       COALESCE(MAX(stream_peak), 0) AS stream_peak,
+                       ROUND(AVG(CASE WHEN dur IS NULL THEN NULL WHEN played >= dur - 10 THEN 1.0 ELSE MAX(played, 0) / dur END) * 100) AS completion
+                FROM p GROUP BY track_id
+            ), who AS (
+                SELECT track_id, COUNT(*) AS listeners, GROUP_CONCAT(nick, char(10)) AS nicks
+                FROM (SELECT DISTINCT p.track_id, l.nick FROM p JOIN play_listeners l ON l.play_id = p.id) GROUP BY track_id
+            )
+            SELECT {TrackCols}, a.plays, a.skips, a.completion, COALESCE(w.listeners, 0) AS listeners, w.nicks, a.stream_peak,
+                   (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id) AS likes, a.last_played
+            FROM agg a JOIN tracks t ON t.id = a.track_id LEFT JOIN who w ON w.track_id = a.track_id
+            ORDER BY {order}, a.last_played DESC LIMIT $n
+            """, ("$since", DateTimeOffset.UtcNow.AddDays(-days).ToString("o")), ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<TrackRating>();
+        while (r.Read())
+            list.Add(new TrackRating(ReadTrack(r), r.GetInt32(7), r.GetInt32(8), r.IsDBNull(9) ? null : (int)r.GetDouble(9), r.GetInt32(10),
+                r.IsDBNull(11) ? [] : r.GetString(11).Split('\n').ToList(), r.GetInt32(12), r.GetInt32(13), Ts(r.GetString(14))));
+        return list;
     }
 
     public void EndOpenPlays()

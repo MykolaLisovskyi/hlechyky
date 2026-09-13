@@ -44,6 +44,8 @@ public sealed class YtDlpOptions
     public string BinaryPath { get; set; } = "tools/yt-dlp/yt-dlp.exe";
     public string FfmpegDir { get; set; } = "tools/yt-dlp";
     public string CacheDir { get; set; } = "cache";
+    /// <summary>Скільки гігабайт треків тримати в CacheDir; старе й рідке видаляється (TrackCache). 0 — без ліміту.</summary>
+    public double CacheMaxGb { get; set; } = 5;
     /// <summary>Used only when YouTube demands a login (age-gated 18+ videos): a Netscape cookies.txt exported from a logged-in browser…</summary>
     public string CookiesFile { get; set; } = "";
     /// <summary>…or the browser to read cookies from (firefox works; chrome/edge lock their database while running).</summary>

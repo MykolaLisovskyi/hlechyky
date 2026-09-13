@@ -83,6 +83,17 @@ public static class Endpoints
 
         api.MapGet("/top", (int? days, Db db) => new { requesters = db.TopRequesters(Math.Clamp(days ?? 7, 1, 365)) });
 
+        // Рейтинг треків: програвання, скільки дослуховують, хто слухав; заразом — скільки займає кеш
+        api.MapGet("/rating", (int? days, string? sort, Db db, TrackCache cache) =>
+        {
+            var (bytes, files) = cache.Usage();
+            return new
+            {
+                tracks = db.TrackRatings(Math.Clamp(days ?? 7, 1, 3650), sort ?? "plays", 100),
+                cache = new { bytes, files, limitBytes = cache.LimitBytes },
+            };
+        });
+
         // ---- playlists: shared, anyone can add; only the creator or an admin can delete ----
 
         api.MapGet("/playlists", (Db db) => db.Playlists());

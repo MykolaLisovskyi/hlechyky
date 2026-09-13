@@ -119,7 +119,15 @@
     else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Підключаю…'; }
     else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Стоп'; b.title = 'Вимкнути'; }
   }
+  // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
+  let listening = false;
+  function tellListening(on) {
+    if (listening === on) return;
+    listening = on;
+    if (conn && conn.state === 'Connected') conn.invoke('SetListening', on).catch(() => {});
+  }
   function stopAudio() {
+    tellListening(false);
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
@@ -136,7 +144,8 @@
     try { await audio.play(); }
     catch (e) { playState = 'idle'; setPlayUi(); toast('Не вдалося запустити потік: ' + e.message, 'err'); }
   };
-  audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); });
+  audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true); });
+  audio.addEventListener('pause', () => tellListening(false));
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
   audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
   audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Потік закінчився', 'err'); } });
@@ -1029,6 +1038,9 @@
       } else if (libTab === 'likes') {
         const list = await api('GET', '/api/likes');
         box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі.</li>'}</ul>`;
+      } else if (libTab === 'rating') {
+        await renderRating();
+        return;
       } else if (libTab === 'top') {
         const r = await api('GET', '/api/top?days=7');
         const max = Math.max(1, ...r.requesters.map((x) => x.count));
@@ -1041,6 +1053,37 @@
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
+  // рейтинг: скільки грало, скільки дослуховують, хто слухав; період і сортування пам'ятаємо
+  const ratingOpt = { days: localStorage.getItem('ratingDays') || '7', sort: localStorage.getItem('ratingSort') || 'plays' };
+  const gb = (b) => (b / 1024 ** 3).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
+  async function renderRating() {
+    const box = $('lib');
+    const r = await api('GET', `/api/rating?days=${ratingOpt.days}&sort=${ratingOpt.sort}`);
+    const seg = (key, items) => `<div class="tabs seg" data-key="${key}">${items.map(([v, label]) =>
+      `<button data-v="${v}" class="${ratingOpt[key] === v ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+    const c = r.cache;
+    const cacheLine = `Кеш треків: ${gb(c.bytes)}${c.limitBytes ? ' з ' + gb(c.limitBytes) : ''} ГБ · ${c.files} файлів`;
+    const row = (x) => {
+      const bits = [`▶ ${x.plays}`];
+      if (x.completion != null) bits.push(`<span title="у середньому дослуховують">до кінця ${x.completion}%</span>`);
+      if (x.listeners) bits.push(`<span title="${esc(x.listenerNicks.join(', '))}">🎧 ${x.listeners}</span>`);
+      if (x.streamPeak > x.listeners) bits.push(`<span title="найбільше підключень до потоку разом з ETS2 і VLC">потік ${x.streamPeak}</span>`);
+      if (x.likes) bits.push(`❤ ${x.likes}`);
+      if (x.skips) bits.push(`скіп ${x.skips}`);
+      return trackRow(x.track, bits.join(' · '));
+    };
+    box.innerHTML = seg('days', [['7', '7 днів'], ['30', '30 днів'], ['3650', 'весь час']]) +
+      seg('sort', [['plays', 'частіше грали'], ['completion', 'дослуховують'], ['listeners', 'більше слухачів'], ['likes', 'лайки']]) +
+      `<div class="muted small" style="margin:2px 0 8px">${cacheLine}. 🎧 — скільки людей слухало на сайті (рахується з 13.09)</div>` +
+      `<ul class="list">${r.tracks.map(row).join('') || '<li class="empty">за цей час нічого не грало</li>'}</ul>`;
+    box.querySelectorAll('.seg').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      ratingOpt[s.dataset.key] = b.dataset.v;
+      try { localStorage.setItem(s.dataset.key === 'days' ? 'ratingDays' : 'ratingSort', b.dataset.v); } catch { /* приватне вікно */ }
+      renderRating().catch((e) => { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+    }));
+    wireRows(box);
+  }
+
   const openPl = new Set();
   async function renderPlaylists() {
     const box = $('lib');
@@ -1135,12 +1178,13 @@
     });
     conn.onreconnected(() => {
       conn.invoke('SetNick', me.nick).catch(() => {});
+      if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
       toast('Знову на зв\'язку', 'ok');
     });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
     conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
-    conn.start().then(() => loadLib()).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    conn.start().then(() => { if (listening) conn.invoke('SetListening', true).catch(() => {}); loadLib(); }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- boot ----------

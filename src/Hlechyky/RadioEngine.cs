@@ -9,8 +9,13 @@ namespace Hlechyky;
 public sealed class Presence
 {
     readonly ConcurrentDictionary<string, string> _conns = new();
+    readonly ConcurrentDictionary<string, byte> _listening = new();
     public void Set(string connId, string nick) => _conns[connId] = nick;
-    public void Remove(string connId) => _conns.TryRemove(connId, out _);
+    public void Remove(string connId) { _conns.TryRemove(connId, out _); _listening.TryRemove(connId, out _); }
+    /// <summary>Плеєр на сторінці грає (вкладка сама каже про «Врубити» і «Стоп»).</summary>
+    public void SetListening(string connId, bool on) { if (on) _listening[connId] = 0; else _listening.TryRemove(connId, out _); }
+    /// <summary>Ніки, у яких зараз грає плеєр на сайті. ETS2 і VLC сюди не потрапляють — їх видно лише в Icecast.</summary>
+    public List<string> Listening => _listening.Keys.Select(Get).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     public string? Get(string connId) => _conns.TryGetValue(connId, out var n) ? n : null;
     public List<string> Online => _conns.Values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     public int Count => Online.Count;
@@ -677,7 +682,10 @@ public sealed class RadioEngine : BackgroundService
         {
             // the file's real length beats the catalogue's; liquidsoap knows it once the track is on air
             var remaining = await _liq.RemainingAsync();
-            if (remaining is > 1) lock (_lock) { if (_now.ItemId == itemId) _now.DurationSec = (int)Math.Ceiling(remaining.Value); }
+            long durPlay = 0;
+            var dur = remaining is > 1 ? (int)Math.Ceiling(remaining.Value) : 0;
+            if (dur > 0) lock (_lock) { if (_now.ItemId == itemId) { _now.DurationSec = dur; durPlay = _now.PlayId; } }
+            if (durPlay > 0) _db.SetPlayDuration(durPlay, dur);
         }
         catch { /* cosmetic */ }
         await BroadcastAsync();
@@ -1092,6 +1100,28 @@ public sealed class RadioEngine : BackgroundService
         }
     }
 
+    /// <summary>Для рейтингу: хто слухав трек, що зараз в ефірі. Кличеться разом з опитуванням Icecast, раз на ~10 секунд.</summary>
+    void NoteListeners()
+    {
+        long pid;
+        lock (_lock) pid = _now.Source is "user" or "autodj" && !_now.SkipPending ? _now.PlayId : 0;
+        if (pid <= 0) return;
+        try { _db.NotePlayListeners(pid, _listeners, _presence.Listening); }
+        catch (Exception ex) { _log.LogDebug(ex, "listeners note failed"); }
+    }
+
+    /// <summary>Треки, файли яких зараз потрібні: в ефірі, у черзі, наступний у Глека. TrackCache їх не чіпає.</summary>
+    public List<string> BusyTrackIds()
+    {
+        lock (_lock)
+        {
+            var ids = _queue.Select(q => q.Track.Id).ToList();
+            if (_autoNext is not null) ids.Add(_autoNext.Track.Id);
+            if (_now.Track is not null) ids.Add(_now.Track.Id);
+            return ids;
+        }
+    }
+
     async Task PollIcecastAsync(CancellationToken ct)
     {
         try
@@ -1123,6 +1153,7 @@ public sealed class RadioEngine : BackgroundService
             _spotifyLive = spotifyLive;
             _spotifyTitle = spotifyTitle;
             if (changed) Broadcast();
+            NoteListeners();
         }
         catch (Exception ex)
         {
