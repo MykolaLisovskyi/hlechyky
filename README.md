@@ -120,8 +120,21 @@ liquidsoap заздалегідь "підтягує" наступний запи
 powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 status
 powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 restart     # перезбирає Release і перезапускає, черга не губиться
 powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 logs
-powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # кладе Hlechyky.vbs в автозапуск Windows
+powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # автозапуск і автонагляд (див. нижче)
 ```
+
+### Автозапуск і нагляд
+
+`start.ps1 autostart` реєструє завдання **Hlechyky** у Планувальнику (як у LeBot): спрацьовує при вході у Windows і далі щохвилини, запускає через `Hlechyky.vbs` (без блимання консолі) одну коротку перевірку `start.ps1 watchdog`:
+
+- **сервер** не працює — запускає; процес живий, але 3 хвилини поспіль не відповідає на `/api/me` — вбиває і запускає знову. Попередній лог лишається в `logs\server.prev.log`, там і шукати причину падіння. Падає раз у раз (5 запусків за пів години) — далі пробує раз на 10 хвилин;
+- **Caddy** не працює — запускає;
+- **liquidsoap**: 2 хвилини нема `/radio.mp3` в Icecast і контейнер стоїть — `docker compose up -d`; контейнер працює, а маунта нема 5 хвилин — `docker restart hlechyky-liq` (не частіше ніж раз на 15 хвилин);
+- **Docker Desktop та Icecast** стереже наглядач `D:\radio\radio.ps1 run`; watchdog лише стежить, щоб той сам був живий.
+
+Пише в `logs\watchdog.log` тільки тоді, коли щось робить; чи нагляд живий, показує `start.ps1 status`. Після `stop` нагляд на паузі (`data\stopped.flag`), доки не буде `start` чи `restart`. Поки йде `restart` або деплой, нагляд нічого не чіпає: `start`/`stop`/`restart`/`watchdog` ходять по одному через спільний м'ютекс, а деплой видно по `data\deploy.lock`.
+
+Нагляд працює лише після входу в акаунт: Docker Desktop без сесії не запускається. Щоб сайт сам піднімався після нічного перезавантаження від Windows Update, потрібен автоматичний вхід у Windows.
 
 ### Автодеплой
 
