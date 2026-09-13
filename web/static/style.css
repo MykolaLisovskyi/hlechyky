@@ -72,7 +72,7 @@ header {
 header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2em; letter-spacing: .3px; }
 header .brand img { width: 32px; height: 32px; }
 header .player { display: flex; align-items: center; gap: 10px; }
-header .player input[type=range] { width: 110px; accent-color: var(--accent); }
+header .player input[type=range] { width: 150px; accent-color: var(--accent); }
 header .spacer { flex: 1; }
 header .vswitch { display: flex; gap: 4px; }
 header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }

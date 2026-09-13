@@ -109,9 +109,33 @@
   // ---------- player ----------
   const audio = $('audio');
   const vol = $('volume');
-  vol.value = localStorage.getItem('volume') ?? '0.8';
-  audio.volume = parseFloat(vol.value);
-  vol.oninput = () => { audio.volume = parseFloat(vol.value); localStorage.setItem('volume', vol.value); };
+  // повзунок 0..100 іде по децибелах, а не лінійно: крок = 0.5 дБ, 1 → −50 дБ, 100 → 0 дБ.
+  // Так тихі рівні мають десятки кроків замість двох-трьох. У localStorage лежить сама гучність 0..1.
+  const VOL_DB = 50;
+  const posToVol = (p) => p <= 0 ? 0 : Math.pow(10, -VOL_DB * (1 - p / 100) / 20);
+  const volToPos = (v) => v <= 0 ? 0 : Math.min(100, Math.max(1, Math.round(100 * (1 + 20 * Math.log10(v) / VOL_DB))));
+  function setVolPos(p, save) {
+    p = Math.min(100, Math.max(0, p));
+    vol.value = p;
+    const v = posToVol(p);
+    audio.volume = v;
+    vol.title = p ? `Гучність ${p} (${(20 * Math.log10(v)).toFixed(1)} дБ) · колесо миші — по кроку` : 'Гучність: тиша';
+    if (save) localStorage.setItem('volume', String(v));
+  }
+  const savedVol = parseFloat(localStorage.getItem('volume') ?? '');
+  setVolPos(Number.isFinite(savedVol) ? volToPos(savedVol) : 90, false);
+  vol.oninput = () => setVolPos(parseInt(vol.value, 10), true);
+  // клац колеса = 1 крок; тачпад шле дрібні дельти, тож накопичуємо їх, щоб гучність не злітала
+  let wheelAcc = 0;
+  vol.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.deltaMode !== 0) wheelAcc = -Math.sign(e.deltaY) * 100;
+    else wheelAcc -= e.deltaY;
+    const steps = Math.trunc(wheelAcc / 100);
+    if (!steps) return;
+    wheelAcc -= steps * 100;
+    setVolPos(parseInt(vol.value, 10) + steps, true);
+  }, { passive: false });
   let playState = 'idle'; // idle | connecting | live
   function setPlayUi() {
     const b = $('playBtn');
