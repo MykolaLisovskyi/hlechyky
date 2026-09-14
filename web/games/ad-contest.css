@@ -1,15 +1,15 @@
 /* Конкурс реклами: афіша зі сценарієм, мікрофон і список записів.
    Кольори — тільки змінними з style.css/core.css; своя одна, і та з фолбеком. */
 :root {
-  --adposter: #2a2110;          /* тло афіші: тепліше за панель, але не жовте */
+  --rkposter: #2a2110;          /* тло афіші: тепліше за панель, але не жовте */
 }
 
-.adbox { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.adpanel .adbox { max-width: 720px; }
+.rkbox { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.rkpanel .rkbox { max-width: 720px; }
 
-.adposter {
+.rkposter {
   position: relative;
-  background: var(--adposter, #2a2110);
+  background: var(--rkposter, #2a2110);
   border: 1px dashed var(--accent2);
   border-radius: var(--radius, 12px);
   padding: 16px 14px 14px;
@@ -17,7 +17,7 @@
   line-height: 1.5;
   color: var(--text);
 }
-.adposter-h {
+.rkposter-h {
   display: block;
   font-size: .72em;
   text-transform: uppercase;
@@ -26,45 +26,50 @@
   margin-bottom: 6px;
 }
 
-.adbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rkbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* --- мікрофон --- */
-.adrec {
+.rkrec {
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   padding: 8px 10px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: var(--radius, 12px);
 }
-.adrec.live { border-color: var(--danger); }
-.adrec .adrec-time { font-variant-numeric: tabular-nums; font-weight: 700; }
-.adrec .adrec-mic { font-size: 1.2em; }
-.adrec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; animation: blink 1.2s ease-in-out infinite; }
-.adrec-bars { display: flex; gap: 3px; align-items: center; height: 26px; flex: 1 1 120px; min-width: 80px; }
-.adrec-bars i { flex: 1; height: 100%; min-width: 3px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), var(--accent2)); transform: scaleY(.14); transition: transform .07s linear; }
-.adrec audio { height: 34px; flex: 1 1 180px; min-width: 0; }
+.rkrec.live { border-color: var(--danger); }
+.rkrec .rkrec-time { font-variant-numeric: tabular-nums; font-weight: 700; }
+.rkrec .rkrec-mic { font-size: 1.2em; }
+.rkrec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; animation: blink 1.2s ease-in-out infinite; }
+.rkrec-bars { display: flex; gap: 3px; align-items: center; height: 26px; flex: 1 1 120px; min-width: 80px; }
+.rkrec-bars i { flex: 1; height: 100%; min-width: 3px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), var(--accent2)); transform: scaleY(.14); transition: transform .07s linear; }
+.rkrec audio { height: 34px; flex: 1 1 180px; min-width: 0; }
 
 /* --- записи --- */
-.adlist, .adpast { display: flex; flex-direction: column; gap: 4px; }
-.adrow {
+.rklist, .rkpast { display: flex; flex-direction: column; gap: 4px; }
+.rkrow {
   display: flex; gap: 8px; align-items: center;
   padding: 6px 8px;
   background: var(--panel2);
   border-radius: 9px;
 }
-.adrow.mine { box-shadow: 0 0 0 1px var(--accent2) inset; }
-.adrow.voted { background: var(--panel3, var(--panel2)); }
-.adrow .adnick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.adrow .advotes { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.adrow .adplay { flex: none; width: 30px; text-align: center; }
+.rkrow.mine { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.rkrow.voted { background: var(--panel3, var(--panel2)); }
+.rkrow .rknick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rkrow .rkvotes { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rkrow .rkplay { flex: none; width: 30px; text-align: center; }
 
-.adadmin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+/* --- ефір реклами (господар) --- */
+.rkair { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius, 12px); }
+.rkairrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rkairrow input[type=number] { width: 4.5em; }
+
+.rkadmin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
 
 /* Вузьке вікно: рядок запису складається в два поверхи, кнопка голосу лишається під пальцем. */
 @media (max-width: 480px) {
-  .adrow { flex-wrap: wrap; }
-  .adrow .adnick { flex: 1 1 60%; }
-  .adrow button[data-vote] { flex: 1 1 100%; }
-  .adrec button { flex: 1 1 auto; }
-  .adrec-bars { flex-basis: 100%; order: 5; }
+  .rkrow { flex-wrap: wrap; }
+  .rkrow .rknick { flex: 1 1 60%; }
+  .rkrow button[data-vote] { flex: 1 1 100%; }
+  .rkrec button { flex: 1 1 auto; }
+  .rkrec-bars { flex-basis: 100%; order: 5; }
 }

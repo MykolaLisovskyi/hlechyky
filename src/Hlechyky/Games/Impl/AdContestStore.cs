@@ -16,6 +16,13 @@ public sealed record AdEntryRow(
     long Id, long ContestId, string NickKey, string Nick, string TrackId, int Seconds, DateTimeOffset CreatedAt, int Votes);
 
 /// <summary>
+/// Що господар поставив в ефір. <c>TrackId</c> null — власної реклами нема, крутиться переможець конкурсу;
+/// <c>Own</c> — запис зроблено окремо, а не взято з конкурсу (тоді його файл можна прибирати);
+/// <c>EveryTracks</c>/<c>MinMinutes</c> null — частота з <c>Ad:*</c>.
+/// </summary>
+public sealed record AdAirRow(string? TrackId, string? Nick, int Seconds, bool Own, int? EveryTracks, int? MinMinutes);
+
+/// <summary>
 /// Три таблиці конкурсу реклами живуть окремо від <see cref="Db"/>: DDL і весь SQL — тут, а від Db
 /// береться лише з'єднання на час однієї короткої операції (<see cref="Db.With{T}"/>). Так спільний
 /// тонкий файл не збирає на собі схему кожної нової витівки, а конкурс носить свою базу з собою.
@@ -37,6 +44,10 @@ public sealed class AdContestStore
             contest_id INTEGER NOT NULL, voter_key TEXT NOT NULL, voter_nick TEXT NOT NULL,
             entry_id INTEGER NOT NULL, created_at TEXT NOT NULL,
             PRIMARY KEY(contest_id, voter_key));
+        -- ефір реклами: один рядок, який править господар. Порожнє поле — береться типове з Ad:*
+        CREATE TABLE IF NOT EXISTS ad_air(
+            id INTEGER PRIMARY KEY CHECK(id = 1), track_id TEXT, nick TEXT, dur_sec INTEGER NOT NULL DEFAULT 0,
+            own INTEGER NOT NULL DEFAULT 0, every_tracks INTEGER, min_minutes INTEGER, updated_at TEXT);
         """;
 
     readonly Db _db;
@@ -185,6 +196,47 @@ public sealed class AdContestStore
         while (r.Read()) list.Add(r.GetString(0));
         return list;
     });
+
+    // ---------- ефір господаря ----------
+
+    /// <summary>Запис із будь-якого конкурсу, хай і закритого: господар може пустити в ефір будь-що.</summary>
+    public AdEntryRow? EntryAnywhere(long entryId) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT contest_id FROM ad_entries WHERE id = $id", ("$id", entryId));
+        return cmd.ExecuteScalar() is long contest ? EntriesOn(c, contest).FirstOrDefault(e => e.Id == entryId) : null;
+    });
+
+    /// <summary>Чи лежить ця доріжка в якомусь записі конкурсу — тоді її файл не наш, щоб видаляти.</summary>
+    public bool IsEntryTrack(string trackId) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT 1 FROM ad_entries WHERE track_id = $t LIMIT 1", ("$t", trackId));
+        return cmd.ExecuteScalar() is not null;
+    });
+
+    public AdAirRow Air() => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT track_id, nick, dur_sec, own, every_tracks, min_minutes FROM ad_air WHERE id = 1");
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return new AdAirRow(null, null, 0, false, null, null);
+        return new AdAirRow(r.IsDBNull(0) ? null : r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1),
+            r.GetInt32(2), r.GetInt32(3) == 1, r.IsDBNull(4) ? null : r.GetInt32(4), r.IsDBNull(5) ? null : r.GetInt32(5));
+    });
+
+    /// <summary>Поставити (або прибрати — trackId null) рекламу господаря. Частоту не чіпає.</summary>
+    public void SetAirTrack(string? trackId, string? nick, int seconds, bool own, DateTimeOffset now) => _db.With(c =>
+        Exec(c, """
+            INSERT INTO ad_air(id, track_id, nick, dur_sec, own, updated_at) VALUES(1, $t, $n, $d, $o, $now)
+            ON CONFLICT(id) DO UPDATE SET track_id = excluded.track_id, nick = excluded.nick,
+                dur_sec = excluded.dur_sec, own = excluded.own, updated_at = excluded.updated_at
+            """, ("$t", trackId), ("$n", nick), ("$d", seconds), ("$o", own ? 1 : 0), ("$now", Iso(now))));
+
+    /// <summary>Частота реклами. Рекламу не чіпає.</summary>
+    public void SetAirEvery(int everyTracks, int minMinutes, DateTimeOffset now) => _db.With(c =>
+        Exec(c, """
+            INSERT INTO ad_air(id, every_tracks, min_minutes, updated_at) VALUES(1, $e, $m, $now)
+            ON CONFLICT(id) DO UPDATE SET every_tracks = excluded.every_tracks, min_minutes = excluded.min_minutes,
+                updated_at = excluded.updated_at
+            """, ("$e", everyTracks), ("$m", minMinutes), ("$now", Iso(now))));
 
     // ---------- дрібне ----------
 

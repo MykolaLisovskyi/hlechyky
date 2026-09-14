@@ -78,7 +78,9 @@
   // Стан: дані одні на всі місця, де ми малюємо
   // =============================================================================================
 
-  const state = { data: null, error: '', loading: false };
+  // air — ефір реклами, його бачить лише господар; null — не господар або сервер ще не вміє /api/ads/air.
+  // draft — що господар набрав у полях частоти й ще не зберіг: опитування не має витирати це з-під пальців.
+  const state = { data: null, error: '', loading: false, air: null, draft: { every: null, mins: null } };
   const hosts = [];            // { el, ctx } — панель і/або картка кімнати
   let poll = 0;
   let tickTimer = 0;
@@ -117,7 +119,13 @@
     if (!alive() || state.loading) return;
     state.loading = true;
     try {
-      state.data = await api(hosts[0].ctx, 'GET', '/api/ads');
+      const ctx = hosts[0].ctx;
+      const [data, air] = await Promise.all([
+        api(ctx, 'GET', '/api/ads'),
+        isAdmin(ctx) ? api(ctx, 'GET', '/api/ads/air').catch(() => null) : Promise.resolve(null),
+      ]);
+      state.data = data;
+      state.air = air;
       state.error = '';
     } catch (e) {
       state.error = e.message;
@@ -139,10 +147,12 @@
 
   const MIMES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
   const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
-  const rec = { host: null, stage: 'idle', recorder: null, stream: null, chunks: [], startedAt: 0, timer: 0,
+  // target: 'contest' — запис у конкурс, 'air' — своя реклама господаря просто в ефір.
+  const rec = { host: null, target: 'contest', stage: 'idle', recorder: null, stream: null, chunks: [], startedAt: 0, timer: 0,
     tossed: false, blob: null, url: null, sec: 0, max: 30 };
+  const AIR_MAX = 60;
 
-  async function startRec(host, ctx, max) {
+  async function startRec(host, ctx, max, target) {
     if (rec.recorder) return;
     if (!canRecord()) { toastOf(ctx)('Цей браузер не вміє писати звук (треба https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
     if (!nickOf(ctx)) { toastOf(ctx)('Спершу скажи, як тебе кликати', 'err'); return; }
@@ -154,6 +164,7 @@
     }
     dropBlob();
     rec.host = host;
+    rec.target = target || 'contest';
     rec.max = max || 30;
     rec.stream = stream;
     rec.chunks = [];
@@ -178,7 +189,7 @@
         paintAll();
       }
       const sec = (Date.now() - rec.startedAt) / 1000;
-      const el = rec.host && rec.host.querySelector('.adrec-time');
+      const el = rec.host && rec.host.querySelector('.rkrec-time');
       if (el) el.textContent = fmt(sec);
       if (sec >= rec.max) stopRec();          // довше сервер усе одно не візьме
     }, 200);
@@ -241,7 +252,7 @@
       const step = () => {
         if (!analyser) return;
         analyser.getByteFrequencyData(data);
-        if (rec.host) rec.host.querySelectorAll('.adrec-bars i').forEach((b, i) => {
+        if (rec.host) rec.host.querySelectorAll('.rkrec-bars i').forEach((b, i) => {
           b.style.transform = 'scaleY(' + Math.max(0.14, Math.min(1, (data[2 + i * 3] / 255) * 1.7)) + ')';
         });
         raf = requestAnimationFrame(step);
@@ -259,7 +270,7 @@
 
   async function sendRec(id, ctx) {
     if (!rec.blob) return;
-    const r = await fetch('/api/ads/' + id + '/entry', {
+    const r = await fetch(rec.target === 'air' ? '/api/ads/air/record' : '/api/ads/' + id + '/entry', {
       method: 'POST',
       headers: { 'Content-Type': rec.blob.type || 'application/octet-stream', 'X-Nick': encodeURIComponent(nickOf(ctx)) },
       body: rec.blob,
@@ -301,47 +312,62 @@
       return;
     }
     const a = state.data.active;
-    const html = '<div class="adbox">'
+    const html = '<div class="rkbox">'
       + (a ? active(a, ctx, esc, host) : '<div class="gempty">Зараз конкурсу нема. Новий відкривається щопонеділка опівдні.</div>')
       + past(state.data.past || [], esc)
+      + airBox(ctx, esc, host)
       + admin(a, ctx)
       + '</div>';
-    if (host.dataset.sig !== html) { host.dataset.sig = html; host.innerHTML = html; }
+    if (host.dataset.sig !== html) {
+      // Господар набирає частоту — не перемальовуємо поле під курсором, решта почекає наступного разу.
+      const f = document.activeElement;
+      if (f && host.contains(f) && f.matches('[data-every], [data-mins]')) return;
+      host.dataset.sig = html;
+      host.innerHTML = html;
+    }
     wire(host, ctx, a);
   }
 
   function active(a, ctx, esc, host) {
     const mine = a.entries.find((e) => e.mine);
-    return '<div class="adposter"><span class="adposter-h">Сценарій</span>' + esc(a.script) + '</div>'
-      + '<div class="adbar">'
+    return '<div class="rkposter"><span class="rkposter-h">Сценарій</span>' + esc(a.script) + '</div>'
+      + '<div class="rkbar">'
       + '<span class="chip" data-till="' + esc(a.closesAt) + '">' + esc(left(a.closesAt)) + '</span>'
       + '<span class="chip">' + a.entries.length + ' ' + plural(a.entries.length, 'запис', 'записи', 'записів') + '</span>'
       + '<span class="muted small">до ' + a.maxSeconds + ' с</span>'
       + '</div>'
       + recBox(a, ctx, esc, mine, host)
-      + entries(a, esc)
+      + entries(a, esc, ctx)
       ;
   }
 
   /// Мікрофон один на вкладку: там, де його взяли, — жива смужка, у другому місці — просто напис.
-  function recBox(a, ctx, esc, mine, host) {
-    if (rec.stage !== 'idle' && rec.host !== host)
-      return '<div class="adrec"><span class="muted small">Запис іде в іншій картці — доспівай там.</span></div>';
+  /// Живий запис чи прослуховування малюємо лише в тому блоці, для якого писали (конкурс чи ефір).
+  function recNow(host, target, esc) {
+    if (rec.stage === 'idle' || rec.target !== target) return '';
+    if (rec.host !== host)
+      return '<div class="rkrec"><span class="muted small">Запис іде в іншій картці — доспівай там.</span></div>';
     if (rec.stage === 'live') {
-      return '<div class="adrec live"><span class="adrec-dot"></span><span class="adrec-time">0:00</span>'
-        + '<div class="adrec-bars">' + '<i></i>'.repeat(16) + '</div>'
+      return '<div class="rkrec live"><span class="rkrec-dot"></span><span class="rkrec-time">0:00</span>'
+        + '<div class="rkrec-bars">' + '<i></i>'.repeat(16) + '</div>'
         + '<span class="muted small">ліміт ' + fmt(rec.max) + '</span>'
         + '<button class="primary" data-rec="stop">Готово</button>'
         + '<button class="ghost icon" data-rec="cancel" title="Викинути">✕</button></div>';
     }
     if (rec.stage === 'prev') {
-      return '<div class="adrec prev"><span class="adrec-mic">🎙</span>'
+      return '<div class="rkrec prev"><span class="rkrec-mic">🎙</span>'
         + '<audio controls src="' + esc(rec.url) + '"></audio><span class="chip">' + fmt(rec.sec) + '</span>'
-        + '<button class="primary" data-rec="send">Подати на конкурс</button>'
+        + '<button class="primary" data-rec="send">' + (target === 'air' ? 'Пустити в ефір' : 'Подати на конкурс') + '</button>'
         + '<button class="ghost" data-rec="again">Ще раз</button>'
         + '<button class="ghost icon danger" data-rec="drop" title="Викинути">✕</button></div>';
     }
-    return '<div class="adrec"><button class="primary" data-rec="start">🎙 '
+    return '';
+  }
+
+  function recBox(a, ctx, esc, mine, host) {
+    const now = recNow(host, 'contest', esc);
+    if (now) return now;
+    return '<div class="rkrec"><button class="primary" data-rec="start">🎙 '
       + (mine ? 'Перезаписати' : 'Записати рекламу') + '</button>'
       + (mine ? '<button class="ghost danger" data-drop="' + a.id + '">Забрати свій запис</button>' : '')
       + '<span class="muted small">' + (mine
@@ -350,39 +376,79 @@
       + '</div>';
   }
 
-  function entries(a, esc) {
+  function entries(a, esc, ctx) {
     if (!a.entries.length) return '<div class="gempty">Записів ще нема. Будь першим — і всі голосуватимуть за тебе.</div>';
     const rows = a.entries.slice().sort((x, y) => y.votes - x.votes || x.id - y.id);
-    return '<div class="adlist">' + rows.map((e) => {
+    const onAir = state.air && state.air.on && state.air.on.trackId;
+    return '<div class="rklist">' + rows.map((e) => {
       const voted = a.myVote === e.id;
-      return '<div class="adrow' + (e.mine ? ' mine' : '') + (voted ? ' voted' : '') + '">'
-        + '<button class="ghost icon adplay" data-play="' + esc(e.trackId) + '" title="Послухати">'
+      // Господар може пустити будь-який запис в ефір, не чекаючи кінця конкурсу.
+      const air = !state.air ? ''
+        : e.trackId === onAir ? '<span class="chip warn">📻 в ефірі</span>'
+        : '<button class="ghost" data-air-entry="' + e.id + '" title="Крутити цей запис в ефірі">📻 В ефір</button>';
+      return '<div class="rkrow' + (e.mine ? ' mine' : '') + (voted ? ' voted' : '') + '">'
+        + '<button class="ghost icon rkplay" data-play="' + esc(e.trackId) + '" title="Послухати">'
         + (playing(e.trackId) ? '⏸' : '▶') + '</button>'
-        + '<span class="adnick">' + esc(e.nick) + (e.mine ? ' <span class="muted small">(це ти)</span>' : '') + '</span>'
+        + '<span class="rknick">' + esc(e.nick) + (e.mine ? ' <span class="muted small">(це ти)</span>' : '') + '</span>'
         + '<span class="muted small">' + fmt(e.seconds || 0) + '</span>'
-        + '<span class="advotes">' + esc(votes(e.votes)) + '</span>'
+        + '<span class="rkvotes">' + esc(votes(e.votes)) + '</span>'
         + (e.mine
           ? '<span class="muted small">за себе не можна</span>'
           : '<button class="' + (voted ? 'active' : 'ghost') + '" data-vote="' + e.id + '">'
             + (voted ? '✓ Мій голос' : 'Голосую') + '</button>')
+        + air
         + '</div>';
     }).join('') + '</div>';
   }
 
   function past(list, esc) {
     if (!list.length) return '';
-    return '<h4>Минулі переможці</h4><div class="adpast">' + list.map((p) => '<div class="adrow">'
-      + (p.trackId ? '<button class="ghost icon adplay" data-play="' + esc(p.trackId) + '" title="Послухати">'
-        + (playing(p.trackId) ? '⏸' : '▶') + '</button>' : '<span class="adplay muted">—</span>')
-      + '<span class="adnick">' + esc(p.winner || 'без переможця') + '</span>'
-      + '<span class="advotes">' + esc(votes(p.votes || 0)) + '</span>'
+    return '<h4>Минулі переможці</h4><div class="rkpast">' + list.map((p) => '<div class="rkrow">'
+      + (p.trackId ? '<button class="ghost icon rkplay" data-play="' + esc(p.trackId) + '" title="Послухати">'
+        + (playing(p.trackId) ? '⏸' : '▶') + '</button>' : '<span class="rkplay muted">—</span>')
+      + '<span class="rknick">' + esc(p.winner || 'без переможця') + '</span>'
+      + '<span class="rkvotes">' + esc(votes(p.votes || 0)) + '</span>'
       + '<span class="muted small">' + esc(String(p.closedAt || '').slice(0, 10)) + '</span>'
       + '</div>').join('') + '</div>';
   }
 
+  /// Ефір реклами — тільки господареві: що крутиться, як часто, «в ефір зараз» і своя реклама.
+  function airBox(ctx, esc, host) {
+    const air = state.air;
+    if (!air || !isAdmin(ctx)) return '';
+    const on = air.on;
+    const every = state.draft.every != null ? state.draft.every : air.everyTracks;
+    const mins = state.draft.mins != null ? state.draft.mins : air.minMinutes;
+    const now = recNow(host, 'air', esc);
+    return '<h4>Реклама в ефірі</h4><div class="rkair">'
+      + (on
+        ? '<div class="rkrow"><button class="ghost icon rkplay" data-play="' + esc(on.trackId) + '" title="Послухати">'
+          + (playing(on.trackId) ? '⏸' : '▶') + '</button>'
+          + '<span class="rknick">' + esc(on.nick) + '</span>'
+          + '<span class="muted small">' + fmt(on.seconds || 0) + '</span>'
+          + '<span class="chip">' + (on.house ? 'поставив господар' : 'переможець конкурсу') + '</span></div>'
+        : '<div class="gempty">Реклами в ефірі нема: ні своєї, ні переможця. Пусти запис із конкурсу або запиши свою.</div>')
+      + (air.houseMissing ? '<div class="muted small">Файл твоєї реклами зник із кешу — поки крутиться переможець.</div>' : '')
+      + (air.jingle ? '' : '<div class="muted small">⚠ Джингл вимкнено в налаштуваннях (Ad:Jingle / Ad:Enabled).</div>')
+      + '<div class="rkairrow">'
+      + '<button class="primary" data-air-now' + (on ? '' : ' disabled') + '>📻 В ефір зараз</button>'
+      + (on && on.house ? '<button class="ghost danger" data-air-clear>Прибрати свою</button>' : '')
+      + (now ? '' : '<button class="ghost" data-rec="air-start">🎙 Записати свою</button>')
+      + '</div>'
+      + now
+      + '<div class="rkairrow"><span>Раз на</span>'
+      + '<input type="number" min="1" max="100" step="1" data-every value="' + esc(every) + '">'
+      + '<span>треків, не частіше ніж раз на</span>'
+      + '<input type="number" min="0" max="600" step="1" data-mins value="' + esc(mins) + '">'
+      + '<span>хв</span><button class="ghost" data-air-save>Зберегти</button></div>'
+      + '<span class="muted small">Від останньої реклами: ' + air.since + ' ' + plural(air.since, 'трек', 'треки', 'треків')
+      + '. Реклама йде, лише коли на сайті хтось є.</span>'
+      + '</div>';
+  }
+
   function admin(a, ctx) {
     if (!isAdmin(ctx)) return '';
-    return '<div class="adadmin">'
+    return '<div class="rkadmin">'
       + (a ? '<button class="ghost" data-close="' + a.id + '">Закрити конкурс</button>'
            : '<button class="primary" data-new>Новий конкурс</button>')
       + '<span class="muted small">видно тільки господареві</span></div>';
@@ -406,14 +472,37 @@
     host.querySelectorAll('[data-close]').forEach((b) => b.onclick = (e) =>
       act(e.currentTarget, 'закриваю…', () => api(ctx, 'POST', '/api/ads/' + b.dataset.close + '/close')));
 
+    host.querySelectorAll('[data-air-entry]').forEach((b) => b.onclick = (e) =>
+      act(e.currentTarget, 'ставлю…', () => api(ctx, 'POST', '/api/ads/air/entry', { entryId: +b.dataset.airEntry })));
+    host.querySelectorAll('[data-air-now]').forEach((b) => b.onclick = (e) =>
+      act(e.currentTarget, 'ставлю…', () => api(ctx, 'POST', '/api/ads/air/now')));
+    host.querySelectorAll('[data-air-clear]').forEach((b) => b.onclick = (e) =>
+      act(e.currentTarget, 'прибираю…', () => api(ctx, 'DELETE', '/api/ads/air')));
+    host.querySelectorAll('[data-every], [data-mins]').forEach((inp) => {
+      inp.oninput = () => { state.draft[inp.matches('[data-every]') ? 'every' : 'mins'] = inp.value; };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') { const s = host.querySelector('[data-air-save]'); if (s) s.click(); } };
+    });
+    host.querySelectorAll('[data-air-save]').forEach((b) => b.onclick = (e) => {
+      const every = +(host.querySelector('[data-every]') || {}).value;
+      const mins = +(host.querySelector('[data-mins]') || {}).value;
+      act(e.currentTarget, 'зберігаю…', async () => {
+        const r = await api(ctx, 'POST', '/api/ads/air/every', { everyTracks: every, minMinutes: mins });
+        state.draft = { every: null, mins: null };
+        document.activeElement && document.activeElement.blur && document.activeElement.blur();
+        return r;
+      });
+    });
+
     host.querySelectorAll('[data-rec]').forEach((b) => b.onclick = (e) => {
       const what = b.dataset.rec;
-      if (what === 'start') startRec(host, ctx, a && a.maxSeconds);
+      const max = rec.target === 'air' ? AIR_MAX : a && a.maxSeconds;
+      if (what === 'start') startRec(host, ctx, a && a.maxSeconds, 'contest');
+      else if (what === 'air-start') startRec(host, ctx, AIR_MAX, 'air');
       else if (what === 'stop') stopRec();
       else if (what === 'cancel') { rec.tossed = true; stopRec(); }
-      else if (what === 'again') { closeRec(); startRec(host, ctx, a && a.maxSeconds); }
+      else if (what === 'again') { const t = rec.target; closeRec(); startRec(host, ctx, max, t); }
       else if (what === 'drop') closeRec();
-      else if (what === 'send') act(e.currentTarget, 'несу…', async () => { await sendRec(a.id, ctx); return null; });
+      else if (what === 'send') act(e.currentTarget, 'несу…', async () => { await sendRec(a && a.id, ctx); return null; });
     });
   }
 
@@ -422,7 +511,7 @@
   // =============================================================================================
 
   function mount(host, ctx) {
-    host.classList.add('adpanel');
+    host.classList.add('rkpanel');
     // Той самий випадок, що й у тіку запису, але вже без чекання: панель перемалювалась, поки людина
     // говорила в мікрофон — перевішуємо запис сюди, щоб було де натиснути «Готово» і «Подати».
     if (rec.stage !== 'idle' && rec.host && !rec.host.isConnected) rec.host = host;
@@ -453,7 +542,7 @@
     const bar = document.querySelector('.gbar');
     const mine = bar && bar.querySelector('.gnav [data-panel="x:ads"].on');
     const root = bar && bar.parentElement;
-    if (!mine || !root || root.querySelector('.gxpanel.adpanel')) return;
+    if (!mine || !root || root.querySelector('.gxpanel.rkpanel')) return;
     const other = root.querySelector('[data-panel^="g:"]') || root.querySelector('[data-panel]:not([data-panel="x:ads"])');
     if (!other) return;
     other.click();

@@ -46,31 +46,54 @@ public sealed class AdJingle(AdContest contest, IAdAir air, IVoiceSaver voice, P
     {
         var o = opts.CurrentValue;
         if (!o.Enabled || !o.Jingle) return;
-        if (contest.Winner() is not { } winner) return;
+        // Реклама в ефірі кожен трек може бути вже інша: господар поставив свою або прибрав її.
+        if (contest.OnAir() is not { } ad) return;
+        var (every, minutes) = contest.Frequency();
 
         lock (_lock)
         {
-            // Це грає сама реклама: не рахуємо її за трек і починаємо відлік від цієї миті.
-            if (track.Id == winner.TrackId)
+            // Це грає сама реклама: не рахуємо її за трек і починаємо відлік від цієї миті. За назвою —
+            // бо господар міг щойно замінити рекламу, а в черзі ще стояла попередня.
+            if (track.Id == ad.TrackId || (track.Title == AdTitle && track.Id.StartsWith("voice-", StringComparison.Ordinal)))
             {
                 _since = 0;
                 _lastAt = clock.UtcNow;
                 return;
             }
             _since++;
-            if (_since < Math.Max(1, o.EveryTracks)) return;
+            if (_since < every) return;
             // Лічильник далі не росте, але й не скидається: щойно з'явиться слухач — реклама піде.
             if (presence.Count == 0) return;
-            if (_lastAt is { } last && clock.UtcNow - last < TimeSpan.FromMinutes(Math.Max(0, o.MinMinutes))) return;
-            if (voice.FilePath(winner.TrackId) is not { } path) return;   // файл із кеша зник — не біда
-
-            var track2 = new TrackInfo(winner.TrackId, "Реклама глека", winner.Nick, winner.Seconds,
-                null, $"/api/voice/{winner.TrackId}.mp3", null);
-            var r = air.AddVoice(track2, path, "Дядько Глек");
-            if (!r.Ok) return;                 // уже в черзі або в ефірі — спробуємо наступного разу
-            _since = 0;
-            _lastAt = clock.UtcNow;
+            if (_lastAt is { } last && clock.UtcNow - last < TimeSpan.FromMinutes(minutes)) return;
+            if (Queue(ad).Ok) _since = 0;     // відмова — уже в черзі або в ефірі, спробуємо наступного разу
         }
+    }
+
+    public const string AdTitle = "Реклама глека";
+
+    /// <summary>Господар натиснув «В ефір зараз»: реклама стає в чергу одразу, без лічильника й хвилин.</summary>
+    public (bool Ok, string Message) PlayNow()
+    {
+        if (contest.OnAir() is not { } ad) return (false, "Нема що крутити: ні своєї реклами, ні переможця");
+        lock (_lock)
+        {
+            var r = Queue(ad);
+            if (r.Ok) _since = 0;
+            return r.Ok ? (true, "Реклама стала в чергу") : r;
+        }
+    }
+
+    (bool Ok, string Message) Queue(AdWinner ad)
+    {
+        if (voice.FilePath(ad.TrackId) is not { } path) return (false, "Файлу реклами вже нема");   // кеш почистили — не біда
+        var track = new TrackInfo(ad.TrackId, AdTitle, ad.Nick, ad.Seconds, null, $"/api/voice/{ad.TrackId}.mp3", null);
+        var r = air.AddVoice(track, path, "Дядько Глек");
+        if (r.Ok)
+        {
+            _lastAt = clock.UtcNow;
+            log.LogInformation("реклама {Track} ({Nick}) стала в чергу", ad.TrackId, ad.Nick);
+        }
+        return r;
     }
 }
 
@@ -134,6 +157,7 @@ public static class AdContestSetup
     }
 
     public sealed record AdVoteRequest(long EntryId);
+    public sealed record AdEveryRequest(int EveryTracks, int MinMinutes);
 
     public static WebApplication MapAdContest(this WebApplication app)
     {
@@ -143,6 +167,30 @@ public static class AdContestSetup
         static IResult Deny() => Results.BadRequest(new { ok = false, message = "Це вміє тільки господар" });
 
         app.MapGet("/api/ads", (HttpContext c, AdContest ads) => Results.Ok(ads.Snapshot(Auth.Nick(c))));
+
+        // ---- ефір реклами: тільки господар ----
+        app.MapGet("/api/ads/air", (HttpContext c, AdContest ads, AdJingle jingle) =>
+            Auth.IsAdmin(c) ? Results.Ok(ads.AirView(jingle.Since)) : Deny());
+
+        app.MapPost("/api/ads/air/entry", (HttpContext c, AdVoteRequest req, AdContest ads) =>
+            Auth.IsAdmin(c) ? Reply(ads.AirEntry(req.EntryId)) : Deny());
+
+        app.MapPost("/api/ads/air/record", async (HttpContext c, AdContest ads, IVoiceSaver voice, CancellationToken ct) =>
+        {
+            if (!Auth.IsAdmin(c)) return Deny();
+            if (c.Request.ContentLength > voice.MaxUploadBytes)
+                return Reply((false, $"Задовгий запис, ліміт {voice.MaxUploadBytes / (1024 * 1024)} МБ"));
+            return Reply(await ads.AirRecordAsync(Auth.Nick(c), c.Request.Body, ct));
+        });
+
+        app.MapDelete("/api/ads/air", (HttpContext c, AdContest ads) =>
+            Auth.IsAdmin(c) ? Reply(ads.AirClear()) : Deny());
+
+        app.MapPost("/api/ads/air/every", (HttpContext c, AdEveryRequest req, AdContest ads) =>
+            Auth.IsAdmin(c) ? Reply(ads.AirEvery(req.EveryTracks, req.MinMinutes)) : Deny());
+
+        app.MapPost("/api/ads/air/now", (HttpContext c, AdJingle jingle) =>
+            Auth.IsAdmin(c) ? Reply(jingle.PlayNow()) : Deny());
 
         app.MapPost("/api/ads/new", async (HttpContext c, AdContest ads, CancellationToken ct) =>
             Auth.IsAdmin(c) ? Reply(await ads.OpenAsync(ct)) : Deny());

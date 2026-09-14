@@ -599,6 +599,142 @@ public class AdContestTests
     }
 
     // =============================================================================================
+    // Ефір господаря
+    // =============================================================================================
+
+    (bool Ok, string Message) HouseRecord(AdRig r, string nick = "Адмін", int seconds = 12)
+    {
+        r.Voice.Seconds = seconds;
+        return r.Ads.AirRecordAsync(nick, new MemoryStream(Encoding.UTF8.GetBytes("webm")), default).GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public void An_entry_from_a_running_contest_goes_on_air_without_waiting_for_the_close()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Enter(id, "Владік", seconds: 7);
+
+        var (ok, _) = r.Ads.AirEntry(r.EntryOf(id, "Владік"));
+        Assert.True(ok);
+        for (var i = 0; i < 6; i++) r.TrackOnAir();
+
+        var ad = Assert.Single(r.Air.Played);
+        Assert.Equal("Владік", ad.Artist);
+        Assert.Equal(7, ad.DurationSec);
+    }
+
+    [Fact]
+    public void The_house_ad_beats_the_contest_winner_and_clearing_it_brings_the_winner_back()
+    {
+        using var r = new AdRig();
+        WinnerReady(r);
+        Assert.True(HouseRecord(r).Ok);
+
+        Assert.True(r.Ads.OnAir()!.House);
+        Assert.Equal("Адмін", r.Ads.OnAir()!.Nick);
+
+        Assert.True(r.Ads.AirClear().Ok);
+
+        Assert.False(r.Ads.OnAir()!.House);
+        Assert.Equal("Оля", r.Ads.OnAir()!.Nick);
+    }
+
+    [Fact]
+    public void Frequency_from_the_admin_overrides_the_config_and_survives_a_restart()
+    {
+        using var r = new AdRig();
+        HouseRecord(r);
+
+        Assert.True(r.Ads.AirEvery(3, 0).Ok);
+        Assert.Equal((3, 0), r.Cold().Frequency());
+
+        for (var i = 0; i < 3; i++) r.TrackOnAir();
+        Assert.Single(r.Air.Played);
+        r.Jingle.OnTrackStarted(r.Air.Played[0]);
+        for (var i = 0; i < 3; i++) r.TrackOnAir();       // жодних 25 хвилин: господар поставив нуль
+        Assert.Equal(2, r.Air.Played.Count);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(101, 0)]
+    [InlineData(3, -1)]
+    [InlineData(3, 601)]
+    public void Nonsense_frequency_is_refused(int every, int minutes)
+    {
+        using var r = new AdRig();
+        Assert.False(r.Ads.AirEvery(every, minutes).Ok);
+        Assert.Equal((6, 25), r.Ads.Frequency());
+    }
+
+    [Fact]
+    public void Play_now_queues_the_ad_at_once_and_restarts_the_count()
+    {
+        using var r = new AdRig();
+        HouseRecord(r);
+        r.TrackOnAir();
+
+        Assert.True(r.Jingle.PlayNow().Ok);
+
+        Assert.Single(r.Air.Played);
+        Assert.Equal(0, r.Jingle.Since);
+    }
+
+    [Fact]
+    public void Play_now_with_nothing_to_play_says_so()
+    {
+        using var r = new AdRig();
+        Assert.False(r.Jingle.PlayNow().Ok);
+    }
+
+    [Fact]
+    public void Re_recording_an_entry_that_is_on_air_keeps_the_aired_file()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Enter(id, "Владік");
+        var aired = r.Store.Entry(id, EconomyStore.Key("Владік"))!.TrackId;
+        r.Ads.AirEntry(r.EntryOf(id, "Владік"));
+
+        r.Enter(id, "Владік");
+
+        Assert.DoesNotContain(aired, r.Voice.Deleted);
+        Assert.Equal(aired, r.Ads.OnAir()!.TrackId);
+    }
+
+    [Fact]
+    public void Replacing_the_house_recording_deletes_the_old_one_but_never_a_contest_entry()
+    {
+        using var r = new AdRig();
+        HouseRecord(r);
+        var own = r.Ads.OnAir()!.TrackId;
+        var id = r.Open();
+        r.Enter(id, "Владік");
+        var entry = r.Store.Entry(id, EconomyStore.Key("Владік"))!.TrackId;
+
+        r.Ads.AirEntry(r.EntryOf(id, "Владік"));
+        Assert.Contains(own, r.Voice.Deleted);
+
+        HouseRecord(r);
+        Assert.DoesNotContain(entry, r.Voice.Deleted);
+    }
+
+    [Fact]
+    public void When_the_ad_changes_the_old_one_still_playing_does_not_count_as_a_track()
+    {
+        using var r = new AdRig();
+        WinnerReady(r);
+        HouseRecord(r);
+
+        r.TrackOnAir();
+        r.TrackOnAir();
+        r.Jingle.OnTrackStarted(new TrackInfo("voice-000001", "Реклама глека", "Оля", 18, null, "/x", null));
+
+        Assert.Equal(0, r.Jingle.Since);
+    }
+
+    // =============================================================================================
     // Що бачить браузер
     // =============================================================================================
 

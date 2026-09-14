@@ -81,8 +81,8 @@ public sealed class VoiceSaver(VoiceService voice) : IVoiceSaver
     }
 }
 
-/// <summary>Переможна реклама, яку крутить ефір.</summary>
-public sealed record AdWinner(long ContestId, string TrackId, string Nick, int Seconds);
+/// <summary>Реклама, яку крутить ефір: переможна або (<c>House</c>) поставлена господарем.</summary>
+public sealed record AdWinner(long ContestId, string TrackId, string Nick, int Seconds, bool House = false);
 
 /// <summary>
 /// Конкурс «Озвуч рекламу»: сценарій → записи → голоси → переможець → джингл в ефірі.
@@ -343,7 +343,8 @@ public sealed class AdContest(
         }
 
         var old = store.PutEntry(contestId, EconomyStore.Key(nick), nick, track.Id, track.DurationSec, clock.UtcNow);
-        if (old is not null) voice.Delete(old);   // перезапис не має лишати по mp3 у кеші
+        // перезапис не має лишати по mp3 у кеші — хіба що стару версію господар уже пустив в ефір
+        if (old is not null && !InHouse(old)) voice.Delete(old);
         return (true, old is null
             ? "Запис прийнято, тепер чекай на голоси"
             : "Перезаписав — стара версія пішла в небуття разом із голосами за неї");
@@ -356,7 +357,7 @@ public sealed class AdContest(
         if (Running(contestId) is { Contest: null, Error: var why }) return (false, why);
         var old = store.DropEntry(contestId, EconomyStore.Key(nick));
         if (old is null) return (false, "Ти ще нічого не записував");
-        voice.Delete(old);
+        if (!InHouse(old)) voice.Delete(old);
         return (true, "Запис забрано");
     }
 
@@ -394,5 +395,115 @@ public sealed class AdContest(
             }
             return _winner;
         }
+    }
+
+    // =============================================================================================
+    // Ефір господаря: своя реклама і частота
+    // =============================================================================================
+
+    /// <summary>Кеш рядка ad_air: джингл питає його на кожен трек.</summary>
+    AdAirRow? _air;
+
+    AdAirRow AirRow()
+    {
+        lock (_lock) return _air ??= store.Air();
+    }
+
+    void Forget()
+    {
+        lock (_lock) _air = null;
+    }
+
+    bool InHouse(string trackId) => AirRow().TrackId == trackId;
+
+    /// <summary>
+    /// Що зараз крутити: реклама господаря, якщо вона є і файл живий, інакше — переможець конкурсу.
+    /// Зниклий файл господаря не лишає ефір без реклами: переможець підхоплює.
+    /// </summary>
+    public AdWinner? OnAir()
+    {
+        var air = AirRow();
+        if (air.TrackId is { } id && voice.FilePath(id) is not null)
+            return new AdWinner(0, id, air.Nick ?? "господар", air.Seconds, House: true);
+        return Winner();
+    }
+
+    /// <summary>Раз на скільки треків і не частіше ніж раз на скільки хвилин — з бази, а як не задано, з Ad:*.</summary>
+    public (int EveryTracks, int MinMinutes) Frequency()
+    {
+        var air = AirRow();
+        return (Math.Max(1, air.EveryTracks ?? O.EveryTracks), Math.Max(0, air.MinMinutes ?? O.MinMinutes));
+    }
+
+    public const int MaxEveryTracks = 100;
+    public const int MaxMinMinutes = 600;
+
+    /// <summary>Пустити в ефір запис із конкурсу (будь-якого, хай і відкритого чи закритого).</summary>
+    public (bool Ok, string Message) AirEntry(long entryId)
+    {
+        if (store.EntryAnywhere(entryId) is not { } e) return (false, "Такого запису нема");
+        if (voice.FilePath(e.TrackId) is null) return (false, "Файлу цього запису вже нема");
+        Replace(e.TrackId, e.Nick, e.Seconds, own: false);
+        log.LogInformation("господар пустив в ефір рекламу {Nick} ({Track})", e.Nick, e.TrackId);
+        return (true, $"Тепер в ефірі реклама {e.Nick}");
+    }
+
+    /// <summary>Записати свою рекламу для ефіру. Ліміт — як у звичайних голосових, не конкурсні 30 с.</summary>
+    public async Task<(bool Ok, string Message)> AirRecordAsync(string nick, Stream body, CancellationToken ct)
+    {
+        if (!voice.Enabled) return (false, "Голосові вимкнені");
+        TrackInfo track;
+        try { (track, _) = await voice.SaveAsync(body, Named(nick) ? nick : "господар", ct); }
+        catch (Exception ex) { return (false, "Не вийшло взяти запис: " + ex.Message); }
+        Replace(track.Id, Named(nick) ? nick : "господар", track.DurationSec, own: true);
+        log.LogInformation("господар записав свою рекламу {Track}, {Sec} с", track.Id, track.DurationSec);
+        return (true, "Твоя реклама тепер в ефірі");
+    }
+
+    /// <summary>Прибрати рекламу господаря: далі знову крутиться переможець конкурсу (якщо є).</summary>
+    public (bool Ok, string Message) AirClear()
+    {
+        if (AirRow().TrackId is null) return (false, "Своєї реклами й так нема");
+        Replace(null, null, 0, own: false);
+        return (true, Winner() is { } w ? $"Прибрав. Тепер знову крутиться переможець — {w.Nick}" : "Прибрав. Реклами в ефірі тепер нема");
+    }
+
+    public (bool Ok, string Message) AirEvery(int everyTracks, int minMinutes)
+    {
+        if (everyTracks is < 1 or > MaxEveryTracks) return (false, $"Треків — від 1 до {MaxEveryTracks}");
+        if (minMinutes is < 0 or > MaxMinMinutes) return (false, $"Хвилин — від 0 до {MaxMinMinutes}");
+        store.SetAirEvery(everyTracks, minMinutes, clock.UtcNow);
+        Forget();
+        return (true, minMinutes == 0
+            ? $"Реклама — раз на {everyTracks} тр."
+            : $"Реклама — раз на {everyTracks} тр., але не частіше ніж раз на {minMinutes} хв");
+    }
+
+    void Replace(string? trackId, string? nick, int seconds, bool own)
+    {
+        var old = AirRow();
+        store.SetAirTrack(trackId, nick, seconds, own, clock.UtcNow);
+        Forget();
+        // Свій окремий запис господаря після заміни нікому не потрібен; запис із конкурсу — не наш, хай живе.
+        if (old.Own && old.TrackId is { } was && was != trackId && !store.IsEntryTrack(was))
+            voice.Delete(was);
+    }
+
+    /// <summary>Що бачить господар у панелі: що в ефірі, звідки воно і як часто.</summary>
+    public object AirView(int since)
+    {
+        var air = AirRow();
+        var on = OnAir();
+        var (every, minutes) = Frequency();
+        return new
+        {
+            on = on is null ? null : new { trackId = on.TrackId, nick = on.Nick, seconds = on.Seconds, house = on.House, contestId = on.ContestId },
+            // своя реклама стоїть, але її mp3 зник — крутиться переможець, і господареві варто про це знати
+            houseMissing = air.TrackId is not null && on?.House != true,
+            everyTracks = every,
+            minMinutes = minutes,
+            since,
+            jingle = O.Enabled && O.Jingle,
+        };
     }
 }
