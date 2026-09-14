@@ -178,6 +178,11 @@ public sealed class EconomyOptions
     public int ClickerDailyCap { get; set; } = 20;
     /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
     public int AwardDailyCap { get; set; } = 30;
+
+    /// <summary>Бан треку, що грає, за черепки (адміну безкоштовно). 0 — за черепки не можна.</summary>
+    public int BanPrice { get; set; } = 100;
+    /// <summary>Викупити трек із бану. 0 — за черепки не можна, розбанює лише адмін.</summary>
+    public int UnbanPrice { get; set; } = 100;
 }
 
 public sealed class DeployOptions

@@ -105,6 +105,8 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE plays ADD COLUMN duration_sec INTEGER"); } catch (SqliteException) { /* exists */ }
         try { Exec(c, "ALTER TABLE plays ADD COLUMN stream_peak INTEGER"); } catch (SqliteException) { /* exists */ }
         try { Exec(c, "ALTER TABLE tracks ADD COLUMN song_key TEXT"); } catch (SqliteException) { /* exists */ }
+        // скільки черепків віддали за бан; 0 — забанив адмін
+        try { Exec(c, "ALTER TABLE bans ADD COLUMN price INTEGER NOT NULL DEFAULT 0"); } catch (SqliteException) { /* exists */ }
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
     }
@@ -604,10 +606,41 @@ public sealed class Db
         return set;
     }
 
-    public void Ban(string trackId, string by)
+    /// <summary>False — трек уже був у бані.</summary>
+    public bool Ban(string trackId, string by, int price = 0)
     {
         using var c = Open();
-        Exec(c, "INSERT OR IGNORE INTO bans(track_id, by_nick, created_at) VALUES($t, $b, $now)", ("$t", trackId), ("$b", by), ("$now", Now()));
+        using var cmd = Cmd(c, "INSERT OR IGNORE INTO bans(track_id, by_nick, price, created_at) VALUES($t, $b, $p, $now)",
+            ("$t", trackId), ("$b", by), ("$p", price), ("$now", Now()));
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>False — такого бану й не було.</summary>
+    public bool Unban(string trackId)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "DELETE FROM bans WHERE track_id=$t", ("$t", trackId));
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public sealed record BanRow(TrackInfo Track, string? By, int Price, DateTimeOffset CreatedAt);
+
+    /// <summary>Бан-лист, свіжі зверху. Трек, якого чомусь нема в tracks, показуємо хоч за id.</summary>
+    public List<BanRow> Bans()
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT b.track_id, b.by_nick, b.price, b.created_at, {TrackCols}
+            FROM bans b LEFT JOIN tracks t ON t.id = b.track_id ORDER BY b.created_at DESC
+            """);
+        using var r = cmd.ExecuteReader();
+        var list = new List<BanRow>();
+        while (r.Read())
+        {
+            var track = r.IsDBNull(4) ? new TrackInfo(r.GetString(0), r.GetString(0), "", 0, null, "", null) : ReadTrack(r, 4);
+            list.Add(new BanRow(track, Str(r, 1), r.GetInt32(2), Ts(r.GetString(3))));
+        }
+        return list;
     }
 
     // ---- playlists ----

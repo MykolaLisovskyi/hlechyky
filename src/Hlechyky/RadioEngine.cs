@@ -36,7 +36,7 @@ public sealed class Presence
 /// liquidsoap's track callbacks (plus a poll as a safety net). The queue is persisted, and on
 /// start-up the engine adopts whatever liquidsoap still holds, so a server restart loses nothing.
 /// </summary>
-public sealed class RadioEngine : BackgroundService
+public sealed class RadioEngine : BackgroundService, IOnAir
 {
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
 
@@ -227,7 +227,7 @@ public sealed class RadioEngine : BackgroundService
     (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
         string? filePath = null, string? chat = null, string? reply = null)
     {
-        if (_db.IsBanned(track.Id)) return (false, "Цей трек у бан-листі");
+        if (_db.IsBanned(track.Id)) return (false, "Цей трек у бані. Викупити можна у вкладці «🚫 Бан»");
         var max = _yt.CurrentValue.MaxDurationSeconds;
         if (!isAdmin && track.DurationSec > max) return (false, $"Задовгий трек ({track.DurationSec / 60} хв), ліміт {max / 60} хв");
         lock (_lock)
@@ -430,9 +430,18 @@ public sealed class RadioEngine : BackgroundService
         return (liked, likers.Count, likers);
     }
 
-    public async Task<(bool Ok, string Message)> BanAsync(string trackId, string nick)
+    // ---------- бан: хто, за скільки і чи можна — вирішує TrackBans, тут лише ефір ----------
+
+    string? IOnAir.TrackId
     {
-        _db.Ban(trackId, nick);
+        get { lock (_lock) return _now.Source is "user" or "autodj" ? _now.Track?.Id : null; }
+    }
+
+    void IOnAir.Journal(string text) => SystemChat(text);
+
+    /// <summary>Трек щойно забанили: прибрати з черги й з наступного в Глека, скіпнути, якщо грає.</summary>
+    async Task IOnAir.EvictAsync(string trackId)
+    {
         List<QueueItem> removed;
         bool skipNow;
         QueueItem? auto = null;
@@ -445,13 +454,26 @@ public sealed class RadioEngine : BackgroundService
         }
         foreach (var r in removed) DropFromLiquidsoap("userq", r);
         if (auto is not null) DropFromLiquidsoap("autoq", auto);
-        if (skipNow) { try { await _liq.SkipAsync(_now.Source == "user" ? "userq" : "autoq"); } catch { /* best effort */ } }
+        if (skipNow)
+        {
+            try
+            {
+                await _liq.SkipAsync(_now.Source == "user" ? "userq" : "autoq");
+                // як звичайний скіп: «перемикаю» на сторінці і в рейтингу трек не дограний
+                lock (_lock)
+                {
+                    if (_now.Track?.Id == trackId && !_now.SkipPending)
+                    {
+                        _now.SkipPending = true;
+                        if (_now.PlayId > 0) _db.EndPlay(_now.PlayId, skipped: true);
+                    }
+                }
+            }
+            catch { /* best effort */ }
+        }
         PersistQueue();
-        var t = _db.GetTrack(trackId);
-        SystemChat($"{nick} банить {t?.Label ?? trackId}");
         Broadcast();
         _ = TickSafeAsync();
-        return (true, "Забанено");
     }
 
     // ---------- suggestion bar ----------

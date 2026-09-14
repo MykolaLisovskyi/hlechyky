@@ -209,7 +209,7 @@
     const n = state.now;
     const box = $('now');
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
-      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, state.siteName, state.djName]);
+      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName]);
     if (sig === nowSig) return;
     nowSig = sig;
     const banner = $('banner');
@@ -226,6 +226,9 @@
         : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
       const why = n.reason ? `<div class="why">${esc(n.reason)}</div>` : '';
       const pending = n.skipPending;
+      // адмін банить безкоштовно; решта — за черепки, і голосові не банять
+      const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
+      const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
       box.innerHTML = `
         <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
         <div style="min-width:0">
@@ -241,7 +244,7 @@
             <button id="skipBtn" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭ Скіп</button>
             <button id="plBtn" title="Зберегти в плейлист">＋ плейлист</button>
             ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
-            ${me.role === 'admin' ? `<button id="banBtn" class="danger ghost" title="Забанити трек і скіпнути">бан</button>` : ''}
+            ${canBan ? `<button id="banBtn" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
           </div>
           <div class="reacts" title="Реакція, яку побачать усі">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
         </div>`;
@@ -249,7 +252,13 @@
       $('skipBtn').onclick = (e) => busy(e.currentTarget, 'скіп…', () => api('POST', '/api/skip').then(ok).catch(fail));
       $('plBtn').onclick = () => openPlaylistPicker(t.id, t.title);
       const ban = $('banBtn');
-      if (ban) ban.onclick = () => confirm('Забанити цей трек назавжди?') && api('POST', `/api/ban/${t.id}`).then(ok).catch(fail);
+      if (ban) ban.onclick = (e) => {
+        const ask = banPrice
+          ? `Забанити «${t.title}» назавжди за ${banPrice} 🏺?\nТрек скіпнеться і більше не заграє. Викупити його з бану теж коштуватиме черепки.`
+          : 'Забанити цей трек назавжди?';
+        if (!confirm(ask)) return;
+        busy(e.currentTarget, 'баню…', () => api('POST', `/api/ban/${t.id}`).then((r) => { ok(r); if (libTab === 'bans') loadLib(); }).catch(fail));
+      };
       box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
         if (!conn) return;
         conn.invoke('React', b.dataset.e).catch(() => {});
@@ -540,7 +549,7 @@
     renderSuggestions();
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
-      if (libTab === 'history') loadLib();
+      if (libTab === 'history' || libTab === 'bans') loadLib();
     }
   }
 
@@ -1094,6 +1103,9 @@
       } else if (libTab === 'playlists') {
         await renderPlaylists();
         return;
+      } else if (libTab === 'bans') {
+        await renderBans();
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -1127,6 +1139,37 @@
       renderRating().catch((e) => { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
     }));
     wireRows(box);
+  }
+
+  // бан-лист: хто, коли й за скільки забанив; адмін розбанює безкоштовно, решта викуповує за черепки
+  const dayTime = (iso) => new Date(iso).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  async function renderBans() {
+    const box = $('lib');
+    const r = await api('GET', '/api/bans');
+    const admin = me.role === 'admin';
+    const how = [
+      'Забанене не грає, не стає в чергу й не потрапляє в поради.',
+      r.banPrice ? `Забанити те, що зараз в ефірі, — ${r.banPrice} 🏺, кнопка «🚫 бан» під треком.` : '',
+      admin ? 'Ти адмін: банити й розбанювати безкоштовно.'
+        : r.unbanPrice ? `Викупити трек із бану — ${r.unbanPrice} 🏺. У тебе ${r.balance} 🏺.` : 'Розбанює лише адмін.',
+    ].filter(Boolean).join(' ');
+    const unbanBtn = (t) => admin
+      ? `<button class="ghost unban" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="Зняти бан">розбанити</button>`
+      : r.unbanPrice ? `<button class="ghost unban" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="Викупити з бану за ${r.unbanPrice} черепків">викупити · ${r.unbanPrice} 🏺</button>` : '';
+    const row = (b) => `<li>
+        ${cover(b.track)}
+        <div style="min-width:0"><div class="t">${esc(b.track.title)}${b.track.artist ? ` <span class="muted">· ${esc(b.track.artist)}</span>` : ''}</div>
+          <div class="r">забанив ${esc(b.by || '?')}${b.price ? ` за ${b.price} 🏺` : ''} · ${dayTime(b.createdAt)}</div></div>
+        <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
+      </li>`;
+    box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
+      `<ul class="list">${r.items.map(row).join('') || '<li class="empty">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
+    box.querySelectorAll('button.unban').forEach((b) => b.onclick = (e) => {
+      const ask = admin ? `Розбанити «${b.dataset.title}»?` : `Викупити «${b.dataset.title}» з бану за ${r.unbanPrice} 🏺?`;
+      if (!confirm(ask)) return;
+      busy(e.currentTarget, '…', () => api('DELETE', `/api/ban/${encodeURIComponent(b.dataset.id)}`)
+        .then((res) => { ok(res); return renderBans(); }).catch(fail));
+    });
   }
 
   const openPl = new Set();
@@ -1235,6 +1278,6 @@
   // ---------- boot ----------
   setPlayUi();
   HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
-  api('GET', '/api/me').then((m) => { me.role = m.role; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
+  api('GET', '/api/me').then((m) => { me.role = m.role; me.banPrice = m.banPrice || 0; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
   if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
 })();

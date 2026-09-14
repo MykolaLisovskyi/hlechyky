@@ -21,7 +21,7 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/me", (HttpContext c) => new { nick = Auth.Nick(c), role = Auth.Role(c) });
+        api.MapGet("/me", (HttpContext c, TrackBans bans) => new { nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice });
 
         api.MapGet("/state", (RadioEngine e, Db db) => new { state = e.Snapshot(), chat = db.RecentChat(100) });
 
@@ -68,8 +68,21 @@ public static class Endpoints
             return Results.Ok(new { ok = true, liked = r.Liked, count = r.Count, likers = r.Likers });
         });
 
-        api.MapPost("/ban/{trackId}", async (HttpContext c, string trackId, RadioEngine e) =>
-            Auth.IsAdmin(c) ? Reply(await e.BanAsync(trackId, Auth.Nick(c))) : Results.StatusCode(403));
+        // ---- бан-лист: адмін — будь-що і безкоштовно, решта — трек в ефірі за черепки, викуп теж за черепки ----
+
+        api.MapGet("/bans", (HttpContext c, TrackBans bans) => new
+        {
+            banPrice = bans.BanPrice,
+            unbanPrice = bans.UnbanPrice,
+            balance = bans.Balance(Auth.Nick(c)),
+            items = bans.List().Select(b => new { track = b.Track, by = b.By, price = b.Price, createdAt = b.CreatedAt }),
+        });
+
+        api.MapPost("/ban/{trackId}", async (HttpContext c, string trackId, TrackBans bans) =>
+            Reply(await bans.BanAsync(trackId, Auth.Nick(c), Auth.IsAdmin(c))));
+
+        api.MapDelete("/ban/{trackId}", (HttpContext c, string trackId, TrackBans bans) =>
+            Reply(bans.Unban(trackId, Auth.Nick(c), Auth.IsAdmin(c))));
 
         api.MapPost("/suggest/{itemId}/add", async (HttpContext c, string itemId, RadioEngine e, CancellationToken ct) =>
             Reply(await e.AddSuggestionAsync(itemId, Auth.Nick(c), Auth.IsAdmin(c), ct)));

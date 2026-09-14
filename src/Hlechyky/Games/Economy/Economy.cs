@@ -195,6 +195,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
                 _ => "за конкурс реклами",
             },
             "award" => "нагорода за гру",
+            "ban" => "бан треку",
+            "unban" => "викуп треку з бану",
+            "ban-refund" => "бан не записався, повертаю",
             _ => reason,
         };
     }
