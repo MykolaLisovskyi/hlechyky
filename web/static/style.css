@@ -391,3 +391,15 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
   0% { transform: scale(1.02); border-color: var(--accent); box-shadow: 0 12px 28px rgba(0, 0, 0, .5); background: var(--panel2); }
   100% { transform: none; box-shadow: none; }
 }
+
+/* реклама: бібліотека й ротація (вкладка адміна) */
+.ads-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.ads-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ads-row input[type=number] { width: 64px; }
+.ads-row input[type=text] { flex: 1; min-width: 140px; }
+.ads-row input[type=file] { max-width: 100%; }
+.ads-list li.off { opacity: .55; }
+.ads-title { cursor: pointer; }
+.ads-title:hover { text-decoration: underline dotted; }
+.ads-switch { display: inline-flex; align-items: center; gap: 3px; font-size: .8em; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.ads-list .btns { flex-wrap: wrap; justify-content: flex-end; }

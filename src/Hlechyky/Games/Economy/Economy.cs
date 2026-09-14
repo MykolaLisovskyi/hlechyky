@@ -192,6 +192,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             {
                 "winner" => "перемога в конкурсі реклами",
                 "vote" => "за голос у конкурсі реклами",
+                "listen" => "за прослухану рекламу",
                 _ => "за конкурс реклами",
             },
             "award" => "нагорода за гру",

@@ -549,7 +549,7 @@
     renderSuggestions();
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
-      if (libTab === 'history' || libTab === 'bans') loadLib();
+      if (libTab === 'history' || libTab === 'bans' || libTab === 'ads') loadLib();
     }
   }
 
@@ -1106,6 +1106,9 @@
       } else if (libTab === 'bans') {
         await renderBans();
         return;
+      } else if (libTab === 'ads') {
+        await renderAds();
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -1170,6 +1173,92 @@
       busy(e.currentTarget, '…', () => api('DELETE', `/api/ban/${encodeURIComponent(b.dataset.id)}`)
         .then((res) => { ok(res); return renderBans(); }).catch(fail));
     });
+  }
+
+  // ---------- реклама: бібліотека, ротація, частота (лише адмін) ----------
+  const ago = (iso) => {
+    if (!iso) return 'ще не грала';
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    return m < 1 ? 'щойно' : m < 60 ? `${m} хв тому` : m < 1440 ? `${Math.round(m / 60)} год тому` : dayTime(iso);
+  };
+  const times = (n) => `${n} ${n % 100 >= 11 && n % 100 <= 14 ? 'разів' : n % 10 === 1 ? 'раз' : n % 10 >= 2 && n % 10 <= 4 ? 'рази' : 'разів'}`;
+  async function renderAds() {
+    const box = $('lib');
+    if (me.role !== 'admin') { box.innerHTML = '<div class="empty">Це бачить лише адмін</div>'; return; }
+    const r = await api('GET', '/api/ads/library');
+    const on = r.items.filter((a) => a.enabled && !a.missing).length;
+    const fb = r.fallback ? `крутиться ${r.fallback.house ? 'реклама господаря' : 'переможець конкурсу'} (${esc(r.fallback.nick)})` : 'реклами в ефірі не буде';
+    const head = `<div class="ads-head">
+        <div class="ads-row"><b>У ротації ${on} з ${r.items.length}</b>
+          <span class="muted small">випадково без повторів · від останньої реклами ${r.since} тр.${r.jingle ? '' : ' · ⚠ джингл вимкнено в Ad:Jingle'}</span></div>
+        <div class="ads-row">
+          <span>Раз на</span><input id="adsEvery" type="number" min="1" max="100" value="${r.everyTracks}"><span>тр., не частіше ніж раз на</span>
+          <input id="adsMins" type="number" min="0" max="600" value="${r.minMinutes}"><span>хв</span>
+          <button class="ghost" id="adsSaveEvery">Зберегти</button>
+        </div>
+        <div class="ads-row">
+          <button class="primary" id="adsNow" title="Наступна реклама з колоди стане в чергу">📻 Наступну в чергу</button>
+          <button class="ghost" id="adsAllOn">Усі в ротацію</button>
+          <button class="ghost" id="adsAllOff">Вимкнути ротацію</button>
+        </div>
+        <div class="muted small">За прослухану рекламу слухачам з увімкненим плеєром +${r.reward.amount} 🏺 (до ${r.reward.dailyCap} на день).
+          Коли в ротації порожньо, ${fb}.</div>
+        <form class="ads-row" id="adsUpload">
+          <input type="file" accept="audio/*,video/webm,.mp3,.wav,.ogg,.m4a" required>
+          <input type="text" maxlength="60" placeholder="назва реклами" autocomplete="off">
+          <button class="primary" type="submit">Залити</button>
+          <span class="muted small">до ${r.maxMb} МБ</span>
+        </form>
+      </div>`;
+    const row = (a) => `<li class="${a.enabled ? '' : 'off'}">
+        ${cover({ id: a.trackId })}
+        <div style="min-width:0"><div class="t"><span class="ads-title" data-id="${a.id}" title="Перейменувати">${esc(a.title)}</span></div>
+          <div class="r">${fmt(a.seconds)} · грала ${times(a.plays)} · ${ago(a.lastPlayedAt)}${a.missing ? ' · <span class="chip err">файл зник</span>' : ''}</div></div>
+        <div class="btns">
+          ${voiceBtn({ id: a.trackId })}
+          <label class="ads-switch" title="${a.enabled ? 'У ротації' : 'Не в ротації'}"><input type="checkbox" data-id="${a.id}" ${a.enabled ? 'checked' : ''}> ротація</label>
+          <button class="ghost" data-now="${a.id}" title="Саме цю — в чергу">📻</button>
+          <button class="ghost danger" data-del="${a.id}" data-title="${esc(a.title)}" title="Видалити">✕</button>
+        </div>
+      </li>`;
+    box.innerHTML = head + `<ul class="list ads-list">${r.items.slice().reverse().map(row).join('') || '<li class="empty">Бібліотека порожня. Залий перший файл вище.</li>'}</ul>`;
+
+    const again = () => renderAds().catch((e) => fail(e));
+    $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
+      { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
+    $('adsNow').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
+    $('adsAllOn').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/library/all', { enabled: true }).then(ok).then(again).catch(fail));
+    $('adsAllOff').onclick = (e) => confirm('Вимкнути всі реклами з ротації?') && busy(e.currentTarget, '…',
+      () => api('POST', '/api/ads/library/all', { enabled: false }).then(ok).then(again).catch(fail));
+    $('adsUpload').onsubmit = (e) => {
+      e.preventDefault();
+      const [file, name] = e.target.querySelectorAll('input');
+      const f = file.files[0];
+      if (!f) return;
+      const title = name.value.trim() || f.name.replace(/\.[^.]+$/, '');
+      busy(e.target.querySelector('button'), 'заливаю…', async () => {
+        const res = await fetch('/api/ads/library?title=' + encodeURIComponent(title), {
+          method: 'POST', body: f,
+          headers: { 'X-Nick': encodeURIComponent(me.nick), 'Content-Type': f.type || 'application/octet-stream' },
+        });
+        const j = await res.json().catch(() => ({ message: 'сервер відповів ' + res.status }));
+        if (!res.ok) throw new Error(j.message);
+        ok(j);
+        await again();
+      }).catch(fail);
+    };
+    box.querySelectorAll('.ads-switch input').forEach((c) => c.onchange = () =>
+      api('PATCH', `/api/ads/library/${c.dataset.id}`, { enabled: c.checked }).then(again).catch((e) => { c.checked = !c.checked; fail(e); }));
+    box.querySelectorAll('[data-now]').forEach((b) => b.onclick = (e) =>
+      busy(e.currentTarget, '…', () => api('POST', `/api/ads/library/${b.dataset.now}/now`).then(ok).catch(fail)));
+    box.querySelectorAll('[data-del]').forEach((b) => b.onclick = (e) => confirm(`Видалити «${b.dataset.title}» назавжди?`) &&
+      busy(e.currentTarget, '…', () => api('DELETE', `/api/ads/library/${b.dataset.del}`).then(ok).then(again).catch(fail)));
+    box.querySelectorAll('.ads-title').forEach((t) => t.onclick = () => {
+      const name = prompt('Нова назва реклами', t.textContent);
+      if (name == null || !name.trim() || name.trim() === t.textContent) return;
+      api('PATCH', `/api/ads/library/${t.dataset.id}`, { title: name.trim() }).then(ok).then(again).catch(fail);
+    });
+    wireVoiceButtons(box);
   }
 
   const openPl = new Set();
@@ -1278,6 +1367,6 @@
   // ---------- boot ----------
   setPlayUi();
   HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
-  api('GET', '/api/me').then((m) => { me.role = m.role; me.banPrice = m.banPrice || 0; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
+  api('GET', '/api/me').then((m) => { me.role = m.role; me.banPrice = m.banPrice || 0; $('adsTab').hidden = me.role !== 'admin'; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
   if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
 })();

@@ -31,6 +31,11 @@ public sealed class AdOptions
     public int WinnerReward { get; set; } = 25;
     public int EntryReward { get; set; } = 3;
     public int VoteReward { get; set; } = 1;
+
+    /// <summary>Черепки кожному, хто прослухав рекламу з увімкненим плеєром. 0 — не нараховувати.</summary>
+    public int ListenReward { get; set; } = 2;
+    /// <summary>Скільки черепків на день можна набрати прослуханою рекламою.</summary>
+    public int ListenDailyCap { get; set; } = 40;
 }
 
 /// <summary>

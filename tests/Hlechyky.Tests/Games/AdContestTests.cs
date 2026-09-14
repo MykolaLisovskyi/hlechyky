@@ -80,6 +80,14 @@ public class AdContestTests
         }
     }
 
+    /// <summary>Що «зараз грає» для нагороди за рекламу.</summary>
+    public sealed class FakeOnAir : IAdOnAir
+    {
+        public string? TrackId { get; set; }
+        public bool SkipPending { get; set; }
+        public (string? TrackId, bool SkipPending) Now() => (TrackId, SkipPending);
+    }
+
     sealed class AdRig : IDisposable
     {
         public EconomyRig Eco { get; } = new();
@@ -90,6 +98,9 @@ public class AdContestTests
         public AdContestStore Store { get; }
         public AdContest Ads { get; }
         public AdJingle Jingle { get; }
+        public AdLibrary Library { get; }
+        public AdListenRewards Rewards { get; }
+        public FakeOnAir OnAir { get; } = new();
 
         public FakeClock Clock => Eco.Clock;
         public Presence Presence => Eco.Presence;
@@ -98,7 +109,13 @@ public class AdContestTests
         {
             Store = new AdContestStore(Eco.Db);
             Ads = Cold();
-            Jingle = new AdJingle(Ads, Air, Voice, Presence, Clock, new FixedOptions<AdOptions>(Options), NullLogger<AdJingle>.Instance);
+            var opts = new FixedOptions<AdOptions>(Options);
+            Library = new AdLibrary(new AdLibraryStore(Eco.Db), Voice, Store, Clock, NullLogger<AdLibrary>.Instance);
+            Rewards = new AdListenRewards(Eco.Economy, Presence, OnAir, Clock, opts, NullLogger<AdListenRewards>.Instance)
+            {
+                Delay = _ => new TaskCompletionSource().Task,     // перевірку під кінець реклами тести кличуть самі
+            };
+            Jingle = new AdJingle(Ads, Library, Rewards, Air, Voice, Presence, Clock, opts, NullLogger<AdJingle>.Instance);
             Presence.Set("c1", "Оля");     // типово хтось на сайті є; тест, якому треба порожньо, чистить сам
         }
 
@@ -948,5 +965,154 @@ public class AdContestTests
         Assert.Equal("Оля", kept!.Nick);
         // і після перезапуску сервера відповідь та сама: інакше реклама зникала б і поверталась сама собою
         Assert.Equal(kept.TrackId, r.Cold().Winner()!.TrackId);
+    }
+    // =============================================================================================
+    // Бібліотека реклам, ротація і черепки за прослуховування
+    // =============================================================================================
+
+    static (bool Ok, string Message) AddClip(AdRig r, string title, int seconds = 20)
+    {
+        r.Voice.Seconds = seconds;
+        return r.Library.AddAsync(new MemoryStream(Encoding.UTF8.GetBytes("wav")), title, "владік", default).GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public void Rotation_plays_every_clip_once_before_any_repeats_and_never_twice_in_a_row()
+    {
+        using var r = new AdRig();
+        foreach (var t in new[] { "А", "Б", "В", "Г", "Ґ" }) Assert.True(AddClip(r, t).Ok);
+
+        var played = new List<string>();
+        for (var i = 0; i < 50; i++) played.Add(r.Library.Take()!.Title);
+
+        for (var deck = 0; deck < 10; deck++)
+            Assert.Equal(5, played.Skip(deck * 5).Take(5).Distinct().Count());
+        for (var i = 1; i < played.Count; i++) Assert.NotEqual(played[i - 1], played[i]);
+    }
+
+    [Fact]
+    public void Rotation_skips_switched_off_clips_and_clips_whose_file_is_gone()
+    {
+        using var r = new AdRig();
+        AddClip(r, "Живий");
+        AddClip(r, "Вимкнений");
+        AddClip(r, "Без файлу");
+        var all = r.Library.All();
+        r.Library.SetEnabled(all[1].Id, false);
+        r.Voice.Files.Remove(all[2].TrackId);
+
+        for (var i = 0; i < 10; i++) Assert.Equal("Живий", r.Library.Take()!.Title);
+
+        r.Library.SetAll(false);
+        Assert.Null(r.Library.Take());
+        Assert.False(r.Library.HasLive());
+    }
+
+    [Fact]
+    public void The_jingle_prefers_the_library_over_the_house_ad_and_falls_back_when_rotation_is_empty()
+    {
+        using var r = new AdRig();
+        r.Options.EveryTracks = 1;
+        r.Options.MinMinutes = 0;
+        Assert.True(r.Ads.AirRecordAsync("владік", new MemoryStream(Encoding.UTF8.GetBytes("webm")), default).GetAwaiter().GetResult().Ok);
+        AddClip(r, "Глекминатор", 22);
+
+        r.TrackOnAir("yt-1");
+        var queued = Assert.Single(r.Air.Played);
+        Assert.Equal("Глекминатор", queued.Artist);
+        Assert.Equal(AdJingle.AdTitle, queued.Title);
+
+        r.Library.SetAll(false);
+        r.TrackOnAir("yt-2");
+        Assert.Equal(2, r.Air.Played.Count);
+        Assert.Equal("владік", r.Air.Played[1].Artist);           // реклама господаря підхопила
+    }
+
+    [Fact]
+    public void A_clip_playing_counts_as_a_play_and_resets_the_track_counter()
+    {
+        using var r = new AdRig();
+        r.Options.EveryTracks = 3;
+        r.Options.MinMinutes = 0;
+        AddClip(r, "Прожарка");
+        var clip = r.Library.All()[0];
+
+        r.TrackOnAir("yt-1");
+        r.TrackOnAir("yt-2");
+        r.Jingle.OnTrackStarted(new TrackInfo(clip.TrackId, AdJingle.AdTitle, clip.Title, 20, null, "x", null));
+
+        Assert.Equal(0, r.Jingle.Since);
+        Assert.Equal(1, r.Library.All()[0].Plays);
+        Assert.Empty(r.Air.Played);
+    }
+
+    [Fact]
+    public void Listeners_who_heard_the_ad_to_the_end_get_shards_up_to_the_daily_cap()
+    {
+        using var r = new AdRig();
+        r.Options.ListenReward = 2;
+        r.Options.ListenDailyCap = 4;
+        AddClip(r, "Каламбур");
+        var clip = r.Library.All()[0];
+        var track = new TrackInfo(clip.TrackId, AdJingle.AdTitle, clip.Title, 20, null, "x", null);
+        r.Presence.Set("c2", "Петро");
+        r.Presence.SetListening("c2", true);
+        r.OnAir.TrackId = clip.TrackId;
+
+        for (var i = 0; i < 3; i++)
+        {
+            var p = r.Rewards.Start(track)!;
+            r.Clock.Advance(TimeSpan.FromSeconds(30));
+            r.Rewards.Settle(p);
+        }
+
+        Assert.Equal(4, r.Eco.Paid("Петро", "ad:listen"));       // стеля 4 = дві реклами по 2
+        Assert.Equal(0, r.Eco.Paid("Оля", "ad:listen"));          // Оля на сайті, але плеєр вимкнений
+    }
+
+    [Fact]
+    public void No_shards_for_an_ad_that_was_skipped_or_for_someone_who_switched_the_player_off()
+    {
+        using var r = new AdRig();
+        AddClip(r, "Каламбур");
+        var clip = r.Library.All()[0];
+        var track = new TrackInfo(clip.TrackId, AdJingle.AdTitle, clip.Title, 20, null, "x", null);
+        r.Presence.Set("c2", "Петро");
+        r.Presence.SetListening("c2", true);
+        r.Presence.Set("c3", "Марта");
+        r.Presence.SetListening("c3", true);
+
+        r.OnAir.TrackId = clip.TrackId;
+        r.OnAir.SkipPending = true;
+        Assert.Equal(0, r.Rewards.Settle(r.Rewards.Start(track)!));
+
+        r.OnAir.SkipPending = false;
+        var p = r.Rewards.Start(track)!;
+        r.Presence.SetListening("c3", false);
+        Assert.Equal(1, r.Rewards.Settle(p));
+        Assert.Equal(0, r.Eco.Paid("Марта", "ad:listen"));
+        Assert.Equal(r.Options.ListenReward, r.Eco.Paid("Петро", "ad:listen"));
+
+        // реклама вже скінчилась і грає пісня — запізніла перевірка нічого не платить
+        var late = r.Rewards.Start(track)!;
+        r.OnAir.TrackId = "yt-9";
+        Assert.Equal(0, r.Rewards.Settle(late));
+    }
+
+    [Fact]
+    public void Deleting_a_clip_removes_its_file_rename_validates_the_title()
+    {
+        using var r = new AdRig();
+        AddClip(r, "Стара назва");
+        var clip = r.Library.All()[0];
+
+        Assert.False(r.Library.Rename(clip.Id, "   ").Ok);
+        Assert.True(r.Library.Rename(clip.Id, "Нова назва").Ok);
+        Assert.Equal("Нова назва", r.Library.Get(clip.Id)!.Title);
+
+        Assert.True(r.Library.Delete(clip.Id).Ok);
+        Assert.Contains(clip.TrackId, r.Voice.Deleted);
+        Assert.Empty(r.Library.All());
+        Assert.False(r.Library.IsAd(clip.TrackId));
     }
 }
