@@ -57,33 +57,52 @@
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Черга <span id="queueCount" class="count"></span></h2>
-        <ul id="queue" class="queue"></ul>
-      </section>
+      <div class="efir-two">
+        <section class="panel">
+          <h2>Черга <span id="queueCount" class="count"></span></h2>
+          <ul id="queue" class="queue"></ul>
+        </section>
 
-      <section class="panel dj-panel">
-        <div class="dj-head">
-          <img src="/static/glek.svg" alt="">
-          <div>
-            <h2><span id="djName">Дядько Глек</span> радить</h2>
-            <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+        <section class="panel dj-panel">
+          <div class="dj-head">
+            <img src="/static/glek.svg" alt="">
+            <div>
+              <h2><span id="djName">Дядько Глек</span> радить</h2>
+              <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+            </div>
           </div>
-        </div>
-        <div id="sugCards" class="sug-cards"></div>
-      </section>
+          <div id="sugCards" class="sug-cards"></div>
+        </section>
+      </div>
+
+      <div class="libline">
+        <a href="#lib/history">🕘 Що вже було</a><span>·</span>
+        <a href="#lib/likes">❤ Улюблене</a><span>·</span>
+        <a href="#lib/playlists">📂 Плейлисти</a><span>·</span>
+        <a href="#lib/rating">📈 Рейтинг</a>
+        <a class="all" href="#lib/history">уся Бібліотека →</a>
+      </div>
     </div>
 
     <div class="view" id="viewLib">
-      <section class="panel">
-        <div class="tabs" id="libTabs">
-          <button data-tab="history" class="on">🕘 Що вже було</button>
-          <button data-tab="likes">❤ Улюблене</button>
-          <button data-tab="playlists">📂 Плейлисти</button>
-          <button data-tab="rating">📈 Рейтинг</button>
-          <button data-tab="top">🏅 Хто скільки</button>
-          <button data-tab="bans">🚫 Бан</button>
-          <button data-tab="ads" id="adsTab" hidden>📣 Реклама</button>
+      <!-- На широкому екрані це бокове меню, на вузькому — рядок вкладок, що гортається.
+           app.js бачить тут ті самі button[data-tab], що й раніше. -->
+      <nav class="libmenu" id="libTabs" aria-label="Бібліотека">
+        <div class="libgrp">Музика</div>
+        <button data-tab="history" class="on"><span class="ico">🕘</span>Що вже було</button>
+        <button data-tab="likes"><span class="ico">❤</span>Улюблене</button>
+        <button data-tab="playlists"><span class="ico">📂</span>Плейлисти</button>
+        <div class="libgrp">Статистика</div>
+        <button data-tab="rating"><span class="ico">📈</span>Рейтинг</button>
+        <button data-tab="top"><span class="ico">🏅</span>Хто скільки</button>
+        <div class="libgrp">Керування</div>
+        <button data-tab="bans"><span class="ico">🚫</span>Бан</button>
+        <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
+      </nav>
+      <section class="panel libpage">
+        <div class="libhead">
+          <h2 id="libTitle">Що вже було</h2>
+          <input id="libFind" type="search" placeholder="знайти…" autocomplete="off" hidden>
         </div>
         <div id="lib"></div>
       </section>

@@ -148,7 +148,22 @@ section.panel { background: var(--panel); border: 1px solid var(--line); border-
 h2 { font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 h2 .count { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-#colMain { min-width: 0; }
+/* Колонка змісту — контейнер для запитів усередині розділів: «широкий екран» для «Ефіру»
+   й «Бібліотеки» означає широкий ЗМІСТ, тож згорнуті балачки одразу дають другу колонку. */
+#colMain { min-width: 0; container-type: inline-size; }
+
+/* ---- Ефір: черга і поради Глека поруч, коли зміст широкий ----
+   Міряємо саме зміст (контейнер), а не вікно: згорнули балачки — колонки з'являються
+   раніше, розгорнули — пізніше, і це завжди чесно. */
+.efir-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+@container (min-width: 1000px) {
+  .efir-two { grid-template-columns: 3fr 2fr; align-items: start; }
+}
+/* рядок-посилання в Бібліотеку замість сімох вкладок унизу «Ефіру» */
+.libline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .9em; padding: 2px 4px; }
+.libline a { color: var(--muted); text-decoration: none; }
+.libline a:hover { color: var(--accent); }
+.libline .all { margin-left: auto; color: var(--accent); }
 
 /* ---- now playing ---- */
 .now { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
@@ -224,6 +239,10 @@ button.vplay { padding: 3px 8px; }
 .qitem .btns { display: flex; gap: 4px; }
 .qitem .btns button { padding: 4px 7px; }
 .empty { color: var(--muted); padding: 10px 4px; line-height: 1.4; }
+/* порожня черга: Глек і одна кнопка, а не голий рядок тексту */
+.queue-empty { display: flex; gap: 12px; align-items: center; }
+.queue-empty img { width: 44px; height: 44px; flex: none; opacity: .85; }
+.queue-empty .qe-btn { margin-top: 8px; }
 /* the first suggestion card is the auto-DJ's actual next track */
 .sug.next { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .sug.next .btns { align-items: center; }
@@ -234,8 +253,9 @@ button.vplay { padding: 3px 8px; }
 .dj-head img { width: 56px; height: 56px; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
 .dj-head h2 { margin: 0; font-size: 1em; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 700; }
 .dj-head .sub { color: var(--muted); font-size: .85em; margin-top: 2px; }
+.dj-panel { container-type: inline-size; }
 .sug-cards { display: grid; grid-template-columns: 1fr; gap: 10px; }
-@media (min-width: 1100px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
+@container (min-width: 560px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
 /* every slot is the same height, so the panel never jumps when a card leaves or arrives */
 .sug { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 1fr auto; gap: 6px 12px; height: 118px; overflow: hidden; background: var(--bg2); border-radius: 12px; padding: 10px 12px; min-width: 0; border: 1px solid var(--line); }
 .sug img, .sug .noimg { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--panel); grid-row: 1 / span 2; align-self: start; }
@@ -245,6 +265,28 @@ button.vplay { padding: 3px 8px; }
 .sug .btns { display: flex; gap: 6px; grid-column: 2; align-self: end; }
 .sug .btns button { padding: 6px 12px; }
 .sug.empty { display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); padding: 14px 12px; border-style: dashed; opacity: .75; }
+
+/* ---- Бібліотека: бокове меню на широкому, рядок вкладок на вузькому ---- */
+.libmenu { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; scrollbar-width: none; }
+.libmenu::-webkit-scrollbar { display: none; }
+.libmenu .libgrp { display: none; }
+.libmenu button { flex: none; background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }
+.libmenu button:hover { background: var(--panel2); color: var(--text); }
+.libmenu button.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.libpage { min-width: 0; }
+.libhead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.libhead h2 { margin: 0; flex: none; }
+#libFind { max-width: 260px; margin-left: auto; padding: 6px 10px; font-size: .9em; }
+/* Списки в Бібліотеці тягнуться до низу екрана: це головне, по що сюди заходять. */
+.libpage .list { max-height: calc(100vh - 200px); }
+@container (min-width: 760px) {
+  /* селектор такий самий, як у правила маршруту вище, інакше display: flex переможе за вагою */
+  body.route-lib #viewLib { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .libmenu { flex-direction: column; position: sticky; top: 72px; overflow: visible; gap: 2px; }
+  .libmenu .libgrp { display: block; color: var(--muted); font-size: .72em; text-transform: uppercase; letter-spacing: 1.2px; padding: 12px 11px 4px; }
+  .libmenu .libgrp:first-child { padding-top: 2px; }
+  .libmenu button { justify-content: flex-start; width: 100%; }
+}
 
 /* ---- library (history / likes / playlists / stats) ---- */
 .tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }

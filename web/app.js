@@ -384,12 +384,19 @@
     const ul = $('queue');
     const q = state.queue;
     queueDur = q.map((it) => it.track.durationSec || 0);
-    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName]);
+    const sug0 = (state.suggestions || [])[0];
+    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId]);
     if (sig === queueSig) { tick(); return; }
     queueSig = sig;
     $('queueCount').textContent = q.length ? `· ${q.length} · ${fmt(queueDur.reduce((a, b) => a + b, 0))}` : '';
     if (!q.length) {
-      ul.innerHTML = `<li class="empty">Порожньо. Закинь щось, або хай ${esc(dj())} крутить своє.</li>`;
+      // Порожня черга — привід не виправдовуватись, а запропонувати перше, що Глек уже підібрав.
+      ul.innerHTML = `<li class="empty queue-empty">
+        <img src="/static/glek.svg" alt="">
+        <div>Порожньо. Закинь щось, або хай ${esc(dj())} крутить своє.
+        ${sug0 ? `<div class="qe-btn"><button id="qTakeSug" class="primary" title="${esc(`${sug0.track.artist} — ${sug0.track.title}`)}">👍 Закинути перше з порад ${esc(djGen())}</button></div>` : ''}</div>
+      </li>`;
+      if (sug0) $('qTakeSug').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', `/api/suggest/${sug0.itemId}/add`).then(ok).catch(fail));
     } else {
       const now = Date.now();
       ul.innerHTML = q.map((it, i) => {
@@ -792,6 +799,9 @@
   // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'chat'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'rating', 'top', 'bans', 'ads'];
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', rating: 'Рейтинг', top: 'Хто скільки', bans: 'Бан-лист', ads: 'Реклама' };
+  // Вкладки зі списком рядків уміють шукати по собі; у плейлистах і «Хто скільки» шукати нічого.
+  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', rating: 'знайти трек', bans: 'знайти в бан-листі', ads: 'знайти рекламу' };
   let libShown = null;    // яку вкладку бібліотеки вже намалювали: щоб не смикати API на кожен маршрут
 
   function parseHash() {
@@ -813,7 +823,14 @@
       history.replaceState(null, '', hashFor('efir'));
       r = 'efir';
     }
-    if (r === 'lib') libTab = LIB_TABS.includes(decodeURIComponent(tail)) ? decodeURIComponent(tail) : 'history';
+    if (r === 'lib') {
+      const want = decodeURIComponent(tail);
+      const next = LIB_TABS.includes(want) ? want : 'history';
+      if (next !== libTab) { libTab = next; $('libFind').value = ''; }
+      $('libTitle').textContent = LIB_TITLE[libTab];
+      $('libFind').hidden = !LIB_FIND[libTab];
+      $('libFind').placeholder = LIB_FIND[libTab] || '';
+    }
     route = r;
     for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
     document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
@@ -1169,6 +1186,25 @@
 
   // ---------- library: history / likes / playlists / stats ----------
   $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
+  /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
+  function filterLib() {
+    const box = $('lib');
+    const want = $('libFind').value.trim().toLowerCase();
+    const rows = box.querySelectorAll('.list > li');
+    let shown = 0;
+    rows.forEach((li) => {
+      const hit = !want || li.textContent.toLowerCase().includes(want);
+      li.hidden = !hit;
+      if (hit) shown++;
+    });
+    let none = box.querySelector('.findnone');
+    if (want && rows.length && !shown) {
+      if (!none) { none = document.createElement('div'); none.className = 'empty findnone'; box.appendChild(none); }
+      none.textContent = `Нічого схожого на «${$('libFind').value.trim()}» тут нема.`;
+    } else if (none) none.remove();
+  }
+  $('libFind').addEventListener('input', filterLib);
+
   const trackRow = (t, right, extra) => `<li>
       ${cover(t)}
       <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
@@ -1180,6 +1216,10 @@
     wireVoiceButtons(root);
   }
   async function loadLib() {
+    await drawLib();
+    filterLib();
+  }
+  async function drawLib() {
     const box = $('lib');
     try {
       if (libTab === 'history') {
@@ -1237,7 +1277,7 @@
     box.querySelectorAll('.seg').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => {
       ratingOpt[s.dataset.key] = b.dataset.v;
       try { localStorage.setItem(s.dataset.key === 'days' ? 'ratingDays' : 'ratingSort', b.dataset.v); } catch { /* приватне вікно */ }
-      renderRating().catch((e) => { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+      loadLib();
     }));
     wireRows(box);
   }
@@ -1269,7 +1309,7 @@
       const ask = admin ? `Розбанити «${b.dataset.title}»?` : `Викупити «${b.dataset.title}» з бану за ${r.unbanPrice} 🏺?`;
       if (!confirm(ask)) return;
       busy(e.currentTarget, '…', () => api('DELETE', `/api/ban/${encodeURIComponent(b.dataset.id)}`)
-        .then((res) => { ok(res); return renderBans(); }).catch(fail));
+        .then((res) => { ok(res); return loadLib(); }).catch(fail));
     });
   }
 
@@ -1321,7 +1361,7 @@
       </li>`;
     box.innerHTML = head + `<ul class="list ads-list">${r.items.slice().reverse().map(row).join('') || '<li class="empty">Бібліотека порожня. Залий перший файл вище.</li>'}</ul>`;
 
-    const again = () => renderAds().catch((e) => fail(e));
+    const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
       { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
     $('adsNow').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
