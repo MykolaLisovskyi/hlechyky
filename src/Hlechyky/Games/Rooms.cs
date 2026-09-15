@@ -300,7 +300,20 @@ public sealed class Rooms
         }
         room.Seats[0] = nick;
         room.Host = nick;
-        lock (_lock) _rooms.Add(room);
+        // Перевірка вище й додавання — під різними замками: дві вкладки одночасно збудували б дві кімнати на один ключ, і
+        // спільні сервіси (цех гончарів) побачили б ті самі вироби з обох. Тож під замком шукаємо ще раз.
+        Room? raced;
+        lock (_lock)
+        {
+            raced = _rooms.FirstOrDefault(r => r.Info.Solo && r.Key == wanted && r.Has(nick));
+            if (raced is null) _rooms.Add(room);
+        }
+        if (raced is not null)
+        {
+            var again = new Outbox();
+            again.Add(new RoomViews(raced.Id));
+            return new RoomOutcome(again, new RoomReply(true, "", raced.Id));
+        }
 
         var outbox = new Outbox();
         string? failed;

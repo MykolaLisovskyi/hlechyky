@@ -139,13 +139,13 @@ public sealed partial class Clicker
         {
             _albumCells[row] |= bit;
             AwayNote($"📒 Альбом: нова клітинка — {WareOf(item.Ware)!.Name.ToLowerInvariant()}, {StyleWord(item.Style)}");
-            if (_albumCells[row] == FullRowMask) Ctx.Award(0, 0, "ach:potter-album-row");
-            if (AlbumOpenCount(_albumCells) == AlbumSize) Ctx.Award(0, 0, "ach:potter-album-all");
+            if (_albumCells[row] == FullRowMask) Achieve("potter-album-row");
+            if (AlbumOpenCount(_albumCells) == AlbumSize) Achieve("potter-album-all");
         }
         if (item.Quality >= 3) _albumStars[row] |= bit;
         var after = MasteryLevel(FiredOf(item.Ware));
         var before = MasteryLevel(Math.Max(0, FiredOf(item.Ware) - n));
-        if (after > before && after == MasteryAt.Length) Ctx.Award(0, 0, "ach:potter-mastery");
+        if (after > before && after == MasteryAt.Length) Achieve("potter-mastery");
     }
 
     /// <summary>
@@ -154,6 +154,9 @@ public sealed partial class Clicker
     /// </summary>
     void AlbumOnGift(ItemInfo item)
     {
+        // Лише те, що отримувач і сам міг би виліпити й розписати: відкритий виріб і розпис із його колекції. Інакше
+        // ветеран за місяць дарунків складав би новачкові весь альбом (+72 % до всього) без жодного розпису.
+        if (!WareOpen(item.Ware) || (item.Style.Length > 0 && !_styles.Contains(item.Style))) return;
         var row = AlbumWareIndex(item.Ware);
         var col = AlbumStyleIndex(item.Style);
         if (row < 0 || col < 0) return;
@@ -161,8 +164,8 @@ public sealed partial class Clicker
         if ((_albumCells[row] & bit) != 0) return;
         _albumCells[row] |= bit;
         AwayNote($"📒 Альбом: нова клітинка з дарунка — {WareOf(item.Ware)!.Name.ToLowerInvariant()}, {StyleWord(item.Style)}");
-        if (_albumCells[row] == FullRowMask) Ctx.Award(0, 0, "ach:potter-album-row");
-        if (AlbumOpenCount(_albumCells) == AlbumSize) Ctx.Award(0, 0, "ach:potter-album-all");
+        if (_albumCells[row] == FullRowMask) Achieve("potter-album-row");
+        if (AlbumOpenCount(_albumCells) == AlbumSize) Achieve("potter-album-all");
     }
 
     /// <summary>Виліплено виріб: копнули глини — може, щось трипільське. Повний музей більше не шукає.</summary>
@@ -188,7 +191,7 @@ public sealed partial class Clicker
     {
         _finds |= 1 << i;
         _lastFind = new LastFindRow(Finds[i].Key, now, false);
-        if ((_finds & FullMuseumMask) == FullMuseumMask) Ctx.Award(0, 0, "ach:potter-museum-shards");
+        if ((_finds & FullMuseumMask) == FullMuseumMask) Achieve("potter-museum-shards");
     }
 
     static string StyleWord(string style) =>
@@ -229,7 +232,7 @@ public sealed partial class Clicker
         _stove.Add(new StoveTile(pick.Style, pick.Quality));
         if (_stove.Count == StoveSlots)
         {
-            Ctx.Award(0, 0, "ach:potter-stove");
+            Achieve("potter-stove");
             return ActResult.Accept("🧱 Кахляна піч готова! +17 % до всього — у хаті тепло й гарно");
         }
         return ActResult.Accept($"🧱 Кахля в печі: {_stove.Count} з {StoveSlots} · +1 % до всього");

@@ -170,7 +170,9 @@ public sealed partial class Clicker
             _guildHello = true;
             svc.Hello(GuildKey, GuildNick, _guildRank, now);
         }
-        if (svc.TakeMail(GuildKey) is not { } mail) return;
+        // Пошту забираємо лише на дії: забрана у виді жила б тільки в пам'яті кімнати (зберігає її каркас після дії), і
+        // перезапуск сервера до першого кліка загубив би дарунок назавжди.
+        if (!_inAct || svc.TakeMail(GuildKey) is not { } mail) return;
         foreach (var raw in mail)
         {
             if (ValidGift(raw) is not { } g) continue;
@@ -247,7 +249,7 @@ public sealed partial class Clicker
         var gain = WagonReward(r.Tier, r.Was, out var minutes);
         Add(gain);
         _guildClaims++;
-        if (_guildClaims == 1) Ctx.Award(0, 0, "ach:potter-wagon");
+        if (_guildClaims == 1) Achieve("potter-wagon");
         return ActResult.Accept($"🛒 Віз повернувся з ярмарку ({ClickerGuildService.TierNames[r.Tier]}): +{Short(gain)} {Pots(gain)} — "
             + $"{minutes.ToString("0", Uk)} хв твого пасиву");
     }
@@ -261,7 +263,7 @@ public sealed partial class Clicker
         if (svc.Gift(GuildKey, GuildNick, to, it, now) is { } why) return ActResult.Fail(why);
         TakeItems(x => x == it, 1);
         _giftsSent++;
-        if (_giftsSent == GiftsForAchievement) Ctx.Award(0, 0, "ach:potter-gift");
+        if (_giftsSent == GiftsForAchievement) Achieve("potter-gift");
         return ActResult.Accept($"🎁 {Capital(ItemWords(it, style: false))} — дарунок для {to} уже в дорозі");
     }
 
@@ -331,7 +333,7 @@ public sealed partial class Clicker
         _guildRank++;
         svc.Hello(GuildKey, GuildNick, _guildRank, now);
         Ctx.Log($"🎓 {GuildNick} склав(ла) майстерштук — тепер {next.Name.ToLowerInvariant()} цеху гончарів");
-        if (_guildRank == GuildMasterOfGuild) Ctx.Award(0, 0, "ach:potter-rank");
+        if (_guildRank == GuildMasterOfGuild) Achieve("potter-rank");
         return ActResult.Accept($"🎓 Цех прийняв майстерштук: ти {next.Name.ToLowerInvariant()}! {next.Perk}");
     }
 

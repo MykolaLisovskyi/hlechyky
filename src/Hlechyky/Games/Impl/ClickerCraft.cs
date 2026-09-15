@@ -179,10 +179,18 @@ public sealed partial class Clicker
     {
         if (WareOf(ware) is not { } w) return 0;
         var q = QualityMult[Math.Clamp(quality, 1, 3)];
-        var byPassive = PassiveBase * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
-        var floor = (double)ClickBase * w.Work * ValueFloorClicks * q;
+        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
+        var floor = (double)(_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
         return Math.Max(1, ToLong(Math.Max(byPassive, floor)));
     }
+
+    /// <summary>
+    /// Пам'ять пасиву й кліка на час одного виду: ItemValue кличеться на кожен виріб комори, замовлення й віз, а
+    /// PassiveBase/ClickBase щоразу обходять драбину. У межах виду стан не міняється, тож рахуємо раз.
+    /// </summary>
+    bool _memoOn;
+    double _memoPassive;
+    long _memoClick;
 
     /// <summary>Простий — ×1, далі від гаварецького ×1,2 до трипільського ×1,9.</summary>
     internal static double StyleValue(string style)
@@ -209,8 +217,8 @@ public sealed partial class Clicker
             _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DryTime.TotalSeconds * FairDryMult())));
             _formed++;
             made++;
-            if (_formed == 1) Ctx.Award(0, 0, "ach:potter-ware-1");
-            if (_formed == WaresForAchievement) Ctx.Award(0, 0, "ach:potter-ware-1k");
+            if (_formed == 1) Achieve("potter-ware-1");
+            if (_formed == WaresForAchievement) Achieve("potter-ware-1k");
             AlbumOnFormed(w.Key);
             if (made > 50) { _formWork = 0; break; }                   // запобіжник від зіпсованого збереження
         }
@@ -262,6 +270,29 @@ public sealed partial class Clicker
 
     static string WaresWord(long n) => Plural(n, "виріб", "вироби", "виробів");
 
+    // ---------- ачівки з черги ----------
+
+    /// <summary>
+    /// Ачівки пакетів сьомого оновлення. Частина з них народжується в Sync, а Sync кличе й View — поза дією, де каркас
+    /// не приймає Ctx.Award (його скринька відкрита лише в Act/Tick/Start). Тому — у чергу (вона ще й у збереженні), а
+    /// видає її найближча дія. Повторна видача безпечна: Achievements.Unlock ідемпотентний.
+    /// </summary>
+    internal void Achieve(string key)
+    {
+        if (!_achQueue.Contains(key)) _achQueue.Add(key);
+        if (_inAct) FlushAchievements();
+    }
+
+    readonly List<string> _achQueue = [];
+    /// <summary>Зараз іде дія гравця (а не вид): Ctx.Award і Ctx.Log доходять, пошту цеху можна забирати.</summary>
+    internal bool _inAct;
+
+    void FlushAchievements()
+    {
+        foreach (var key in _achQueue) Ctx.Award(0, 0, "ach:" + key);
+        _achQueue.Clear();
+    }
+
     // ---------- Око майстра для мінігор ----------
 
     /// <summary>
@@ -286,8 +317,14 @@ public sealed partial class Clicker
     /// <summary>Рядок для «поки тебе не було» від пакетів (купці, дарунки…). Лише під час довгого простою.</summary>
     internal void AwayNote(string text)
     {
-        if (_awayOpen && _awayNotes.Count < 8) _awayNotes.Add(text);
+        if (_awayOpen) { if (_awayNotes.Count < 8) _awayNotes.Add(text); return; }
+        // Дещо з простою приїжджає вже після виду, що склав запис, — на першій дії (пошта цеху, ачівки): дописуємо в щойно
+        // складений запис, поки клієнт його ще показує, а не губимо.
+        if (_away is { } a && Ctx.Clock.UtcNow - a.At < AwayLate && a.Notes.Count < 8) _away = a with { Notes = [.. a.Notes, text] };
     }
+
+    /// <summary>Скільки після запису «поки тебе не було» до нього ще можна дописувати.</summary>
+    static readonly TimeSpan AwayLate = TimeSpan.FromMinutes(2);
 
     bool _awayOpen;
 
@@ -416,6 +453,6 @@ public sealed partial class Clicker
         foreach (var (key, n) in row.FiredBy ?? [])
             if (n > 0 && WareOf(key) is not null) _firedBy[key] = n;
         _formed = Math.Max(0, row.Formed);
-        _away = row.Away;
+        _away = row.Away is { } a ? a with { Seconds = Math.Max(0, a.Seconds), Pots = Math.Max(0, a.Pots), Formed = Math.Max(0, a.Formed), Notes = a.Notes ?? [] } : null;
     }
 }

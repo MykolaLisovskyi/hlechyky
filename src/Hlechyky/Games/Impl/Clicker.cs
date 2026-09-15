@@ -452,12 +452,24 @@ public sealed partial class Clicker : Game
         ResetAlbum(_lastSync);
         ResetFair(_lastSync);
         ResetGuild(_lastSync);
+        _achQueue.Clear();
+        _viewVersion++;
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         // Пасив дораховуємо перед кожною дією: і клік, і покупка мусять бачити однакове число глеків.
+        _inAct = true;
+        _viewVersion++;
+        try { return ActInner(seat, action, payload); }
+        finally { _inAct = false; }
+    }
+
+    ActResult ActInner(int seat, string action, JsonElement payload)
+    {
         Sync();
+        // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
+        FlushAchievements();
         // Каталоги їдуть у вид лише до першої дії (Look знову попросить, якщо клієнтові їх бракує).
         _catalogWanted = false;
         var result = action switch
@@ -948,12 +960,38 @@ public sealed partial class Clicker : Game
 
     public override object View(int? seat)
     {
+        // Каркас будує вид двічі поспіль (місце й глядач) і розсилає його вже поза замком кімнати. Тому вид — готовий
+        // JsonElement: жодних лінивих Select по живих колекціях, які змінить наступна пачка кліків під час серіалізації
+        // («Collection was modified»), — і в межах 50 мс без дії той самий вид не складається вдруге.
+        var at = Ctx.Clock.UtcNow;
+        if (_viewCache is { } cached && _viewCacheVersion == _viewVersion && at >= _viewCacheAt && at - _viewCacheAt < ViewReuse)
+            return cached;
+        _memoOn = false;
+        JsonElement built;
+        try { built = JsonSerializer.SerializeToElement(BuildView(), Wire); }
+        finally { _memoOn = false; }
+        _viewCache = built;
+        _viewCacheAt = at;
+        _viewCacheVersion = _viewVersion;
+        return built;
+    }
+
+    static readonly TimeSpan ViewReuse = TimeSpan.FromMilliseconds(50);
+    JsonElement? _viewCache;
+    DateTimeOffset _viewCacheAt;
+    long _viewVersion, _viewCacheVersion = -1;
+
+    object BuildView()
+    {
         // Пасив рахуємо і на відкритті, а не лише при дії (так каже spec): гончар, який повернувся й
         // просто дивиться на коло, мусить одразу бачити зароблене, а не чекати першого кліка. View
         // каркас кличе під замком кімнати (Rooms.ViewsFor), тож синхронізувати тут безпечно.
         Sync();
         var all = AllMult;
         var passive = PassiveBase;
+        _memoPassive = passive;
+        _memoClick = ClickBase;
+        _memoOn = true;
         var spent = StampsSpent;
         var stampsAll = StampsFor(_total);
         var heat = HeatAt(Ctx.Clock.UtcNow);
@@ -1088,7 +1126,8 @@ public sealed partial class Clicker : Game
         ClickerGuard.Row? Guard = null,
         FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
         HouseRow? House = null,
-        CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null);
+        CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null,
+        List<string>? Achievements = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1098,7 +1137,7 @@ public sealed partial class Clicker : Game
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
-            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild()),
+            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null),
         Wire);
 
     public override void Load(string json)
@@ -1165,6 +1204,9 @@ public sealed partial class Clicker : Game
         LoadAlbum(s.Album);
         LoadFair(s.Fair);
         LoadGuild(s.Guild);
+        _achQueue.Clear();
+        foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
+        _viewVersion++;
         // Після Load каталогів у виді нема (вид до збереження й після мусить збігатись): клієнт без них сам попросить look { catalog: true }.
         _catalogWanted = false;
     }

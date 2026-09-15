@@ -79,6 +79,8 @@ public sealed partial class Clicker
     /// <summary>Подія чекає гончаря не довше за десять хвилин.</summary>
     public static readonly TimeSpan FairEventWait = TimeSpan.FromMinutes(10);
     /// <summary>Межі наслідків: втрата — не більше десятої частини глеків і трьох хвилин пасиву; виграш — до п'яти хвилин.</summary>
+    /// <summary>Стеля календарного попиту разом із бафом ціни (без пільг сіл).</summary>
+    public const double FairCalendarCap = 2;
     public const double FairEventLoss = 0.1, FairEventPotsMin = -180, FairEventPotsMax = 300;
     public const int FairBuffMaxSeconds = 300;
 
@@ -360,7 +362,7 @@ public sealed partial class Clicker
         _mktRep[village] = Math.Max(0, after);
         var now = FairLevelOf(_mktRep[village]);
         MktRecountLevels();
-        if (now == FairRepLevels.Length - 1 && level < now) Ctx.Award(0, 0, "ach:potter-rep");
+        if (now == FairRepLevels.Length - 1 && level < now) Achieve("potter-rep");
         return now - level;
     }
 
@@ -386,10 +388,12 @@ public sealed partial class Clicker
     double FairValueMult(string ware)
     {
         var d = MktToday;
-        var m = FairDemand(d.Holiday, ware) * (d.Weekend ? FairWeekend : 1);
+        // Свято × вихідні × кобзар разом — не більше ×2 (свято саме по собі вже ×2): інакше Різдво у вихідний із кобзарем
+        // давало ×3,6 до ціни, а з замовленнями — вдесятеро понад ціль. Пільга села — окремо, це заслужене тижнями.
+        var m = Math.Min(FairCalendarCap, FairDemand(d.Holiday, ware) * (d.Weekend ? FairWeekend : 1) * Math.Clamp(MktBuff("value"), 1, 1.5));
         if (ware is "bowl" or "dish") m *= 1 + FairPerkValue * MktLevel("bubnivka");
         if (ware is "pot" or "makitra" or "barrel") m *= 1 + FairPerkValue * MktLevel("gavarets");
-        return m * Math.Clamp(MktBuff("value"), 1, 1.5);
+        return m;
     }
 
     double FairDryMult() =>
@@ -576,7 +580,7 @@ public sealed partial class Clicker
         }
         _mktGuests++;
         GuardSpend(ClickerGuard.CatchWeight);
-        if (_mktGuests == FairGuestsForAchievement) Ctx.Award(0, 0, "ach:potter-guest");
+        if (_mktGuests == FairGuestsForAchievement) Achieve("potter-guest");
         MktScheduleGuest(now);
         return ActResult.Accept(text);
     }

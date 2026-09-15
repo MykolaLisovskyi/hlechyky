@@ -128,15 +128,29 @@ public sealed class ClickerGuildService
     {
         if (_state is not null) return _state;
         State? s = null;
-        try
-        {
-            if (_store.LoadState(StoreKey) is { Length: > 0 } json) s = JsonSerializer.Deserialize<State>(json, Wire);
-        }
+        string? json;
+        try { json = _store.LoadState(StoreKey); }
         catch (Exception ex)
         {
-            _log?.LogWarning(ex, "стан цеху гончарів не прочитався — починаємо з чистого");
+            // База не відповіла (замкнена після деплою тощо) — НЕ кешуємо порожній стан і нічого не пишемо: інакше перший
+            // же внесок перезаписав би вози, скриньки й список гончарів. Цей виклик працює з тимчасовим порожнім, наступний
+            // спробує прочитати знову.
+            _log?.LogWarning(ex, "стан цеху гончарів не прочитався — спробуємо ще раз");
+            return Normalize(new State());
         }
-        s ??= new State();
+        try
+        {
+            if (json is { Length: > 0 }) s = JsonSerializer.Deserialize<State>(json, Wire);
+        }
+        catch (JsonException ex)
+        {
+            _log?.LogWarning(ex, "стан цеху гончарів зіпсований — починаємо з чистого");
+        }
+        return _state = Normalize(s ?? new State());
+    }
+
+    static State Normalize(State s)
+    {
         // Чого не було в старому стані (чи в руках, що правили базу) — порожнє, а не null.
         s.Weeks = Clean(s.Weeks);
         s.Potters = Clean(s.Potters);
@@ -148,7 +162,7 @@ public sealed class ClickerGuildService
             w.Givers = Clean(w.Givers);
             w.Claimed = Clean(w.Claimed);
         }
-        return _state = s;
+        return s;
     }
 
     static Dictionary<string, T> Clean<T>(Dictionary<string, T>? d)
@@ -161,6 +175,7 @@ public sealed class ClickerGuildService
     /// <summary>Записати стан. Кличеться під замком — порядок записів той самий, що й порядок змін.</summary>
     void Save()
     {
+        if (_state is null) return;                       // стан не прочитався — тимчасовий порожній у базу не пишемо
         try { _store.SaveState(StoreKey, JsonSerializer.Serialize(_state, Wire)); }
         catch (Exception ex) { _log?.LogWarning(ex, "стан цеху гончарів не записався"); }
     }

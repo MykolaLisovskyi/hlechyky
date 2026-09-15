@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 
@@ -73,5 +74,90 @@ public class ClickerPacksTests
         var before = View(h).GetProperty("kiln").GetProperty("slots").GetInt32();
         Patch(h, s => s["guild"] = new JsonObject { ["rank"] = 2 });
         Assert.Equal(before + 2, View(h).GetProperty("kiln").GetProperty("slots").GetInt32());
+    }
+
+    // ---------- після рецензії ----------
+
+    [Fact]
+    public void An_achievement_earned_while_away_is_not_lost_when_it_arrives_in_a_view()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["upgrades"]!["apprentice"] = 25; s["craft"]!["formed"] = 999; });
+        h.Clock.Advance(TimeSpan.FromMinutes(10));
+        Assert.True(View(h).GetProperty("craft").GetProperty("formed").GetInt64() > 1000);
+        // У виді каркас ачівок не приймає — вони чекають першої дії (і лежать у збереженні, якщо дії не буде).
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:potter-ware-1k");
+        Assert.True(h.Act(0, "look").Ok);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-ware-1k");
+    }
+
+    [Fact]
+    public void Queued_achievements_survive_a_reload()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["upgrades"]!["apprentice"] = 25; s["craft"]!["formed"] = 999; });
+        h.Clock.Advance(TimeSpan.FromMinutes(10));
+        View(h);
+        Patch(h, _ => { });
+        Assert.True(h.Act(0, "look").Ok);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-ware-1k");
+    }
+
+    [Fact]
+    public void The_auto_kiln_leaves_a_batch_the_potter_started_painting_alone()
+    {
+        var h = Wheel();
+        Patch(h, s => s["styles"] = new JsonArray("gavarets"));
+        Assert.True(h.Act(0, "kiln", new { op = "paint", style = "gavarets" }).Ok);
+        FullDryRack(h, rank: 1);
+        Assert.Equal("cold", View(h).GetProperty("kiln").GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public void A_view_is_a_snapshot_that_later_actions_do_not_change()
+    {
+        var h = Wheel();
+        Patch(h, s => s["craft"]!["items"] = new JsonObject { ["bowl||1"] = 3 });
+        object before;
+        lock (h.Room.Sync) before = h.Room.Game.View(0);
+        Assert.True(h.Act(0, "bazaar", new { all = true }).Ok);
+        // Розсилка серіалізує вид уже поза замком: те, що склали до продажу, мусить лишитись тим, що склали.
+        Assert.Equal(1, Views.Json(before).GetProperty("craft").GetProperty("items").GetArrayLength());
+        Assert.Equal(0, View(h).GetProperty("craft").GetProperty("items").GetArrayLength());
+    }
+
+    sealed class FlakyStore : IGameStore
+    {
+        public readonly FakeStore Inner = new();
+        public int FailReads;
+        public int Saves;
+        public void SaveState(string key, string json) { Saves++; Inner.SaveState(key, json); }
+        public string? LoadState(string key)
+        {
+            if (FailReads > 0) { FailReads--; throw new InvalidOperationException("database is locked"); }
+            return Inner.LoadState(key);
+        }
+        public void DeleteState(string key) => Inner.DeleteState(key);
+    }
+
+    [Fact]
+    public void A_database_hiccup_on_first_read_does_not_wipe_the_guild()
+    {
+        var store = new FlakyStore();
+        var clock = new FakeClock();
+        new ClickerGuildService(store.Inner, clock).Hello("оля", "Оля", 0, clock.UtcNow);
+        var saved = store.Inner.LoadState("clicker-guild");
+        Assert.NotNull(saved);
+
+        store.FailReads = 1;
+        var svc = new ClickerGuildService(store, clock);
+        svc.Hello("петро", "Петро", 0, clock.UtcNow);             // читання впало — цей виклик нічого не пише
+        Assert.Equal(0, store.Saves);
+        Assert.Equal(saved, store.Inner.LoadState("clicker-guild"));
+
+        svc.Hello("петро", "Петро", 0, clock.UtcNow);             // база ожила — Олю не загубили
+        var json = System.Text.RegularExpressions.Regex.Unescape(store.Inner.LoadState("clicker-guild")!);
+        Assert.Contains("Оля", json);
+        Assert.Contains("Петро", json);
     }
 }

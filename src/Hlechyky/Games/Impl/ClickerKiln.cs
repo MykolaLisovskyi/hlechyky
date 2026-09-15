@@ -754,7 +754,7 @@ public sealed partial class Clicker
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
-        if (manual && outs.Count >= PerfectMin && outs.All(o => o.Q == 3)) Ctx.Award(0, 0, "ach:potter-kiln-perfect");
+        if (manual && outs.Count >= PerfectMin && outs.All(o => o.Q == 3)) Achieve("potter-kiln-perfect");
 
         _kiln.Clear();
         _litAt = default;
@@ -825,6 +825,8 @@ public sealed partial class Clicker
     void AutoKiln(DateTimeOffset now)
     {
         if (!GuildAutoKiln || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
+        // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
+        if (_paintSeed != 0 || _kilnBeauty > 0 || _kilnStyle.Length > 0) return;
         if (_rack.Count < RackSize || _rack.Any(r => r.DryAt > now)) return;
         var dry = TakeDry(now, KilnSlots);
         if (dry.Count == 0) return;

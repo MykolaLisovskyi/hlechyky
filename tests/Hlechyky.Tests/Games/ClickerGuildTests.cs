@@ -318,6 +318,8 @@ public class ClickerGuildTests
         var ola = g.Potter("Оля");
         var petro = g.Potter("Петро");
         Items(ola, ("kumanets|kosiv|3", 2));
+        // Петро сам уже може ліпити куманці й має косівський розпис — тоді дарунок відкриє йому клітинку альбому.
+        Patch(petro, s => { s["total"] = 5_000_000_000; s["styles"] = new JsonArray("kosiv"); });
         petro.Clock.Advance(TimeSpan.FromMinutes(10));
 
         var r = Guild(ola, new { op = "gift", nick = "петро ", key = "kumanets|kosiv|3" });
@@ -326,6 +328,9 @@ public class ClickerGuildTests
         Assert.Equal(1, ola.View(0).GetProperty("craft").GetProperty("items")[0].GetProperty("n").GetInt32());
         Assert.Equal(2, G(ola).GetProperty("gifts").GetProperty("left").GetInt32());
 
+        // Пошту цеху кімната забирає лише на дії (див. SyncGuild) — вид сам по собі скриньки не чіпає.
+        Assert.Equal(0, G(petro).GetProperty("shelf").GetArrayLength());
+        Assert.True(petro.Act(0, "look").Ok);
         var view = petro.View(0);
         var shelf = view.GetProperty("guild").GetProperty("shelf");
         Assert.Equal(1, shelf.GetArrayLength());
@@ -382,6 +387,7 @@ public class ClickerGuildTests
         Assert.Single(ola.Awards, a => a.Reason == "ach:potter-gift");
         Assert.Equal(15, G(ola).GetProperty("gifts").GetProperty("sent").GetInt32());
 
+        Assert.True(petro.Act(0, "look").Ok);
         var view = G(petro);
         Assert.Equal(ClickerGuildService.ShelfSize, view.GetProperty("shelf").GetArrayLength());
         Assert.Equal(15, view.GetProperty("gifts").GetProperty("got").GetInt32());
