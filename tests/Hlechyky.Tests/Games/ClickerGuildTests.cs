@@ -335,6 +335,11 @@ public class ClickerGuildTests
         Assert.Contains(view.GetProperty("away").GetProperty("notes").EnumerateArray(), n => n.GetString()!.Contains("Оля"));
         // У комору дарунок не йде — його не продаси.
         Assert.Equal(0, view.GetProperty("craft").GetProperty("items").GetArrayLength());
+        // Зате відкриває клітинку альбому — без зірки: дзвінким його зробив не Петро.
+        var row = Array.FindIndex(Clicker.Wares, w => w.Key == "kumanets");
+        var col = 1 + Array.FindIndex(Clicker.Styles, s => s.Key == "kosiv");
+        Assert.NotEqual(0, view.GetProperty("album").GetProperty("cells")[row].GetInt32() & (1 << col));
+        Assert.Equal(0, view.GetProperty("album").GetProperty("stars")[row].GetInt32() & (1 << col));
         // Скринька порожня — вдруге не приходить.
         Assert.Equal(1, G(petro).GetProperty("shelf").GetArrayLength());
     }

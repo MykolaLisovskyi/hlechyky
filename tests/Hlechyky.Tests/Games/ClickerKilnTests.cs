@@ -489,8 +489,10 @@ public class ClickerKilnTests
         Assert.InRange(cracked, 5, 20);
         Assert.Equal(24 - cracked, StoreCount(h));
         Assert.Equal(24 - cracked, Craft(h).GetProperty("fired").GetInt64());
-        // Черепки — 15 % ціни простого звичайного горщика за кожен тріснутий.
-        Assert.Equal((long)(pot * Clicker.ShardShare) * cracked, last.GetProperty("shards").GetInt64());
+        // Черепки — 15 % ціни простого звичайного горщика за кожен тріснутий. Ціна за обпал підросла: цілі горщики
+        // відкрили клітинку альбому й майстерність (ClickerAlbum.cs), тож черепки — між ціною до й після.
+        var potAfter = Craft(h).GetProperty("wares")[0].GetProperty("value").GetInt64();
+        Assert.InRange(last.GetProperty("shards").GetInt64(), (long)(pot * Clicker.ShardShare) * cracked, (long)(potAfter * Clicker.ShardShare) * cracked);
     }
 
     [Fact]

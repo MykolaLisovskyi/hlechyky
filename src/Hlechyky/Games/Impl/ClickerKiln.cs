@@ -556,10 +556,8 @@ public sealed partial class Clicker
     KilnLastRow? _kilnLast;
     int _kilnBatches;
 
-    /// <summary>Місця, які додає ранг цеху (ставить ClickerGuild.cs; поки 0).</summary>
-    internal int KilnSlotsBonus { get; set; }
-
-    internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, KilnSlotsBonus);
+    /// <summary>Місця горна: піч дає до стелі, ранг майстра цеху — ще два понад неї (ClickerGuild.cs).</summary>
+    internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, GuildKilnSlots);
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
@@ -810,10 +808,33 @@ public sealed partial class Clicker
     /// <summary>Підмайстер-палій відкриває своє горно сам; покинуте ручне горно за чверть години відкриває теж він (якість 1).</summary>
     void SyncKiln(DateTimeOffset now, TimeSpan paid)
     {
-        if (_litAt == default) return;
-        var end = _litAt + KilnBurn;
-        if (_litHelper && now >= end) KilnFinish(end, 0, 0, manual: false);
-        else if (!_litHelper && now >= end + KilnAbandon) KilnFinish(end + KilnAbandon, 0, 0, manual: false);
+        if (_litAt != default)
+        {
+            var end = _litAt + KilnBurn;
+            if (_litHelper && now >= end) KilnFinish(end, 0, 0, manual: false);
+            else if (!_litHelper && now >= end + KilnAbandon) KilnFinish(end + KilnAbandon, 0, 0, manual: false);
+        }
+        AutoKiln(now);
+    }
+
+    /// <summary>
+    /// Автогорно челядника цеху: коли горно холодне й порожнє, а сушарня повна й уся суха — підмайстер сам розпалює
+    /// (якість 1, без тріщин, як «Хай підмайстер палить»). Лише повна суха сушарня: гравцеві, що палить сам, автогорно
+    /// не забирає сирців із-під рук, а за довгий простій крутить по одному обпалу на синхронізацію.
+    /// </summary>
+    void AutoKiln(DateTimeOffset now)
+    {
+        if (!GuildAutoKiln || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
+        if (_rack.Count < RackSize || _rack.Any(r => r.DryAt > now)) return;
+        var dry = TakeDry(now, KilnSlots);
+        if (dry.Count == 0) return;
+        _kiln.AddRange(dry.Select(r => r.Ware));
+        _litAt = now;
+        _litHelper = true;
+        _litStraw = false;
+        _fireSeed = Ctx.Rng.Next(1, int.MaxValue);
+        _paintSeed = 0;
+        AwayNote($"🔥 Автогорно: підмайстри самі розпалили {dry.Count} {WaresWord(dry.Count)}");
     }
 
     void ResetKiln(DateTimeOffset now)
