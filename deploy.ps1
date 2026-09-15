@@ -18,6 +18,8 @@
 param(
     # Коміт, через який прилетів вебхук — лише для логу (тягнемо завжди верхівку origin/main).
     [string]$Sha = '',
+    # Хто запустив: webhook — подія від GitHub, poll — сервер сам побачив зелену збірку, вебхук про яку не дійшов.
+    [string]$Via = 'webhook',
     # Деплоїти навіть із незакомієченими змінами в робочій копії (вони поїдуть на прод як є).
     [switch]$Force
 )
@@ -144,11 +146,16 @@ try {
     $target = Get-Git @('rev-parse', "origin/$Branch")
     $built = if (Test-Path $BuiltFile) { (Get-Content $BuiltFile -Raw).Trim() } else { '' }
 
+    # Локальна копія буває попереду origin (закомітили тут, а запушити ще не встигли): тягнути тоді нічого,
+    # а build\ має бути з HEAD. Інакше вебхук чи опитувач про старішу збірку перезапускав би сайт задарма.
+    $ahead = $before -ne $target -and (Invoke-Tool 'git' @('-C', $Root, 'merge-base', '--is-ancestor', $target, $before)).Code -eq 0
+    if ($ahead) { $target = $before }
+
     $needPull = $before -ne $target
     $needRestart = $built -ne $target   # порожня позначка = невідомо, з чого зібрано build\ — краще перезібрати
 
     if (-not $needPull -and -not $needRestart) {
-        Write-Log "Нічого нового (HEAD = $(Short $before))"
+        Write-Log "Нічого нового (HEAD = $(Short $before)$(if ($ahead) { ', попереду origin' })$(if ($Sha) { "; $Via про $(Short $Sha)" }))"
         return
     }
 
@@ -163,7 +170,7 @@ try {
 
     if ($needPull) {
         $incoming = Get-Git @('log', '--oneline', '--no-decorate', "$before..$target")
-        Write-Log "Новий код у origin/$Branch$(if ($Sha) { " (вебхук про $(Short $Sha))" }):"
+        Write-Log "Новий код у origin/$Branch$(if ($Sha) { " ($Via про $(Short $Sha))" }):"
         foreach ($line in $incoming -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
         Invoke-Step git @('-C', $Root, 'merge', '--ff-only', "origin/$Branch") | Out-Null
         Write-Log "Підтягнув $(Short $target)"

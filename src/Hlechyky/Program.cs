@@ -49,6 +49,9 @@ builder.Services.AddSingleton<TrackCache>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TrackCache>());
 builder.Services.AddSingleton<DjBrain>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
+// Підстраховка автодеплою: підбирає зелену збірку, вебхук про яку не дійшов (Deploy.cs)
+builder.Services.AddHostedService(sp => new DeployWatch(
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<DeployOptions>>(), sp.GetRequiredService<ILogger<DeployWatch>>()));
 builder.Services.AddHlechykyGames();
 builder.Services.AddHlechykyEconomy();
 builder.Services.AddHlechykyWords();

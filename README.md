@@ -174,7 +174,9 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 4. Пробна збірка `dotnet build` (старий сервер ще працює, `build\` зайнятий ним і не чіпається). Впала — `git reset --hard` назад, сайт навіть не смикнувся.
 5. `start.ps1 restart` і перевірка `/api/me`. Не піднявся — відкат на попередній коміт і перезапуск уже на ньому.
 
-Один деплой за раз (`data\deploy.lock`), усе пишеться в `logs\deploy.log`. Руками: `powershell -File deploy.ps1`.
+Один деплой за раз (`data\deploy.lock`), усе пишеться в `logs\deploy.log`. Руками: `powershell -File deploy.ps1`. Якщо локальна копія попереду origin (закомітили тут, а запушити ще не встигли) і `build\` уже з неї, деплой нічого не робить.
+
+**Підстраховка вебхука.** GitHub чекає відповіді 10 с і подію, що не вклалась, більше не шле, а до домашнього сайту він часом їде 6–9 с. Тому сервер раз на `Deploy:PollMinutes` (3 хв) сам питає GitHub API (`Deploy:Repo`, без токена) про найсвіжішу зелену збірку `main`. Якщо `build\` зібрано не з неї, він запускає `deploy.ps1 -Via poll`, так само як вебхук (у `logs\deploy.log` видно, хто запустив). Кожен коміт пробується один раз (`data\deploy.tried`): деплой, що впав і відкотився, не перезапускає сайт по колу. Повторити можна новим комітом, Redeliver на GitHub або `deploy.ps1` руками. Опитувач працює лише там, де є `WebhookSecret` і `data\built.sha` від `start.ps1`; вимкнути його — `Deploy:PollMinutes: 0`.
 
 Вимкнути — `Deploy:Enabled: false` в `appsettings.json`; при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
 ### Домен і https (Caddy)

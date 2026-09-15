@@ -196,4 +196,8 @@ public sealed class DeployOptions
     /// <summary>Назва workflow в Actions, зеленої збірки якого чекаємо (порожньо — будь-якого).</summary>
     public string Workflow { get; set; } = "build";
     public string Script { get; set; } = "deploy.ps1";
+    /// <summary>Репозиторій на GitHub («власник/назва»), чиї збірки перевіряє <see cref="DeployWatch"/>. Порожньо — не перевіряє.</summary>
+    public string Repo { get; set; } = "";
+    /// <summary>Раз на скільки хвилин перевіряти, чи не загубився вебхук про зелену збірку. 0 — не перевіряти.</summary>
+    public int PollMinutes { get; set; } = 3;
 }
