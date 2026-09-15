@@ -189,6 +189,8 @@
       });
       navigator.mediaSession.setActionHandler('pause', () => stopAudio());
       navigator.mediaSession.setActionHandler('stop', () => stopAudio());
+      // «наступний трек» на навушниках і клавіатурі — це наш скіп: ефір один на всіх
+      navigator.mediaSession.setActionHandler('nexttrack', () => skipNow());
     } catch { /* unsupported */ }
   }
 
@@ -208,9 +210,98 @@
 
   let nowSig = '', queueSig = '', sugSig = '';
   let dragging = null, pendingQueueRender = false; // queue drag-to-reorder state
-    function renderNow() {
+
+  const reactsHtml = () => EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('');
+  function wireReacts(box) {
+    box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
+      if (conn) conn.invoke('React', b.dataset.e).catch(() => {});
+    });
+  }
+  const skipNow = () => api('POST', '/api/skip').then(ok).catch(fail);
+
+  /// Лайк, скіп, плейлист і бан — один набір обробників на обидві копії трека (панель і шапка),
+  /// щоб не тримати дві однакові гілки, які розійдуться від першої ж правки.
+  function wireNow(box, t, o) {
+    const at = (act) => box.querySelector(`[data-act="${act}"]`);
+    at('like')?.addEventListener('click', (e) => busy(e.currentTarget, '', () => api('POST', `/api/like/${t.id}`).catch(fail)));
+    at('skip')?.addEventListener('click', (e) => busy(e.currentTarget, o.mini ? '' : 'скіп…', skipNow));
+    at('pl')?.addEventListener('click', () => openPlaylistPicker(t.id, t.title));
+    at('ban')?.addEventListener('click', (e) => {
+      const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
+      const ask = banPrice
+        ? `Забанити «${t.title}» назавжди за ${banPrice} 🏺?
+Трек скіпнеться і більше не заграє. Викупити його з бану теж коштуватиме черепки.`
+        : 'Забанити цей трек назавжди?';
+      if (!confirm(ask)) return;
+      busy(e.currentTarget, 'баню…', () => api('POST', `/api/ban/${t.id}`).then((r) => { ok(r); if (route === 'lib' && libTab === 'bans') loadLib(); }).catch(fail));
+    });
+  }
+
+  /// Те, що в ефірі, малюється двічі з одного джерела: велика панель «В ефірі» (o.mini не задано)
+  /// і міні-плеєр у шапці (o.mini). Шапка бере коротку версію — обкладинка, назва, ❤ і ⏭.
+  function paintNowInto(box, o) {
     const n = state.now;
-    const box = $('now');
+    const live = n.source === 'user' || n.source === 'autodj';
+    const mini = !!o.mini;
+    if (!live) {
+      const spot = n.spotifyLive;
+      const title = spot ? 'Spotify-резерв' : 'Тиша';
+      const sub = spot ? (n.spotifyTitle || '') : `${dj()} шукає щось на полиці…`;
+      box.innerHTML = mini
+        ? `<a class="mini-cv" href="#efir" title="Перейти в Ефір"><img src="/static/glek.svg" alt=""></a>
+           <a class="mini-tt" href="#efir" title="${esc(title)}"><b>${esc(title)}</b><small>${esc(sub)}</small></a>`
+        : `<div class="coverwrap"><img class="cover dj" src="/static/glek.svg" alt=""></div>
+        <div>
+          <div class="title">${esc(title)}</div>
+          <div class="artist">${esc(sub)}</div>
+          <div class="by">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
+          <div class="reacts">${reactsHtml()}</div>
+        </div>`;
+      if (!mini) wireReacts(box);
+      return;
+    }
+    const t = n.track || {};
+    const liked = n.likers.some((x) => sameNick(x, me.nick));
+    const pending = n.skipPending;
+    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>`;
+    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : ' Скіп'}</button>`;
+    if (mini) {
+      box.innerHTML = `<a class="mini-cv" href="#efir" title="Перейти в Ефір">${cover(t)}</a>
+        <a class="mini-tt" href="#efir" title="${esc(`${t.title} — ${t.artist}`)}"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></a>
+        <span class="mini-acts">${like}${skip}</span>`;
+      wireNow(box, t, o);
+      return;
+    }
+    const by = n.source === 'user'
+      ? `закинув <b>${esc(n.requestedBy)}</b>${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
+      : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
+    // адмін банить безкоштовно; решта — за черепки, і голосові не банять
+    const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
+    const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
+    box.innerHTML = `
+      <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
+      <div style="min-width:0">
+        <div class="title">${esc(t.title)}</div>
+        <div class="artist">${esc(t.artist)}</div>
+        <div class="by">${by}</div>
+        ${n.reason ? `<div class="why">${esc(n.reason)}</div>` : ''}
+        <div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div>
+        <div class="times"><span id="tElapsed">0:00</span><span>${fmt(n.durationSec)}</span></div>
+        ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
+        <div class="actions">
+          ${like}${skip}
+          <button data-act="pl" title="Зберегти в плейлист">＋ плейлист</button>
+          ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
+          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
+        </div>
+        <div class="reacts" title="Реакція, яку побачать усі">${reactsHtml()}</div>
+      </div>`;
+    wireNow(box, t, o);
+    wireReacts(box);
+  }
+
+  function renderNow() {
+    const n = state.now;
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
       n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName]);
     if (sig === nowSig) return;
@@ -218,86 +309,37 @@
     const banner = $('banner');
     banner.hidden = state.liquidsoapOk;
     banner.textContent = 'Ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
-    $('liqStatus').className = 'chip ' + (state.liquidsoapOk ? 'ok' : 'err');
-    $('liqStatus').textContent = state.liquidsoapOk ? 'ефір' : 'ефір ↓';
+    // Зелений чіп «ефір» у шапці — шум: показуємо лише тоді, коли з ефіром щось не так.
+    $('liqStatus').hidden = !!state.liquidsoapOk;
+    $('liqStatus').className = 'chip err';
+    $('liqStatus').textContent = 'ефір ↓';
 
-    if (n.source === 'user' || n.source === 'autodj') {
-      const t = n.track || {};
-      const liked = n.likers.some((x) => sameNick(x, me.nick));
-      const by = n.source === 'user'
-        ? `закинув <b>${esc(n.requestedBy)}</b>${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
-        : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
-      const why = n.reason ? `<div class="why">${esc(n.reason)}</div>` : '';
-      const pending = n.skipPending;
-      // адмін банить безкоштовно; решта — за черепки, і голосові не банять
-      const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
-      const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
-      box.innerHTML = `
-        <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
-        <div style="min-width:0">
-          <div class="title">${esc(t.title)}</div>
-          <div class="artist">${esc(t.artist)}</div>
-          <div class="by">${by}</div>
-          ${why}
-          <div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div>
-          <div class="times"><span id="tElapsed">0:00</span><span>${fmt(n.durationSec)}</span></div>
-          ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
-          <div class="actions">
-            <button id="likeBtn" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>
-            <button id="skipBtn" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭ Скіп</button>
-            <button id="plBtn" title="Зберегти в плейлист">＋ плейлист</button>
-            ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
-            ${canBan ? `<button id="banBtn" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
-          </div>
-          <div class="reacts" title="Реакція, яку побачать усі">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
-        </div>`;
-      $('likeBtn').onclick = (e) => busy(e.currentTarget, '', () => api('POST', `/api/like/${t.id}`).catch(fail));
-      $('skipBtn').onclick = (e) => busy(e.currentTarget, 'скіп…', () => api('POST', '/api/skip').then(ok).catch(fail));
-      $('plBtn').onclick = () => openPlaylistPicker(t.id, t.title);
-      const ban = $('banBtn');
-      if (ban) ban.onclick = (e) => {
-        const ask = banPrice
-          ? `Забанити «${t.title}» назавжди за ${banPrice} 🏺?\nТрек скіпнеться і більше не заграє. Викупити його з бану теж коштуватиме черепки.`
-          : 'Забанити цей трек назавжди?';
-        if (!confirm(ask)) return;
-        busy(e.currentTarget, 'баню…', () => api('POST', `/api/ban/${t.id}`).then((r) => { ok(r); if (libTab === 'bans') loadLib(); }).catch(fail));
-      };
-      box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
-        if (!conn) return;
-        conn.invoke('React', b.dataset.e).catch(() => {});
-      });
-      tick();
-    } else {
-      const spot = n.spotifyLive;
-      box.innerHTML = `
-        <div class="coverwrap"><img class="cover dj" src="/static/glek.svg" alt=""></div>
-        <div>
-          <div class="title">${spot ? 'Spotify-резерв' : 'Тиша'}</div>
-          <div class="artist">${spot ? esc(n.spotifyTitle || '') : `${esc(dj())} шукає щось на полиці…`}</div>
-          <div class="by">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
-          <div class="reacts">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
-        </div>`;
-      box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => conn && conn.invoke('React', b.dataset.e).catch(() => {}));
-    }
+    paintNowInto($('now'), {});
+    paintNowInto($('nowMini'), { mini: true });
+
     const playingTrack = n.track && (n.source === 'user' || n.source === 'autodj');
     baseTitle = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
     paintTitle();
     if (playState !== 'idle') updateMediaSession();
+    tick();
   }
 
   function tick() {
     if (!state) return;
     const n = state.now;
-    if (n.source === 'user' || n.source === 'autodj') {
-      const bar = $('bar'), el = $('tElapsed');
-      if (bar) {
-        const elapsed = (Date.now() - new Date(n.startedAt).getTime()) / 1000 - (state.streamDelaySeconds || 0);
-        const d = n.durationSec || 0;
-        const e = Math.max(0, Math.min(elapsed, d || elapsed));
-        el.textContent = fmt(e);
-        bar.style.width = d ? Math.min(100, (e / d) * 100) + '%' : '0%';
-      }
+    const live = n.source === 'user' || n.source === 'autodj';
+    const d = live ? (n.durationSec || 0) : 0;
+    let elapsed = 0, pct = 0;
+    if (live) {
+      const raw = (Date.now() - new Date(n.startedAt).getTime()) / 1000 - (state.streamDelaySeconds || 0);
+      elapsed = Math.max(0, Math.min(raw, d || raw));
+      pct = d ? Math.min(100, (elapsed / d) * 100) : 0;
     }
+    const bar = $('bar'), el = $('tElapsed');
+    if (bar && el) { el.textContent = fmt(elapsed); bar.style.width = d ? pct + '%' : '0%'; }
+    // Смужка під шапкою: скільки лишилось треку видно з будь-якого розділу.
+    $('hdrBar').style.width = d ? pct + '%' : '0%';
+    $('hdrProg').classList.toggle('pending', !!n.skipPending);
     // ETAs in the queue: what is left of the current track plus everything queued before the item
     let acc = nowRemaining();
     document.querySelectorAll('[data-eta]').forEach((s) => {

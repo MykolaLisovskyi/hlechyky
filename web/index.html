@@ -16,18 +16,21 @@
     <button data-route="lib" title="Що вже було, улюблене, плейлисти, статистика"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
     <button data-route="games" title="Столи, ігри, профіль"><span class="ico">🎮</span><span class="lbl">Ігри</span><span id="navGames" class="count" hidden></span></button>
   </nav>
-  <div class="player">
+  <div class="mini" id="mini">
+    <!-- обкладинку, назву й кнопки ❤/⏭ малює paintNowInto(); ▶, гучність і 🎧 живуть тут постійно.
+         #nowMini — display: contents, тому порядок усього рядка задає order у style.css -->
+    <div id="nowMini"></div>
     <button id="playBtn" class="primary" title="Слухати ефір прямо тут">▶ Врубити</button>
     <input id="volume" type="range" min="0" max="100" step="1" value="90" title="Гучність">
     <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
   </div>
-  <div class="spacer"></div>
   <div class="who">
     <span id="hdrWallet" class="chip wallet" title="Черепки">🏺 <b>—</b></span>
     <span id="liqStatus" class="chip ok" title="Стан ефіру">ефір</span>
     <span id="nickBtn" class="nick" title="Змінити нік">…</span>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
+  <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
 </header>
 
 <main>

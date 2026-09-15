@@ -68,15 +68,37 @@ input:focus { border-color: var(--accent2); }
 
 /* ---- header ---- */
 header {
-  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  display: flex; align-items: center; gap: 12px; padding: 8px 16px; min-height: 56px;
   border-bottom: 1px solid var(--line); background: rgba(15, 31, 24, .88); backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 5;
 }
-header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2em; letter-spacing: .3px; }
-header .brand img { width: 32px; height: 32px; }
-header .player { display: flex; align-items: center; gap: 10px; }
-header .player input[type=range] { width: 150px; accent-color: var(--accent); }
-header .spacer { flex: 1; }
+header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15em; letter-spacing: .3px; flex: none; }
+header .brand img { width: 30px; height: 30px; }
+
+/* ---- міні-плеєр у шапці ----
+   #nowMini — display: contents, тому обкладинка, назва і ❤/⏭ стають прямими дітьми .mini
+   поряд із ▶, гучністю і 🎧, і весь рядок шикується одним order. Так перемальовування
+   треку не чіпає ні кнопку ▶ (у ній стан playState), ні повзунок гучності. */
+header .mini { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+header #nowMini { display: contents; }
+.mini-cv { order: 1; flex: none; width: 32px; height: 32px; border-radius: 6px; overflow: hidden; display: block; background: var(--bg2); }
+.mini-cv img, .mini-cv .noimg { width: 32px; height: 32px; object-fit: cover; display: block; }
+.mini-tt { order: 2; flex: 1 1 90px; min-width: 0; line-height: 1.15; color: var(--text); text-decoration: none; }
+.mini-tt b, .mini-tt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-tt b { font-weight: 600; font-size: .92em; }
+.mini-tt small { color: var(--muted); font-size: .78em; }
+.mini-tt:hover b { color: var(--accent); }
+.mini-acts { order: 4; flex: none; display: flex; gap: 4px; }
+.mini-acts button { padding: 5px 9px; font-size: .9em; }
+header #playBtn { order: 3; flex: none; }
+header #volume { order: 5; flex: none; width: 110px; accent-color: var(--accent); }
+header #listeners { order: 6; flex: none; }
+
+/* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу */
+.hdrprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg2); }
+.hdrprog > div { height: 100%; width: 0; background: var(--accent); transition: width 1s linear; }
+.hdrprog.pending { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
+.hdrprog.pending > div { background: transparent; }
 header .vswitch { display: flex; gap: 2px; background: var(--bg2); border-radius: 11px; padding: 2px; flex: none; }
 header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; border-radius: 9px; }
 header .vswitch button:hover { background: var(--panel2); color: var(--text); }
@@ -93,10 +115,27 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 header .nick { cursor: pointer; padding: 5px 10px; border-radius: 999px; background: var(--panel2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header .nick:hover { background: var(--panel3); }
 header .nick.admin::after { content: " · адмін"; color: var(--accent); }
-#playBtn { min-width: 122px; justify-content: center; }
+#playBtn { min-width: 118px; justify-content: center; }
 #playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); }
 #playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
 @keyframes blink { 50% { opacity: .25; } }
+
+/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу підписи
+   розділів (лишаються іконки з title), потім гучність, потім виконавця в міні-плеєрі. */
+@media (max-width: 1300px) {
+  header .vswitch .lbl { display: none; }
+  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+}
+@media (max-width: 1150px) {
+  header #volume { display: none; }
+  header { gap: 10px; }
+  #playBtn { min-width: 0; }
+}
+@media (max-width: 1000px) {
+  .mini-tt small { display: none; }
+  header .brand span { display: none; }
+  header #listeners { max-width: 92px; }
+}
 
 /* ---- layout ---- */
 main { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--rail-gap); padding: 18px; max-width: 1500px; margin: 0 auto; align-items: start; }
@@ -314,7 +353,7 @@ button.vplay { padding: 3px 8px; }
   :root { --tabs-h: 58px; }
   header { gap: 8px; padding: 8px 12px; }
   header .brand span { display: none; }
-  header .player input[type=range] { display: none; }
+  header #volume, .mini-cv, .mini-tt, .mini-acts { display: none; }
   /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
   main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   section.panel { padding: 12px; }

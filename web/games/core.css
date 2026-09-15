@@ -18,8 +18,6 @@
 .gnav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 .gnav button { padding: 5px 10px; font-size: .9em; background: transparent; border-color: transparent; color: var(--muted); }
 .gnav button.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
-.gwallet { background: var(--panel2); color: var(--text); font-size: .9em; padding: 4px 10px; }
-.gwallet b { font-variant-numeric: tabular-nums; }
 .gemo { font-size: 1.05em; line-height: 1; }
 .gico { width: 15px; height: 15px; flex: none; }
 .gtabs button:not(.on) .gico { opacity: .6; }
@@ -208,7 +206,6 @@
   .gtables, .gtiles, .gdaily { grid-template-columns: 1fr; }
   .gnav { margin-left: 0; width: 100%; }
   .gbar { gap: 6px; }
-  .gwallet { order: -1; }
 }
 @media (max-width: 480px) {
   .gtable { padding: 8px 9px 10px; }

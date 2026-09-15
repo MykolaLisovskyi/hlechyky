@@ -433,8 +433,10 @@
       paintWallet();
     } catch { /* економіки ще нема — рядок гаманця просто мовчить */ }
   }
+  /// Гаманець живе в шапці сайту (#hdrWallet), а не в лобі: черепки витрачають і поза іграми.
+  /// Поки балансу нема — малюємо «—», а не ховаємо рядок: інакше шапка стрибала б на кожному вході.
   function paintWallet() {
-    const el = root && root.querySelector('.gwallet b');
+    const el = document.querySelector('#hdrWallet b');
     if (el) el.textContent = wallet == null ? '—' : String(wallet);
   }
 
@@ -445,8 +447,7 @@
   function renderShell() {
     if (!root) return;
     if (!root.querySelector('.gbar')) {
-      root.innerHTML = '<div class="gbar"><div class="gtabs tabs"></div><div class="gnav"></div>'
-        + '<span class="gwallet chip" title="Черепки">🏺 <b>—</b></span></div><div class="gview"></div>';
+      root.innerHTML = '<div class="gbar"><div class="gtabs tabs"></div><div class="gnav"></div></div><div class="gview"></div>';
     }
     const tabs = root.querySelector('.gtabs');
     const counts = {};
@@ -1091,13 +1092,14 @@
           + (a.reward ? ' — +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
+      loadWallet();          // черепки видно в шапці з будь-якого розділу, тож питаємо їх одразу
     },
 
     /// Після реконекту підписки на сервері вже нема — просимо заново для видимих кімнат.
     reconnected() {
       watched.clear();
       syncWatch();
-      if (shown) loadWallet();
+      loadWallet();
     },
 
     show() {
