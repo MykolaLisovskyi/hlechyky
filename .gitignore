@@ -32,3 +32,6 @@ build/
 .idea/
 *.user
 Hlechyky.vbs
+
+# build-dev/ — копія збірки для dev-сервера з worktree (щоб не тримати Hlechyky.dll замкненим)
+build-dev/
