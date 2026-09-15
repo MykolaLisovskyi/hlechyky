@@ -27,6 +27,7 @@ public static class GamesSetup
         services.TryAddSingleton<IStakes, NoStakes>();
         services.TryAddSingleton<IGameStore, MemoryGameStore>();
         services.AddHostedService<TickEngine>();
+        Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
         return services;
     }
 
@@ -34,6 +35,7 @@ public static class GamesSetup
     {
         // Лобі будується з каталогу, а не з хардкоду в JS: додав клас гри — вона з'явилась на сайті.
         app.MapGet("/api/games/catalog", (Registry registry) => new Catalog(registry.Catalog, Rooms.Stakes));
+        Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         return app;
     }
 }
