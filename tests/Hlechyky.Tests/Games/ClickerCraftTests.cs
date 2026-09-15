@@ -176,12 +176,12 @@ public class ClickerCraftTests
     public void The_bazaar_price_follows_the_passive_quality_and_style()
     {
         var h = Wheel();
-        Patch(h, s => { s["upgrades"]!["kiln"] = 100; s["styles"] = new JsonArray("gavarets"); });   // 300 глеків/с × 1,05 за розпис
+        Patch(h, s => { s["upgrades"]!["kiln"] = 1000; s["styles"] = new JsonArray("gavarets"); });   // 3000 глеків/с × 1,05 за розпис — вище дна кліків
         Items(h, ("jug||1", 1), ("jug|gavarets|2", 1));
         var items = Craft(h).GetProperty("items").EnumerateArray().ToDictionary(x => x.GetProperty("key").GetString()!, x => x.GetProperty("value").GetInt64());
         var passive = View(h).GetProperty("baseSecond").GetDouble();
-        Assert.Equal((long)(passive * 55), items["jug||1"]);
-        Assert.Equal((long)(passive * 55 * 1.6 * 1.2), items["jug|gavarets|2"]);
+        Assert.Equal((long)(passive * 6), items["jug||1"]);
+        Assert.Equal((long)(passive * 6 * 1.6 * 1.2), items["jug|gavarets|2"]);
     }
 
     [Fact]
