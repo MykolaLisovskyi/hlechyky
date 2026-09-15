@@ -26,7 +26,7 @@
   const OPEN_AFTER_MS = 350;                // після кінця обпалу — трохи зачекати, щоб серверне «зараз» точно дійшло
   const MAX_POINTS = 480;                   // сервер бере до 500
   const SAMPLE_MS = 24;                     // не частіше за стільки — інакше за 12 с упремось у стелю точок
-  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '🌫️', ryt: '✒️', losk: '🪨' };
+  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨' };
   const STARS = ['💥', '', '★', '★★★'];
   const QNAME = ['тріснув', 'звичайний', 'добрий', 'дзвінкий'];
   const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -163,8 +163,8 @@
       + '<path d="M70 154V110Q70 64 130 61Q190 64 190 110V154Z" fill="#4a2615"/>'
       + '<path d="M76 150V110Q76 70 130 67Q184 70 184 110V150Z" fill="#1a100b"/>'
       + '<g clip-path="url(#clkk-chamber)"><rect class="clkk-glow" x="70" y="60" width="120" height="96" fill="url(#clkk-fire)" opacity="0"/>'
-      + '<g class="clkk-wares"></g>'
-      + '<g class="clkk-inner-fl">' + [92, 118, 144, 168].map((x, i) => '<g transform="translate(' + x + ' 152) scale(1.3)"><path d="' + FLAME + '" style="animation-delay:-' + (i * 0.23) + 's"/></g>').join('') + '</g></g>'
+      + '<g class="clkk-inner-fl">' + [92, 118, 144, 168].map((x, i) => '<g transform="translate(' + x + ' 152) scale(1.3)"><path d="' + FLAME + '" style="animation-delay:-' + (i * 0.23) + 's"/></g>').join('') + '</g>'
+      + '<g class="clkk-wares"></g></g>'
       + '<path d="M104 174V163Q104 150 130 149Q156 150 156 163V174Z" fill="#120a07" stroke="#4a2615" stroke-width="2"/>'
       + '<g class="clkk-flames"><g class="clkk-fuel">' + [118, 130, 142].map((x, i) => '<g transform="translate(' + x + ' 173)"><path d="' + FLAME + '" style="animation-delay:-' + (i * 0.31) + 's"/></g>').join('') + '</g></g>'
       + '<g class="clkk-sparks">' + [0, 1, 2, 3, 4].map((i) => '<circle cx="' + (118 + i * 6) + '" cy="160" r="1.4" style="animation-delay:' + (i * 0.37) + 's"/>').join('') + '</g>'
@@ -879,6 +879,12 @@
     slow(st, api, now) {
       if (!st.kView) return;
       paintState(st, api, now);
+      // Підмайстер відкриває горно в Sync на сервері, а сервер сам виду не шле: попросити свіжий, коли час вийшов.
+      if (st.kView.state === 'burning' && st.kView.helper && st.mine && now >= Date.parse(st.kView.litAt) + burnMs(st) + 300
+        && Date.now() - (st.kLookAt || 0) > 3000) {
+        st.kLookAt = Date.now();
+        api.order(st, 'look');
+      }
       // Сирці висохли, горно вихолонуло — кнопки мусять це побачити без нового виду.
       const k = st.kView;
       const dry = st.craft ? st.craft.rack.filter((r) => r.dryAt <= now).length : k.dry;

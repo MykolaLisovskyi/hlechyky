@@ -56,7 +56,7 @@
 .clkk-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .clkk-btns button { min-height: 52px; font-size: 16px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 .clkk-stoke:active, .clkk-damp:active { transform: scale(.96); }
-.clkk-damp { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; }
+.clkk .clkk-btns .clkk-damp { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; }
 
 
 /* ---- підготовка ---- */
@@ -67,7 +67,7 @@
   display: flex; flex-direction: column; align-items: center; gap: 1px; flex: none; width: 76px; padding: 4px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--panel); font-size: 11px; line-height: 1.15; text-align: center;
 }
-.clkk-chip span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.clkk-chip span { width: 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .clkk-chip.on { border-color: var(--accent2); box-shadow: inset 0 0 12px rgba(244, 197, 66, .15); }
 .clkk-chipjug { width: 30px; height: 30px; }
 .clkk-techs { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
