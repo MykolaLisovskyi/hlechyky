@@ -8,8 +8,10 @@ namespace Hlechyky.Games.Impl;
 /// <item><b>Почерк.</b> Кожен клік приходить не числом, а відбитком: проміжок від попереднього, скільки тримали
 ///   кнопку, де на колі натиснули і чим (миша, палець, перо, пробіл). Мишачий софт клацає з рівним кроком
 ///   таймера й відпускає кнопку за 0–1 мс. Такий почерк — одразу полиця (див. нижче), без чекання сотень кліків.</item>
-/// <item><b>Перевірка картинкою.</b> Раз на кілька сотень зарахованих кліків, за кожні кілька спійманих
-///   розписних глеків і за підозрілий почерк коло стає, доки гончар не торкнеться всіх глечиків на полиці.
+/// <item><b>Перевірка картинкою.</b> Раз на кілька тисяч зарахованих кліків (після підозри в почерку — сотень),
+///   за кожні кілька десятків спійманих розписних глеків і за підозрілий почерк коло стає, доки гончар не
+///   торкнеться всіх глечиків на полиці. Полицю відкриває кнопка на клієнті: доти картинка за завісою й торкань
+///   не приймає, щоб черга швидких кліків по колу не проклацала три полиці, не побачивши жодної.
 ///   Полицю малює сервер PNG-ом (<see cref="ClickerPicture"/>) із 256-бітного ключа, якого клієнт не бачить,
 ///   тож відповіді нема ні в DOM, ні у виді, і перебрати її не вийде. Хай скрипт підробить який завгодно
 ///   почерк — полицю без людини він не пройде, і поки не пройде, кліки не рахуються зовсім.</item>
@@ -24,8 +26,14 @@ public sealed class ClickerGuard
 {
     /// <summary>Скільки останніх кліків пам'ятаємо для почерку і з якої кількості вже судимо.</summary>
     public const int Window = 40, MinJudge = 32;
-    /// <summary>Скільки зарахованих кліків між перевірками: випадково, щоб бот не підлаштувався під число.</summary>
-    public const int CheckMin = 600, CheckMax = 1000;
+    /// <summary>
+    /// Скільки зарахованих кліків між звичайними перевірками: випадково, щоб бот не підлаштувався під число.
+    /// Чистий почерк — спокійний крок (6000–10000: за півгодини-годину клацання одна полиця). Після підозри
+    /// (<see cref="Doubt"/>) майстер пильнує: наступна звичайна перевірка вдесятеро ближче, бо автоклікер,
+    /// увімкнений при господарі, проходить полицю господаревою рукою; лише пройдена чиста перевірка повертає
+    /// спокійний крок. Промахи почерком не є — за них лише пауза.
+    /// </summary>
+    public const int CalmMin = 6000, CalmMax = 10_000, WaryMin = 600, WaryMax = 1000;
     /// <summary>Скільки кліків «коштує» спійманий розписний глек: бот, що лише ловить глеки, теж зустріне майстра.</summary>
     public const int CatchWeight = 150;
     public const int MaxMisses = 3;
@@ -56,7 +64,7 @@ public sealed class ClickerGuard
     public int Passed { get; private set; }
     /// <summary>
     /// Полицю через миттєве відпускання пройшла людина — отже, це її тачпад, а не софт. Далі за утриманням не
-    /// судимо ніколи: тачпад лишиться тачпадом. Ритм і перевірки раз на кілька сотень кліків лишаються.
+    /// судимо ніколи: тачпад лишиться тачпадом. Ритм і звичайні перевірки лишаються.
     /// </summary>
     public bool PressTrusted { get; private set; }
     /// <summary>
@@ -71,10 +79,13 @@ public sealed class ClickerGuard
     public bool Pending => Shelf is not null;
     public bool Locked(DateTimeOffset now) => now < LockUntil;
 
+    /// <summary>Кліків до наступної звичайної перевірки: спокійний крок для чистого почерку, пильний — після підозри.</summary>
+    static int Next(Random rng, bool wary) => wary ? rng.Next(WaryMin, WaryMax + 1) : rng.Next(CalmMin, CalmMax + 1);
+
     public void Reset(Random rng)
     {
         _window.Clear();
-        Left = rng.Next(CheckMin, CheckMax + 1);
+        Left = Next(rng, wary: false);
         Shelf = null;
         Serial = 0;
         Misses = 0;
@@ -203,7 +214,7 @@ public sealed class ClickerGuard
 
     public bool Due => Left <= 0;
 
-    /// <summary>Звичайна перевірка раз на кілька сотень кліків. Довіра до ритму на ній і кінчається.</summary>
+    /// <summary>Звичайна перевірка раз на кілька тисяч кліків (після підозри — сотень). Довіра до ритму на ній і кінчається.</summary>
     public void Check()
     {
         Why = "";
@@ -239,12 +250,18 @@ public sealed class ClickerGuard
 
     public enum Verdict { Passed, Wrong, Locked }
 
-    /// <summary>Відповідь на полицю: влучив — наступна перевірка через кілька сотень кліків, ні — нова полиця.</summary>
+    /// <summary>
+    /// Відповідь на полицю: влучив — наступна перевірка через кілька тисяч кліків (після підозри в почерку —
+    /// сотень), ні — нова полиця.
+    /// </summary>
     public Verdict Answer(IReadOnlyList<(double X, double Y)> taps, DateTimeOffset now, Random rng)
     {
         if (Shelf is not { } shelf) return Verdict.Wrong;
         if (ClickerPicture.Solve(ClickerPicture.Scene(shelf), taps))
         {
+            // Полицю за почерк пройшла людина — але автоклікер при господарі виглядає так само, тож майстер
+            // пильнує до наступної звичайної перевірки. Пройшла й ту чисто — знову спокійний крок.
+            var wary = Doubt != "";
             if (Doubt == "press") PressTrusted = true;
             if (Doubt == "rhythm") RhythmTrusted = true;
             Doubt = "";
@@ -254,7 +271,7 @@ public sealed class ClickerGuard
             Passed++;
             // Почерк до перевірки вже нічого не доводить: після неї судимо з чистого аркуша.
             _window.Clear();
-            Left = rng.Next(CheckMin, CheckMax + 1);
+            Left = Next(rng, wary);
             return Verdict.Passed;
         }
         Misses++;
@@ -339,7 +356,7 @@ public sealed class ClickerGuard
             return;
         }
         _window.Clear();
-        Left = Math.Clamp(row.Left, int.MinValue / 2, CheckMax);
+        Left = Math.Clamp(row.Left, int.MinValue / 2, CalmMax);
         Shelf = KeyOf(row.Shelf);
         Serial = Math.Max(0, row.Serial);
         Misses = Math.Clamp(row.Misses, 0, MaxMisses - 1);

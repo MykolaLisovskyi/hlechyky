@@ -14,8 +14,10 @@
      щоб «+N» над колом і лічильник обіцяли те, що сервер справді дорахує;
   4) показує розписний глек у його вікні (view.golden) і глек з полиці (view.fall) у його три секунди польоту; коли
      той чи той утік/розбився — питає наступний розклад Act('look');
-  5) показує Око майстра (view.guard): полицю-картинку, де треба торкнутись усіх глечиків (Act('answer', { taps })),
-     або паузу кола з відліком. Де глечики — клієнт не знає: це знає лише сервер.
+  5) показує Око майстра (view.guard): інструкцію з кнопкою «Показати полицю», за нею полицю-картинку, де треба
+     торкнутись усіх глечиків (Act('answer', { taps })), або паузу кола з відліком. Доки кнопку не натиснуто,
+     торкання картинки не рахуються (інакше швидкі кліки по колу проклацували полиці наосліп). Де глечики —
+     клієнт не знає: це знає лише сервер.
 
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
     upgrades: { key: { level, price, name, desc, max, kind, gain, growth, marks, open } }, marks: [...],
@@ -217,7 +219,7 @@
         tab: storeGet('clk.tab', 'shop'), mode: storeGet('clk.mode', '1'),
         hands: [], handsGain: 0, inflight: 0, inflightGain: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
         downs: new Map(), keyDown: 0, lastDown: 0, onKeyUp: null,
-        guard: null, eye: null, taps: [], eyeBusy: false,
+        guard: null, eye: null, taps: [], eyeBusy: false, eyeKey: '', eyeOpen: false, eyeAt: 0, eyeArm: 0,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
       };
     }
@@ -428,13 +430,19 @@
   /// Майстер щось хоче: коло стоїть або чекає відповіді на полицю. Кліки тоді не рахуються — і не малюються.
   const guardOn = (st) => !!st.guard;
 
-  /// За що майстер питає не в чергу (why з виду) — перед проханням торкнутись глечиків.
+  /// Скільки після появи полиці кнопка «Показати полицю» ще не тисне: черга швидких кліків по колу, на місце
+  /// якого стала панель, не має ні натиснути її, ні тим паче потрапити в картинку.
+  const EYE_ARM_MS = 1000;
+
+  /// За що майстер питає не в чергу (why з виду) — перед інструкцією, як пройти полицю.
   const DOUBT = {
-    rhythm: 'Кліки йшли надто рівно, мов під метроном, — так клацає автоклікер. Покажи майстрові, що це рука: ',
-    press: 'Кнопку відпускали миттєво, раз за разом, — так клацає автоклікер (або тачпад). Покажи майстрові, що це рука: ',
+    rhythm: 'Кліки йшли надто рівно, мов під метроном, — так клацає автоклікер. Покажи майстрові, що це рука. ',
+    press: 'Кнопку відпускали миттєво, раз за разом, — так клацає автоклікер (або тачпад). Покажи майстрові, що це рука. ',
   };
 
-  /// Панель майстра замість сцени: відлік паузи або полиця, де треба торкнутись глечиків.
+  /// Панель майстра замість сцени: відлік паузи, або інструкція з кнопкою, або полиця, де треба торкнутись глечиків.
+  /// Полиця відкривається лише кнопкою: доти картинка за завісою й торкань не приймає. Інакше той, хто швидко
+  /// клацав коло, проклацував три полиці поспіль, не встигши їх побачити, і діставав десять хвилин паузи.
   function paintEye(st) {
     const e = st.eye;
     const g = st.guard;
@@ -445,27 +453,48 @@
 
     const left = g.lockUntil ? g.lockUntil - serverNow(st) : 0;
     const locked = left > 0;
+    // Нова полиця (чи та сама після паузи): завіса знову опущена, торкання скинуто, кнопка озброїться за секунду.
+    const key = g.serial + (locked ? ':lock' : ':shelf');
+    if (st.eyeKey !== key) {
+      st.eyeKey = key;
+      st.eyeOpen = false;
+      st.eyeAt = Date.now();
+      st.taps = [];
+      st.eyeBusy = false;
+      // Озброїти кнопку своїм таймером, а не лише циклом малювання: у схованій вкладці rAF не крутиться.
+      clearTimeout(st.eyeArm);
+      st.eyeArm = setTimeout(() => paintEye(st), EYE_ARM_MS + 30);
+    }
+    const open = st.eyeOpen && !locked;
+
     let text;
     if (locked) {
       const s = Math.ceil(left / 1000);
       text = '🔒 Коло стоїть ще ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '. Три полиці поспіль — не ті глеки.'
         + ' Пасив, покупки й прилавок працюють; кліки й глеки — ні. Після паузи майстер спитає ще раз.';
+    } else if (!open) {
+      text = (DOUBT[g.why] || 'Майстер дивиться, чи коло крутить рука, а не автоклікер. ')
+        + 'Як пройти: натисни «Показати полицю», а тоді торкнись на картинці кожного глечика — їх там ' + g.count
+        + '. Глечик — той, що з вузькою шийкою; горщики, миски й черепки не чіпай. Торкнувся не туди — «Скинути торкання».'
+        + ' Три полиці поспіль не ті — коло стане на 10 хвилин. Поки не відповіси, кліки не рахуються.';
     } else {
-      const ask = 'усіх глечиків на полиці — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Поки не відповіси, кліки не рахуються.';
-      text = DOUBT[g.why] ? DOUBT[g.why] + 'торкнись ' + ask : 'Майстер дивиться, чи коло крутить рука, а не автоклікер. Торкнись ' + ask;
+      text = 'Торкнись кожного глечика — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Торкнувся не туди — «Скинути торкання».';
     }
     if (e.text.textContent !== text) e.text.textContent = text;
     const tries = locked ? '' : g.misses ? 'не ті — ось інша полиця · спроба ' + (g.misses + 1) + ' з ' + g.maxMisses : '';
     if (e.tries.textContent !== tries) e.tries.textContent = tries;
     if (e.pic.hidden !== locked) e.pic.hidden = locked;
-    if (e.reset.hidden !== locked) e.reset.hidden = locked;
+    if (e.veil.hidden !== open) e.veil.hidden = open;
+    if (e.pic.classList.contains('veiled') === open) e.pic.classList.toggle('veiled', !open);
+    if (e.reset.hidden !== !open) e.reset.hidden = !open;
+    // Кнопка озброюється за секунду після появи: черга кліків, що летіла в коло, не має її натиснути.
+    const armed = !locked && !open && Date.now() - st.eyeAt >= EYE_ARM_MS;
+    if (e.go.disabled !== !armed) e.go.disabled = !armed;
 
     // Картинку міняємо лише на нову полицю: вид летить на кожну дію, а base64 полиці між ними той самий.
     if (!locked && g.png && e.img._serial !== g.serial) {
       e.img._serial = g.serial;
       e.img.src = g.png;
-      st.taps = [];
-      st.eyeBusy = false;
     }
     const marks = st.taps.map((t, i) => '<i style="left:' + (t[0] / g.width * 100).toFixed(2) + '%;top:'
       + (t[1] / g.height * 100).toFixed(2) + '%">' + (i + 1) + '</i>').join('');
@@ -475,11 +504,19 @@
     e.pic.classList.toggle('busy', st.eyeBusy);
   }
 
+  /// Кнопка «Показати полицю»: лише справжній натиск і лише озброєної кнопки. Відтак торкання картинки рахуються.
+  function openShelf(st, ev) {
+    if (!ev.isTrusted || !st.guard || st.eye.go.disabled) return;
+    st.eyeOpen = true;
+    paintEye(st);
+  }
+
   /// Торкання полиці. Лише справжні (isTrusted): скрипт, що тицяє в картинку dispatchEvent-ом, сюди не дійде —
-  /// хоча він однаково не знає, куди тицяти. Координати — у пікселях картинки, як їх чекає сервер.
+  /// хоча він однаково не знає, куди тицяти. І лише відкритої кнопкою полиці: під завісою торкань нема.
+  /// Координати — у пікселях картинки, як їх чекає сервер.
   function tapShelf(st, ev) {
     const g = st.guard;
-    if (!ev.isTrusted || !g || !g.png || st.eyeBusy || !st.ctx) return;
+    if (!ev.isTrusted || !g || !g.png || !st.eyeOpen || st.eyeBusy || !st.ctx) return;
     if (g.lockUntil && g.lockUntil > serverNow(st)) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
@@ -1234,9 +1271,12 @@
         // Око майстра стає на місце сцени: відлік паузи або полиця з глечиками.
         + '<div class="clk-eye" hidden><div class="clk-eye-head"><b>👁 Око майстра</b><span class="clk-eye-tries small"></span></div>'
         + '<div class="clk-eye-text small"></div>'
-        + '<div class="clk-eye-pic"><img alt="Полиця з глечиками, горщиками, мисками й черепками" draggable="false">'
-        + '<div class="clk-eye-marks"></div></div>'
-        + '<button type="button" class="ghost small clk-eye-reset" disabled>Скинути торкання</button></div>'
+        + '<div class="clk-eye-pic veiled"><img alt="Полиця з глечиками, горщиками, мисками й черепками" draggable="false">'
+        + '<div class="clk-eye-marks"></div>'
+        // Завіса над полицею: доки не натиснуто кнопку, картинки не видно й торкання в неї не йдуть.
+        + '<div class="clk-eye-veil"><span class="small">Полиця відкриється після кнопки — випадкові кліки не рахуються</span>'
+        + '<button type="button" class="primary clk-eye-go" disabled>👁 Показати полицю</button></div></div>'
+        + '<button type="button" class="ghost small clk-eye-reset" hidden disabled>Скинути торкання</button></div>'
         + '<div class="clk-buffs" hidden></div>'
         + '<div class="clk-sell"><button type="button" class="primary clk-one" disabled></button>'
         + '<button type="button" class="ghost clk-all" data-pots="0" disabled></button></div>'
@@ -1305,7 +1345,9 @@
       st.fire._after = q('.clk-after');
       st.fire._static = q('.clk-firestatic');
       st.eye = { el: q('.clk-eye'), text: q('.clk-eye-text'), tries: q('.clk-eye-tries'), pic: q('.clk-eye-pic'),
-        img: q('.clk-eye-pic img'), marks: q('.clk-eye-marks'), reset: q('.clk-eye-reset') };
+        img: q('.clk-eye-pic img'), marks: q('.clk-eye-marks'), veil: q('.clk-eye-veil'), go: q('.clk-eye-go'), reset: q('.clk-eye-reset') };
+      st.eyeKey = '';
+      st.eyeOpen = false;
       st.ringOff = -1;
       st.glow = -1;
       st.jugScale = -1;
@@ -1323,6 +1365,7 @@
       // на рухомій кнопці міг би не спрацювати.
       st.fallEl.addEventListener('pointerdown', (e) => grabFall(st, e));
       st.fallEl.addEventListener('contextmenu', (e) => e.preventDefault());
+      st.eye.go.addEventListener('click', (e) => openShelf(st, e));
       st.eye.img.addEventListener('pointerdown', (e) => tapShelf(st, e));
       st.eye.img.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.reset.onclick = () => { st.taps = []; paintEye(st); };
@@ -1475,6 +1518,7 @@
       const st = root._clk;
       if (!st) return;
       clearInterval(st.timer);
+      clearTimeout(st.eyeArm);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       const card = root.closest && root.closest('.gtable');

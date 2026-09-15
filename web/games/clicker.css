@@ -236,6 +236,15 @@
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .clk-eye-pic.busy img { opacity: .6; cursor: progress; }
+/* Завіса: доки не натиснуто «Показати полицю», картинка розмита й торкань не приймає. */
+.clk-eye-pic.veiled img { filter: blur(7px) brightness(.7); cursor: default; pointer-events: none; }
+.clk-eye-veil {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  gap: 10px; padding: 12px; text-align: center; color: #fff; background: rgba(0, 0, 0, .35);
+}
+.clk-eye-veil span { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+.clk-eye-go { min-width: 60%; }
+.clk-eye-go:disabled { opacity: .55; cursor: wait; }
 .clk-eye-marks { position: absolute; inset: 0; pointer-events: none; }
 .clk-eye-marks i {
   position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;

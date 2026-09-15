@@ -357,12 +357,12 @@ public class ClickerGuardTests
     // ---------- перевірка картинкою ----------
 
     [Fact]
-    public void The_master_asks_every_six_hundred_to_thousand_clicks()
+    public void The_master_asks_every_six_to_ten_thousand_clicks_when_the_hand_is_clean()
     {
         var h = Wheel();
-        var clicks = ClickUntilAsked(h, 2_000);
+        var clicks = ClickUntilAsked(h, 12_000);
 
-        Assert.InRange(clicks, CheckMin, CheckMax + 11);
+        Assert.InRange(clicks, CalmMin, CalmMax + 11);
         var g = Guard(h);
         Assert.InRange(g.GetProperty("count").GetInt32(), ClickerPicture.MinJugs, ClickerPicture.MaxJugs);
         Assert.Equal(0, g.GetProperty("misses").GetInt32());
@@ -374,8 +374,46 @@ public class ClickerGuardTests
 
         PotterHands.Pass(h);
         Assert.True(Free(h));
-        var again = ClickUntilAsked(h, 2_000);
-        Assert.InRange(again, CheckMin, CheckMax + 11);
+        var again = ClickUntilAsked(h, 12_000);
+        Assert.InRange(again, CalmMin, CalmMax + 11);
+    }
+
+    [Fact]
+    public void After_a_doubt_the_master_watches_ten_times_closer_until_a_clean_check()
+    {
+        // Тачпад: полиця за утримання. Людина пройшла — але автоклікер при господарі виглядає так само, тож
+        // наступна звичайна перевірка приходить за 600–1000 кліків, а не за 6000–10000.
+        var h = Wheel();
+        for (var i = 0; i < 3; i++)
+        {
+            h.Act(0, "spin", PotterHands.Touchpad(12));
+            h.Clock.Advance(1);
+        }
+        Assert.Equal("press", Guard(h).GetProperty("why").GetString());
+        PotterHands.Pass(h);
+
+        var soon = ClickUntilAsked(h, 12_000);
+        Assert.InRange(soon, WaryMin, WaryMax + 11);
+        Assert.Equal("", Guard(h).GetProperty("why").GetString());
+
+        // Чиста звичайна перевірка пройдена — знову спокійний крок.
+        PotterHands.Pass(h);
+        Assert.InRange(ClickUntilAsked(h, 12_000), CalmMin, CalmMax + 11);
+    }
+
+    [Fact]
+    public void Three_misses_alone_do_not_make_the_master_watch_closer()
+    {
+        // Промахи — не почерк: людина, що проклацала полиці наосліп, після паузи дістає той самий спокійний крок.
+        var h = Wheel();
+        LeftBeforeCheck(h, 1);
+        Human(h, 1);
+        for (var i = 0; i < MaxMisses; i++) PotterHands.Miss(h);
+        Assert.Equal("misses", Guard(h).GetProperty("why").GetString());
+
+        h.Clock.Advance(LockFor);
+        PotterHands.Pass(h);
+        Assert.InRange(ClickUntilAsked(h, 12_000), CalmMin, CalmMax + 11);
     }
 
     [Fact]
@@ -559,9 +597,9 @@ public class ClickerGuardTests
         {
             ["left"] = 99_999_999, ["shelf"] = Convert.ToBase64String(new byte[8]), ["misses"] = 77, ["why"] = "<script>", ["doubt"] = "misses",
         });
-        Human(h);                                       // лічильник обрізано до CheckMax, куций ключ відкинуто
+        Human(h);                                       // лічильник обрізано до CalmMax, куций ключ відкинуто
         var saved = JsonNode.Parse(h.Room.Game.Save()!)!["guard"]!;
-        Assert.True(saved["left"]!.GetValue<int>() <= CheckMax);
+        Assert.True(saved["left"]!.GetValue<int>() <= CalmMax);
         Assert.Null(saved["shelf"]);
         Assert.Equal("", saved["why"]!.GetValue<string>());
         Assert.Equal("", saved["doubt"]!.GetValue<string>());
