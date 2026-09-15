@@ -2,19 +2,26 @@
   Гончарне коло. Соло-клікер: тиснеш на коло — ліпиш глеки, купуєш верстати й віхи, ловиш розписні глеки,
   збираєш розписи, обпалюєш майстерню за клейма майстра, міняєш глеки на черепки.
 
-  Правила рахує сервер (Impl/Clicker.cs). Клієнт понад малювання робить рівно три речі:
-  1) батчить кліки — рахує їх локально й шле Act('spin', { n }) раз на 700 мс, а не двадцять разів за секунду;
+  Правила рахує сервер (Impl/Clicker.cs). Клієнт понад малювання робить рівно чотири речі:
+  1) батчить кліки — збирає відбитки справжніх натисків і шле Act('spin', { c: [[dt, press, x, y, src], …] }) раз на
+     700 мс, а не двадцять разів за секунду. Рахуються лише isTrusted-натиски на коло (pointerdown → pointerup) і
+     пробіл без автоповтору (keydown → keyup): el.click() чи dispatchEvent зі скрипта кліком не стають, а сервер за
+     відбитками впізнає мишачий софт (Impl/ClickerGuard.cs);
   2) доліковує лічильник між подіями 'room' — за view.baseSecond і ярмарком, зі стелею офлайну, як на сервері.
      Простій беремо серверний (view.now − view.lastSync) і додаємо лише те, що натікало ВІД отримання виду, —
      так збитий годинник у гравця не малює неіснуючих глеків. Прийшов новий вид — беремо його число, а не своє;
-  3) показує розписний глек у його вікні (view.golden) і, коли той утік, питає наступний розклад Act('look').
+  3) показує розписний глек у його вікні (view.golden) і, коли той утік, питає наступний розклад Act('look');
+  4) показує Око майстра (view.guard): полицю-картинку, де треба торкнутись усіх глечиків (Act('answer', { taps })),
+     або паузу кола з відліком. Де глечики — клієнт не знає: це знає лише сервер.
 
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
     upgrades: { key: { level, price, name, desc, max, kind, gain, growth, marks, open } }, marks: [...],
     canSellToday, soldToday, cap, rate, lastSync, now, offlineHours, golden: { at, until, x, y }, caught,
     fair: { until, mult }, inspire: { until, mult }, allMult, stamps, stampsFree, stampsReady, nextStampAt,
-    stampBonus, stampCap, firings, secrets: [...], styles: [...], wear }.
-  Дії: spin { n }, buy { key, n }, mark { key }, sell { pots }, catch, look, fire, secret { key }, paint { key }, wear { key }.
+    stampBonus, stampCap, firings, secrets: [...], styles: [...], wear,
+    guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why } }.
+  Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, look, fire, secret { key }, paint { key }, wear { key },
+    answer { taps: [[x, y], …] }.
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -29,6 +36,9 @@
   const CATCH_GRACE_MS = 2000;            // той самий запас, що й на сервері: після нього глек уже не спіймати
   const BOARD_MS = 60 * 1000;             // як часто перепитуємо таблицю «Гончарне коло» для рядка про суперника
   const SLOW_MS = 200;                    // таймери бонусів, прогрес клейм — не частіше, ніж так
+  const HOLD_MS = 3000;                   // тримали довше — це вже не клік
+  /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
+  const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
   // ---------- числа й слова ----------
 
@@ -184,7 +194,9 @@
         stamps: 0, stampsFree: 0, stampBonus: 0.02, fireArmed: 0,
         ups: {}, markList: [], styleList: [], secretList: [],
         tab: storeGet('clk.tab', 'shop'), mode: storeGet('clk.mode', '1'),
-        unsent: 0, inflight: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
+        hands: [], inflight: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
+        downs: new Map(), keyDown: 0, lastDown: 0, onKeyUp: null,
+        guard: null, eye: null, taps: [], eyeBusy: false,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
       };
     }
@@ -237,7 +249,7 @@
     // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
     // і кнопки прилавка (уже без них).
     const sure = firm(st);
-    let n = sure + (st.unsent + st.inflight) * clickNow(st);
+    let n = sure + (st.hands.length + st.inflight) * clickNow(st);
     // Дрібний відкат — це не витрата, а різниця округлень між нашим доліком і сервером: не смикаємо число.
     if (st.shown >= 0 && n < st.shown && st.shown - n <= 2) n = st.shown;
     if (n !== st.shown) {
@@ -268,7 +280,7 @@
       if (b.disabled !== off) b.disabled = off;
     }
 
-    // Продаж — від підтвердженого числа, а не від намальованого: у st.unsent може лежати хвіст кліків,
+    // Продаж — від підтвердженого числа, а не від намальованого: у st.hands може лежати хвіст кліків,
     // які цієї миті ще не долетіли, і кнопка обіцяла б сервером не наліплені глеки.
     const ready = Math.floor(sure / st.rateOf);
     const many = Math.min(ready, st.canSell);
@@ -311,13 +323,93 @@
     if (visible(st)) loadBoard(st);
     paintRival(st, liveTotal);
     if (st.tab === 'fire') paintFire(st, liveTotal);
+    paintEye(st);
+  }
+
+  // ---------- Око майстра ----------
+
+  /// Майстер щось хоче: коло стоїть або чекає відповіді на полицю. Кліки тоді не рахуються — і не малюються.
+  const guardOn = (st) => !!st.guard;
+
+  /// За що майстер питає не в чергу (why з виду) — перед проханням торкнутись глечиків.
+  const DOUBT = {
+    rhythm: 'Кліки йшли надто рівно, мов під метроном, — так клацає автоклікер. Покажи майстрові, що це рука: ',
+    press: 'Кнопку відпускали миттєво, раз за разом, — так клацає автоклікер (або тачпад). Покажи майстрові, що це рука: ',
+  };
+
+  /// Панель майстра замість кола: відлік паузи або полиця, де треба торкнутись глечиків.
+  function paintEye(st) {
+    const e = st.eye;
+    const g = st.guard;
+    const on = guardOn(st) && st.mine;
+    if (st.wheelBox.hidden !== on) st.wheelBox.hidden = on;
+    if (e.el.hidden === on) e.el.hidden = !on;
+    if (!on) return;
+
+    const left = g.lockUntil ? g.lockUntil - serverNow(st) : 0;
+    const locked = left > 0;
+    let text;
+    if (locked) {
+      const s = Math.ceil(left / 1000);
+      text = '🔒 Коло стоїть ще ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '. Три полиці поспіль — не ті глеки.'
+        + ' Пасив, покупки й прилавок працюють; кліки й розписні глеки — ні. Після паузи майстер спитає ще раз.';
+    } else {
+      const ask = 'усіх глечиків на полиці — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Поки не відповіси, кліки не рахуються.';
+      text = DOUBT[g.why] ? DOUBT[g.why] + 'торкнись ' + ask : 'Майстер дивиться, чи коло крутить рука, а не автоклікер. Торкнись ' + ask;
+    }
+    if (e.text.textContent !== text) e.text.textContent = text;
+    const tries = locked ? '' : g.misses ? 'не ті — ось інша полиця · спроба ' + (g.misses + 1) + ' з ' + g.maxMisses : '';
+    if (e.tries.textContent !== tries) e.tries.textContent = tries;
+    if (e.pic.hidden !== locked) e.pic.hidden = locked;
+    if (e.reset.hidden !== locked) e.reset.hidden = locked;
+
+    // Картинку міняємо лише на нову полицю: вид летить на кожну дію, а base64 полиці між ними той самий.
+    if (!locked && g.png && e.img._serial !== g.serial) {
+      e.img._serial = g.serial;
+      e.img.src = g.png;
+      st.taps = [];
+      st.eyeBusy = false;
+    }
+    const marks = st.taps.map((t, i) => '<i style="left:' + (t[0] / g.width * 100).toFixed(2) + '%;top:'
+      + (t[1] / g.height * 100).toFixed(2) + '%">' + (i + 1) + '</i>').join('');
+    if (e.marks._html !== marks) { e.marks._html = marks; e.marks.innerHTML = marks; }
+    const off = st.eyeBusy || !st.taps.length;
+    if (e.reset.disabled !== off) e.reset.disabled = off;
+    e.pic.classList.toggle('busy', st.eyeBusy);
+  }
+
+  /// Торкання полиці. Лише справжні (isTrusted): скрипт, що тицяє в картинку dispatchEvent-ом, сюди не дійде —
+  /// хоча він однаково не знає, куди тицяти. Координати — у пікселях картинки, як їх чекає сервер.
+  function tapShelf(st, ev) {
+    const g = st.guard;
+    if (!ev.isTrusted || !g || !g.png || st.eyeBusy || !st.ctx) return;
+    if (g.lockUntil && g.lockUntil > serverNow(st)) return;
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    ev.preventDefault();
+    const r = st.eye.img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const x = Math.round(((ev.clientX - r.left) / r.width) * g.width * 10) / 10;
+    const y = Math.round(((ev.clientY - r.top) / r.height) * g.height * 10) / 10;
+    st.taps.push([x, y]);
+    if (st.taps.length >= g.count) {
+      st.eyeBusy = true;
+      const serial = g.serial;
+      const taps = st.taps.slice();
+      st.ctx.act('answer', { taps }).then((res) => {
+        // Невдача без нової полиці (зіпсовані торкання, зв'язок) — дати спробувати ще раз ту саму.
+        if (st.guard && st.guard.serial === serial && !(res && res.ok)) { st.taps = []; st.eyeBusy = false; }
+        paintEye(st);
+      }, () => { st.taps = []; st.eyeBusy = false; paintEye(st); });
+    }
+    paintEye(st);
   }
 
   /// Розписний глек: стоїть у своєму вікні; утік — один раз питаємо сервер про наступний.
   function paintGolden(st) {
     const g = st.golden;
     const b = st.gold;
-    if (!g || !st.mine) { if (!b.hidden) b.hidden = true; return; }
+    // Поки майстер чекає, глек не ловиться (сервер відмовить) — тож і не показуємо.
+    if (!g || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; return; }
     const now = serverNow(st);
     const show = now >= g.at && now <= g.until && st.goldenGone !== g.at;
     if (b.hidden === show) {
@@ -415,19 +507,48 @@
   // ---------- дії ----------
 
   function flush(st) {
-    if (!st.unsent || !st.ctx) return;
-    const n = Math.min(st.unsent, MAX_BATCH);
-    st.unsent -= n;
+    if (!st.hands.length || !st.ctx) return;
+    // Поки майстер чекає, сервер кліків однаково не зарахує: не шлемо і не обіцяємо їх на лічильнику.
+    if (guardOn(st)) { st.hands.length = 0; return; }
+    const c = st.hands.splice(0, MAX_BATCH);
+    const n = c.length;
     st.inflight += n;
     const back = () => { st.inflight = Math.max(0, st.inflight - n); };
     // Кліки, що вже полетіли, знімає з рахунку сам вид (див. update): вид і відповідь приходять різними
     // кадрами вебсокета, і якби ми чекали відповіді, між ними лічильник встигав би показати їх двічі.
     // Лишається тільки невдача: тоді виду не буде взагалі, і порахувати назад мусимо ми.
-    st.ctx.act('spin', { n }).then((r) => { if (!r || !r.ok) back(); }, back);
+    st.ctx.act('spin', { c }).then((r) => { if (!r || !r.ok) back(); }, back);
   }
 
-  function spin(st) {
-    if (!st.ctx || !st.mine) return;
+  /// Точка на колі 0…1000 — так її чекає сервер.
+  function spot(st, ev) {
+    const r = st.wheel.getBoundingClientRect();
+    const at = (v, from, size) => Math.max(0, Math.min(1000, Math.round(((v - from) / (size || 1)) * 1000)));
+    return [at(ev.clientX, r.left, r.width), at(ev.clientY, r.top, r.height)];
+  }
+
+  /// Натиснули на коло: запам'ятовуємо мить і точку, а кліком це стане, коли відпустять.
+  function pressWheel(st, ev) {
+    if (!ev.isTrusted || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    const [x, y] = spot(st, ev);
+    st.downs.set(ev.pointerId, { t: ev.timeStamp, x, y, src: SRC[ev.pointerType] ?? SRC.mouse });
+  }
+
+  /// Відпустили: це клік, якщо натискали саме на коло, справжньою рукою й не довше за HOLD_MS. Два пальці по черзі —
+  /// два кліки: кожен палець має свій pointerId.
+  function releaseWheel(st, ev) {
+    const d = st.downs.get(ev.pointerId);
+    if (!d) return;
+    st.downs.delete(ev.pointerId);
+    if (!ev.isTrusted || ev.type === 'pointercancel' || ev.timeStamp - d.t > HOLD_MS) return;
+    spin(st, d.t, ev.timeStamp - d.t, d.x, d.y, d.src);
+  }
+
+  /// Один справжній клік: відбиток у пачку, «+N» над колом. downAt і press — у мс шкали event.timeStamp.
+  function spin(st, downAt, press, x, y, src) {
+    if (!st.ctx || !st.mine || guardOn(st)) return;
+    const dt = st.lastDown ? Math.max(0, Math.min(60000, Math.round(downAt - st.lastDown))) : 60000;
+    st.lastDown = downAt;
     // Те саме відро дозволів, що й на сервері: понад дванадцять кліків за секунду він однаково не візьме,
     // тож і малювати їх не варто — інакше лічильник обіцяв би те, чого потім не дорахується.
     const now = Date.now();
@@ -435,7 +556,9 @@
     st.tokensAt = now;
     if (st.tokens < 1) return;
     st.tokens -= 1;
-    st.unsent++;
+    st.hands.push([dt, Math.max(0, Math.round(press)), x, y, src]);
+    // Більше трьох пачок не копимо: якщо зв'язок завис, хвіст однаково не долетів би.
+    if (st.hands.length > MAX_BATCH * 3) st.hands.splice(0, st.hands.length - MAX_BATCH * 3);
     pop(st, clickNow(st));
     // Сервер ціною кліка вважає мить, коли пачка ДОЛЕТІЛА. Під кінець натхнення чи ярмарку 700 мс чекання
     // перетворили б «+25×» на екрані на «+1×» на сервері — тож останні півтори секунди бонусу шлемо одразу.
@@ -455,8 +578,8 @@
     st.ctx.act(action, payload);
   }
 
-  function catchGolden(st) {
-    if (!st.golden || !st.mine) return;
+  function catchGolden(st, ev) {
+    if (!ev.isTrusted || !st.golden || !st.mine || guardOn(st)) return;
     st.goldenGone = st.golden.at;      // ховаємо одразу: другий клік по тому самому глеку — лише червоний тост
     st.gold.hidden = true;
     order(st, 'catch');
@@ -670,6 +793,12 @@
         + '<circle class="clk-speck" cx="50" cy="12" r="2.6"/></g>'
         + '<g class="clk-jugbox"></g>'
         + '</svg></button></div>'
+        // Око майстра стає на місце кола: відлік паузи або полиця з глечиками.
+        + '<div class="clk-eye" hidden><div class="clk-eye-head"><b>👁 Око майстра</b><span class="clk-eye-tries small"></span></div>'
+        + '<div class="clk-eye-text small"></div>'
+        + '<div class="clk-eye-pic"><img alt="Полиця з глечиками, горщиками, мисками й черепками" draggable="false">'
+        + '<div class="clk-eye-marks"></div></div>'
+        + '<button type="button" class="ghost small clk-eye-reset" disabled>Скинути торкання</button></div>'
         + '<div class="clk-buffs" hidden></div>'
         + '<button type="button" class="clk-gold" hidden aria-label="Розписний глек — лови!" title="Розписний глек — лови!">'
         + '<svg class="clk-gold-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/></svg>'
@@ -720,10 +849,31 @@
       st.fire._btn = q('.clk-fire');
       st.fire._after = q('.clk-after');
       st.fire._static = q('.clk-firestatic');
+      st.wheelBox = q('.clk-wheelbox');
+      st.eye = { el: q('.clk-eye'), text: q('.clk-eye-text'), tries: q('.clk-eye-tries'), pic: q('.clk-eye-pic'),
+        img: q('.clk-eye-pic img'), marks: q('.clk-eye-marks'), reset: q('.clk-eye-reset') };
       st.ctx = ctx;
       ctx.clk = st;                     // щоб onKey дістався до стану: там є лише ctx
-      st.wheel.addEventListener('click', () => spin(st));
-      st.gold.addEventListener('click', () => catchGolden(st));
+      // Клік — це пара справжніх pointerdown/pointerup на колі, а не подія click: її дає і el.click() зі скрипта,
+      // і клавіатура, і в ній нема ні миті натискання, ні тривалості.
+      st.wheel.addEventListener('pointerdown', (e) => pressWheel(st, e));
+      st.wheel.addEventListener('pointerup', (e) => releaseWheel(st, e));
+      st.wheel.addEventListener('pointercancel', (e) => releaseWheel(st, e));
+      st.wheel.addEventListener('contextmenu', (e) => e.preventDefault());   // довгий тап на телефоні — не меню
+      st.gold.addEventListener('click', (e) => catchGolden(st, e));
+      st.eye.img.addEventListener('pointerdown', (e) => tapShelf(st, e));
+      st.eye.img.addEventListener('contextmenu', (e) => e.preventDefault());
+      st.eye.reset.onclick = () => { st.taps = []; paintEye(st); };
+      // Пробіл: натиснули (onKey) → відпустили (тут). Слухаємо весь документ: фокус між ними міг утекти.
+      if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
+      st.onKeyUp = (e) => {
+        if (e.code !== 'Space' || !st.keyDown) return;
+        const down = st.keyDown;
+        st.keyDown = 0;
+        if (!e.isTrusted || e.timeStamp - down > HOLD_MS) return;
+        spin(st, down, e.timeStamp - down, -1, -1, SRC.key);
+      };
+      document.addEventListener('keyup', st.onKeyUp);
       st.one.onclick = () => order(st, 'sell', { pots: st.rateOf });
       st.all.onclick = () => order(st, 'sell', { pots: +st.all.dataset.pots });
       st.fire._btn.onclick = () => fire(st);
@@ -776,6 +926,13 @@
           const until = Date.parse(v.golden.until);
           if (Number.isFinite(at) && Number.isFinite(until)) st.golden = { at, until, x: v.golden.x || 0, y: v.golden.y || 0 };
         }
+        const g = v.guard;
+        st.guard = g ? {
+          serial: g.serial || 0, count: g.count || 0, png: g.png || '', width: g.width || 400, height: g.height || 250,
+          misses: g.misses || 0, maxMisses: g.maxMisses || 3, lockUntil: (g.lockUntil && Date.parse(g.lockUntil)) || 0, why: g.why || '',
+        } : null;
+        // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
+        if (st.guard) st.hands.length = 0;
       }
       const one = 'Продати ' + num(st.rateOf) + ' → 🏺1';
       if (st.one.textContent !== one) st.one.textContent = one;
@@ -800,11 +957,14 @@
 
     onKey(e, ctx) {
       if (e.code !== 'Space' || !ctx.mine || !ctx.clk) return false;
-      // Фокус на будь-якій кнопці картки — пробіл належить їй: на колі він і так порахується (інакше клік
-      // пішов би двічі), а на верстаті чи прилавку ми б крутили коло замість покупки й продажу.
+      const st = ctx.clk;
+      // Фокус на іншій кнопці картки — пробіл належить їй: на верстаті чи прилавку ми б крутили коло замість
+      // покупки й продажу. Сама кнопка кола — наша: її власний click ми кліком не рахуємо.
       const on = document.activeElement;
-      if (on && on.tagName === 'BUTTON' && ctx.clk.el && ctx.clk.el.contains(on)) return false;
-      spin(ctx.clk);
+      if (on && on.tagName === 'BUTTON' && on !== st.wheel && st.el && st.el.contains(on)) return false;
+      // Затиснутий пробіл сипле keydown з repeat — це не клацання, а автоповтор клавіатури.
+      if (!e.isTrusted || e.repeat || guardOn(st)) return true;
+      if (!st.keyDown) st.keyDown = e.timeStamp;
       return true;
     },
 
@@ -820,6 +980,7 @@
       if (!st) return;
       clearInterval(st.timer);
       cancelAnimationFrame(st.raf);
+      if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       st.raf = 0;
       st.el = null;
       root._clk = null;

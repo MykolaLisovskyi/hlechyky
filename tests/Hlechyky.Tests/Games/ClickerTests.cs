@@ -30,7 +30,8 @@ public class ClickerTests
     static long Price(RoomHarness h, string key) => Up(h, key).GetProperty("price").GetInt64();
     static int LevelOf(RoomHarness h, string key) => Up(h, key).GetProperty("level").GetInt32();
 
-    static ActResult Spin(RoomHarness h, int n = 1) => h.Act(0, "spin", new { n });
+    /// <summary>n людських кліків однією пачкою — так їх шле клієнт (з почерком для Ока майстра).</summary>
+    static ActResult Spin(RoomHarness h, int n = 1) => h.Act(0, "spin", PotterHands.Human(n));
     static ActResult Buy(RoomHarness h, string key) => h.Act(0, "buy", new { key });
     static ActResult Sell(RoomHarness h, long pots) => h.Act(0, "sell", new { pots });
 
@@ -104,27 +105,44 @@ public class ClickerTests
     // ---------- клік ----------
 
     [Fact]
-    public void A_bare_spin_is_one_click_and_gives_one_pot()
+    public void One_click_with_its_handwriting_gives_one_pot()
     {
         var h = Wheel();
-        Assert.True(h.Act(0, "spin").Ok);
+        Assert.True(Spin(h, 1).Ok);
 
         Assert.Equal(1, Pots(h));
         Assert.Equal(1, Total(h));
     }
 
-    [Fact]
-    public void A_spin_of_nothing_is_not_a_click()
+    [Theory]
+    [InlineData(null)]                                        // голий spin — так клацав би кожен скрипт
+    [InlineData("""{"n":12}""")]                              // стара вкладка до Ока майстра
+    [InlineData("""{"c":[]}""")]                              // пачка без жодного кліка
+    [InlineData("""{"c":[[100,50,500,500]]}""")]              // відбиток без «чим клацнув»
+    [InlineData("""{"c":[[100,-5,500,500,0]]}""")]            // від'ємне утримання
+    [InlineData("""{"c":[[100,50,500,500,9]]}""")]            // невідоме джерело
+    [InlineData("""{"c":[[100,50,5000,500,0]]}""")]           // точка поза колом
+    [InlineData("""{"c":[["100",50,500,500,0]]}""")]          // число рядком
+    [InlineData("""{"c":[[1e999,50,500,500,0]]}""")]          // число, що не влазить нікуди
+    public void Clicks_without_a_proper_handwriting_are_not_clicks(string? payload)
     {
-        // «Поля нема» — це один клік від кнопки, а от нуль і мінус — уже не клік: домальовувати з них глек
-        // не можна, бо тоді нелегальний ввід тихо стає ходом.
+        // Домальовувати глек із того, що не є кліком, не можна: тоді нелегальний ввід тихо ставав би ходом.
         var h = Wheel();
+        var result = h.Act(0, "spin", payload is null ? null : System.Text.Json.JsonDocument.Parse(payload).RootElement);
 
-        Assert.Equal("Кліків має бути хоч один", Spin(h, 0).Message);
-        Assert.Equal("Кліків має бути хоч один", Spin(h, -7).Message);
+        Assert.False(result.Ok);
+        Assert.Equal("Коло оновилось — перезавантаж сторінку", result.Message);
         Assert.Equal(0, Pots(h));
         Assert.Equal(0, Total(h));
         Assert.Empty(h.Scores);
+    }
+
+    [Fact]
+    public void A_batch_bigger_than_a_second_of_clicks_is_refused_whole()
+    {
+        var h = Wheel();
+        Assert.False(Spin(h, Clicker.MaxClicksPerSecond + 1).Ok);
+        Assert.Equal(0, Pots(h));
     }
 
     [Fact]
@@ -143,7 +161,7 @@ public class ClickerTests
 
         // Хід приймаємо — чесний гравець із лагом не має бачити червоних тостів через власний інтернет.
         Assert.True(Spin(h, 12).Ok);
-        Assert.True(h.Act(0, "spin", new { n = 100 }).Ok);
+        Assert.True(Spin(h, 12).Ok);
         Assert.Equal(12, Pots(h));
     }
 

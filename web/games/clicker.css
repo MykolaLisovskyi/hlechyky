@@ -31,6 +31,8 @@
   width: 100%; height: 100%; padding: 0; border: none; border-radius: 50%;
   background: transparent; display: block; cursor: pointer;
   transition: transform .08s ease-out;
+  /* Швидкі тапи на телефоні: без цього подвійний тап масштабує сторінку й рве pointerdown/pointerup. */
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .clk-wheel:hover { background: transparent; }
 .clk-wheel:active { transform: scale(.96); }
@@ -47,6 +49,28 @@
   position: absolute; bottom: 46%; color: var(--accent); font-weight: 700; font-size: .95em; white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .5); animation: clkpop .8s ease-out forwards;
 }
+
+/* ---- Око майстра: стає на місце кола, поки майстер чекає відповіді або коло стоїть ---- */
+.clk-eye {
+  width: min(420px, 100%); display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px;
+}
+.clk-eye-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.clk-eye-tries { color: var(--clk-fire); }
+.clk-eye-text { color: var(--text); line-height: 1.35; }
+.clk-eye-pic { position: relative; width: 100%; aspect-ratio: 400 / 250; border-radius: 8px; overflow: hidden; touch-action: manipulation; }
+.clk-eye-pic img {
+  width: 100%; height: 100%; display: block; cursor: crosshair;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.clk-eye-pic.busy img { opacity: .6; cursor: progress; }
+.clk-eye-marks { position: absolute; inset: 0; pointer-events: none; }
+.clk-eye-marks i {
+  position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
+  border: 2px solid #fff; background: rgba(214, 72, 40, .75); box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+  color: #fff; font: 700 13px/22px system-ui, sans-serif; font-style: normal; text-align: center;
+}
+.clk-eye-reset { align-self: center; }
 
 /* ---- бонуси розписного глека ---- */
 .clk-buffs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }

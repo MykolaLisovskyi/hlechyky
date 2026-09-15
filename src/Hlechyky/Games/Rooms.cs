@@ -260,13 +260,17 @@ public sealed class Rooms
         try
         {
             game = _registry.Create(gameId)!;
-            wanted = string.IsNullOrWhiteSpace(key) ? game.SoloKey(NickKey(nick), _clock) : key!;
+            wanted = game.SoloKey(NickKey(nick), _clock);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "соло-гра {Game} не змогла назвати свій ключ", gameId);
             return RoomOutcome.Fail(Say.NoGame);
         }
+        // Ключ від клієнта — лише якщо це його власний. Інакше «OpenSolo('clicker', 'clicker:оля')» відкривав би
+        // Олине збереження в чужій кімнаті: продаж її глеків ішов би в чужий гаманець, а стан писався б під її ключем.
+        if (!string.IsNullOrWhiteSpace(key) && !string.Equals(key, wanted, StringComparison.Ordinal))
+            return RoomOutcome.Fail("Чужу кімнату не відкрити");
 
         Room? mine;
         lock (_lock) mine = _rooms.FirstOrDefault(r => r.Info.Solo && r.Key == wanted && r.Has(nick));
@@ -628,12 +632,16 @@ public sealed class Rooms
         return new RoomOutcome(outbox, new RoomReply(result.Ok, result.Message, room.Id));
     }
 
-    /// <summary>Реалтайм-ввід: відповіді нема, помилки нікого не цікавлять — наступний кадр усе перемалює.</summary>
+    /// <summary>
+    /// Реалтайм-ввід: відповіді нема, помилки нікого не цікавлять — наступний кадр усе перемалює. Лише для ігор із
+    /// тиком: Input не зберігає стан, і в покроковій persistent-грі це була б дія «на пробу» — наприклад, відповідь
+    /// майстрові в Гончарному колі, чия невдача ніколи не дійшла б до бази (вийшов-зайшов — і спроби знову повні).
+    /// </summary>
     public Outbox Input(string id, string nick, string action, JsonElement payload)
     {
         var outbox = new Outbox();
         if (!Named(nick) || TooBig(payload)) return outbox;
-        if (Find(id) is not { } room) return outbox;
+        if (Find(id) is not { } room || !room.Info.RealTime) return outbox;
         lock (room.Sync)
         {
             if (room.Status != RoomStatus.Playing || room.SeatOf(nick) is not { } seat) return outbox;

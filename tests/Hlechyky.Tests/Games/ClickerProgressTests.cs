@@ -294,11 +294,11 @@ public class ClickerProgressTests
         JugNow(h, Clicker.GoldenKind.Inspire);
 
         Assert.Equal("✨ Натхнення! Клік ×25 на 15 с", Act(h, "catch").Message);
-        Assert.True(Act(h, "spin").Ok);
+        Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);
         Assert.Equal(25, Pots(h));
 
         h.Clock.Advance(16);
-        Act(h, "spin");
+        Act(h, "spin", PotterHands.Human(1));
         Assert.Equal(26, Pots(h));
     }
 
@@ -636,7 +636,7 @@ public class ClickerProgressTests
         JugNow(h, Clicker.GoldenKind.Fair);
         Act(h, "catch");
         h.Clock.Advance(5);
-        Act(h, "spin");
+        Act(h, "spin", PotterHands.Human(1));
         var json = h.Room.Game.Save()!;
         var before = Views.Text(h.Room.Game.View(0));
 
@@ -667,7 +667,7 @@ public class ClickerProgressTests
     {
         var h = Wheel();
         Give(h, long.MaxValue - 5);
-        Act(h, "spin", new { n = 12 });
+        Act(h, "spin", PotterHands.Human(12));
 
         Assert.Equal(long.MaxValue, Pots(h));
         Assert.Equal(long.MaxValue, Total(h));
@@ -678,9 +678,9 @@ public class ClickerProgressTests
     {
         var h = Wheel();
         Give(h, 999_990);
-        Act(h, "spin");
+        Act(h, "spin", PotterHands.Human(1));
         Assert.Single(h.Scores);
-        Act(h, "spin", new { n = 11 });
+        Act(h, "spin", PotterHands.Human(11));
         Assert.Equal(2, h.Scores.Count);
         Assert.Equal(1_000_002, h.Scores.Last().Score);
     }

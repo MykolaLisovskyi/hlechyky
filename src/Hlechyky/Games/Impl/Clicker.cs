@@ -64,6 +64,9 @@ public sealed record ClickerStyle(string Key, string Name, long Price);
 /// глек, що з'являється на колі на кілька секунд, обпал (скинути майстерню за вічні клейма майстра) і колекція
 /// розписів. Правила живуть тільки тут: клієнт батчить кліки й малює плавний долік, але кожен глек рахує
 /// сервер за <see cref="IRoomContext.Clock"/>.
+///
+/// Від автоклікерів і скриптів коло стереже Око майстра (<see cref="ClickerGuard"/>): кліки приходять із почерком,
+/// за робочий почерк і раз на кілька сотень кліків треба торкнутись глечиків на картинці, за три помилки — пауза.
 /// </summary>
 public sealed class Clicker : Game
 {
@@ -196,6 +199,9 @@ public sealed class Clicker : Game
     /// </summary>
     double _tokens;
     DateTimeOffset _tokensAt;
+
+    /// <summary>Око майстра: почерк кліків, перевірка картинкою й пауза кола (див. <see cref="ClickerGuard"/>).</summary>
+    readonly ClickerGuard _guard = new();
 
     long _pots;
     long _total;
@@ -357,6 +363,7 @@ public sealed class Clicker : Game
         _stamps = 0;
         _firings = 0;
         ScheduleGolden(_lastSync);
+        _guard.Reset(Ctx.Rng);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -376,6 +383,7 @@ public sealed class Clicker : Game
             "secret" => BuySecret(payload),
             "paint" => Paint(payload),
             "wear" => Wear(payload),
+            "answer" => Answer(payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
@@ -473,22 +481,59 @@ public sealed class Clicker : Game
     // ---------- дії ----------
 
     /// <summary>
-    /// Клік. Клієнт батчить: замість дванадцяти повідомлень за секунду шле одне з <c>n</c>. Понад
-    /// дванадцять кліків на секунду не рахуємо, але й не сваримось — чесний гравець із лагом не має
-    /// бачити червоних тостів через власний інтернет.
+    /// Клік. Клієнт батчить: замість дванадцяти повідомлень за секунду шле одне з пачкою відбитків
+    /// <c>c: [[dt, press, x, y, src], …]</c> — по одному на кожен справжній натиск (див. <see cref="ClickerGuard"/>).
+    /// Понад дванадцять кліків на секунду не рахуємо, але й не сваримось — чесний гравець із лагом не має
+    /// бачити червоних тостів через власний інтернет. Так само мовчки не рахуємо, поки коло стоїть чи майстер
+    /// чекає відповіді: чому — покаже вид.
     /// </summary>
     ActResult Spin(JsonElement payload)
     {
-        // «Поля нема» — це один клік (так шле кнопка), а от «n: 0» чи «n: −7» — це вже не клік, і мовчки
-        // домальовувати з нього глек не можна: чого не просили, того й не нараховуємо.
-        var raw = Num(payload, "n");
-        if (raw is <= 0) return ActResult.Fail("Кліків має бути хоч один");
-        var asked = (int)Math.Clamp(raw ?? 1, 1, MaxClicksPerSecond);
-        var taken = Math.Min(asked, Allowance());
-        _tokens -= taken;
+        // Кліки без почерку не приймаємо зовсім: так клацав би кожен скрипт. Стара вкладка (до Ока майстра) теж
+        // тут — їй досить перезавантажитись.
+        if (ClickerGuard.Parse(payload) is not { } hands)
+            return ActResult.Fail("Коло оновилось — перезавантаж сторінку");
+        var now = Ctx.Clock.UtcNow;
+        if (_guard.Locked(now) || _guard.Pending) return ActResult.Done;
 
+        if (_guard.Judge(hands) is { } why)
+        {
+            // Пачка, на якій почерк видав робота, не рахується, і далі — жодного кліка, доки не пройде полицю.
+            // Глеків, зароблених раніше, не забираємо: так само виглядають тачпад і рівна рука на грубому таймері.
+            _guard.Suspect(why);
+            return ActResult.Done;
+        }
+
+        var taken = Math.Min(hands.Count, Allowance());
+        _tokens -= taken;
         Add(Mul(PerClick, taken));
+        _guard.Spend(taken);
+        // Під ярмарком і натхненням не перебиваємо: бонус тікає секундами, а перевірка почекає до його кінця.
+        if (_guard.Due && !FairOn && !InspireOn) _guard.Check();
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Відповідь майстрові: торкання полиці <c>taps: [[x, y], …]</c> у пікселях картинки. Влучив — коло крутиться
+    /// далі; не влучив — нова полиця; три помилки поспіль — коло стоїть десять хвилин. Невдача — теж успішна дія
+    /// (Done): стан змінився (нова полиця, лічильник спроб), і вид мусить до гравця долетіти.
+    /// </summary>
+    ActResult Answer(JsonElement payload)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (!_guard.Pending) return ActResult.Fail("Майстер ні про що не питає — крути коло");
+        if (_guard.Locked(now)) return ActResult.Fail($"Коло стоїть ще {Wait(_guard.LockUntil - now)}");
+        if (ClickerGuard.Taps(payload) is not { } taps) return ActResult.Fail("Торкання прийшли зіпсовані");
+        return _guard.Answer(taps, now, Ctx.Rng) == ClickerGuard.Verdict.Passed
+            ? ActResult.Accept("👁 Майстер кивнув — крути далі")
+            : ActResult.Done;
+    }
+
+    /// <summary>«9:05» — скільки ще стояти колу.</summary>
+    static string Wait(TimeSpan left)
+    {
+        var s = (int)Math.Ceiling(Math.Max(0, left.TotalSeconds));
+        return $"{s / 60}:{s % 60:00}";
     }
 
     /// <summary>Скільки кліків відро готове віддати просто зараз; заразом і доливає його.</summary>
@@ -587,6 +632,16 @@ public sealed class Clicker : Game
         var now = Ctx.Clock.UtcNow;
         if (now < _golden.At - EarlyGrace || now > _golden.Until + CatchGrace)
             return ActResult.Fail("Розписний глек уже втік");
+        // Глек ловиться скриптом так само легко, як клацається коло (вид знає, де й коли він стоїть), тож і тут
+        // Око майстра: поки коло стоїть чи чекає відповіді, глеки не ловляться, а кожен спійманий наближає
+        // перевірку. Хто лише ловить глеки й не клацає, зустріне майстра тут, а не в Spin.
+        if (_guard.Locked(now) || _guard.Pending)
+            return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+        if (_guard.Due && !FairOn && !InspireOn)
+        {
+            _guard.Check();
+            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");
+        }
 
         var longer = Has("longfair") ? 2 : 1;
         string text;
@@ -607,6 +662,7 @@ public sealed class Clicker : Game
                 break;
         }
         _caught++;
+        _guard.Spend(ClickerGuard.CatchWeight);
         if (_caught == GoldenForAchievement) Ctx.Award(0, 0, "ach:potter-golden");
         ScheduleGolden(now);
         return ActResult.Accept(text);
@@ -772,6 +828,8 @@ public sealed class Clicker : Game
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, owned = _secrets.Contains(s.Key) }),
             styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
             wear = _wear,
+            // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна) і/або пауза.
+            guard = _guard.View(Ctx.Clock.UtcNow),
         };
     }
 
@@ -807,7 +865,8 @@ public sealed class Clicker : Game
         Dictionary<string, int> Upgrades, SoldRow SoldToday, BucketRow Clicks,
         List<string>? Marks = null, GoldenRow? Golden = null,
         DateTimeOffset FairUntil = default, DateTimeOffset InspireUntil = default, int Caught = 0,
-        int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null);
+        int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
+        ClickerGuard.Row? Guard = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -815,7 +874,7 @@ public sealed class Clicker : Game
             new SoldRow(_soldDay, _soldShards), new BucketRow(_tokens, _tokensAt),
             _marks.Order(StringComparer.Ordinal).ToList(), _golden, _fairUntil, _inspireUntil, _caught,
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
-            _styles.Order(StringComparer.Ordinal).ToList(), _wear),
+            _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save()),
         Wire);
 
     public override void Load(string json)
@@ -861,6 +920,8 @@ public sealed class Clicker : Game
             _golden = g with { X = Math.Clamp(g.X, 0, 90), Y = Math.Clamp(g.Y, 0, 90) };
         else
             ScheduleGolden(Ctx.Clock.UtcNow);    // збереження з часів до розписних глеків
+        // Пауза кола й недороблена перевірка переживають F5 — інакше перезавантаження знімало б і те, і те.
+        _guard.Load(s.Guard, Ctx.Rng);
     }
 
     static void Fill(HashSet<string> set, List<string>? from, Func<string, bool> known)
