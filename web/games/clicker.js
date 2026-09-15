@@ -350,6 +350,11 @@
       if (b.disabled !== off) b.disabled = off;
       const label = maxed ? 'досить' : (a.n > 1 ? '×' + a.n + ' · ' : '') + short(Math.ceil(a.cost));
       if (b._price.textContent !== label) b._price.textContent = label;
+      // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль щокадру.
+      if (b._bar) {
+        const pct = maxed ? 100 : Math.min(100, Math.floor((n / Math.max(1, st.mode === 'max' ? u.price : a.cost)) * 50) * 2);
+        if (b._pct !== pct) { b._pct = pct; b._bar.style.width = pct + '%'; }
+      }
     }
     for (const b of st.markBtns) {
       const off = !st.mine || n < +b.dataset.price;
@@ -635,7 +640,8 @@
       if (show) {
         b.style.left = f.x + '%';
         b.style.setProperty('--clk-fallms', (f.until - f.at) + 'ms');
-        b.style.setProperty('--clk-drop', (st.stage.clientHeight * 0.92) + 'px');
+        // Летить від полиці (її висоту задає css) до долівки: центр глека стає на 92 % висоти сцени.
+        b.style.setProperty('--clk-drop', Math.max(40, st.stage.clientHeight * 0.92 - b.offsetTop - b.offsetHeight / 2) + 'px');
         b.style.animationDelay = (-(now - f.at)) + 'ms';
         b.classList.remove('run');
         void b.offsetWidth;
@@ -767,6 +773,7 @@
       el.style.setProperty('--rot', Math.round(Math.random() * 360 - 180) + 'deg');
       fleeting(st.fx, el, 1500);
     }
+    H.api.sfx('break', { x });
     popAt(st, 'трісь… серія обірвалась', 'miss', Math.min(70, Math.max(20, x)), 78);
   }
 
@@ -844,6 +851,7 @@
     const hot = st.momentumMax > 1 && mult >= 1 + (st.momentumMax - 1) * 0.9;
     pop(st, gain, hot ? 'hot' : '');
     sparks(st, st.sparks, hot ? 5 : 3, hot);
+    H.api.sfx('clay', { hot, heat: Math.min(1, st.heat / st.heatFull) });
     // Сервер ціною кліка вважає мить, коли пачка ДОЛЕТІЛА. Під кінець натхнення чи ярмарку 700 мс чекання
     // перетворили б «+25×» на екрані на «+1×» на сервері — тож останні півтори секунди бонусу шлемо одразу.
     const sn = serverNow(st);
@@ -855,9 +863,16 @@
     paint(st);
   }
 
+  /// Який звук дає дія гравця (жива хата озвучує; без неї — тиша).
+  const ORDER_SFX = {
+    buy: 'buy', mark: 'buy', paint: 'buy', tool: 'buy', adorn: 'buy', knead: 'buy', secret: 'buy',
+    sell: 'coins', take: 'coins', bazaar: 'coins', wear: 'tap', form: 'tap', catch: 'catch', grab: 'grab', fire: 'prestige',
+  };
+
   /// Покупка й продаж рахуються від того, що вже долетіло до сервера, тож накопичені кліки шлемо першими.
   function order(st, action, payload) {
     if (!st.ctx || !st.mine) return;
+    if (ORDER_SFX[action]) H.api.sfx(ORDER_SFX[action], { action });
     flush(st);
     st.ctx.act(action, payload);
   }
@@ -947,25 +962,33 @@
     }).map((k) => {
       const u = ups[k];
       const maxed = u.max > 0 && u.level >= u.max;
-      const pay = u.gain > 0 && !maxed ? 'окупиться за ' + span(u.price / u.gain) : '';
-      const x2 = u.boost > 1 ? ' · ×' + u.boost : '';
-      return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '')
-        + '" data-buy="' + esc(k) + '" disabled>'
-        + '<b>' + esc(u.name) + '</b>'
-        + '<span class="clk-lvl">' + (u.level ? 'рівень ' + u.level : 'ще не куплено') + (u.max > 0 ? ' з ' + u.max : '') + x2 + '</span>'
-        + '<span class="muted small">' + esc(u.desc) + '</span>'
-        + (pay ? '<span class="clk-pay">' + (k === best ? '★ ' : '') + pay + '</span>' : '')
-        + '<span class="clk-price"></span>'
+      const pay = u.gain > 0 && !maxed ? span(u.price / u.gain) : '';
+      const x2 = u.boost > 1 ? '<span class="clk-x2">×' + u.boost + '</span> · ' : '';
+      // Компактний рядок: значок · назва з рівнем і описом · ціна; смужка знизу — скільки ціни вже назбирано.
+      const icon = H.api.upIcon ? H.api.upIcon(k) : '';
+      return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '') + (maxed ? ' maxed' : '')
+        + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '')) + '" disabled>'
+        // Рівень — плашкою на значку (як лічильник будівель), щоб назва мала весь рядок.
+        + '<span class="clk-uico">' + icon + '<span class="clk-lvl' + (u.level ? '' : ' zero') + '">' + (u.level ? u.level + (u.max > 0 ? '/' + u.max : '') : '0') + '</span></span>'
+        + '<span class="clk-umain"><span class="clk-uname"><b>' + esc(u.name) + '</b></span>'
+        + '<span class="clk-udesc">' + x2 + esc(u.desc) + '</span></span>'
+        // Праворуч ціна, під нею дрібно — за скільки окупиться (★ — найвигідніше зараз).
+        + '<span class="clk-uright"><span class="clk-price"></span>'
+        + (pay ? '<span class="clk-pay">' + (k === best ? '★ ' : '') + 'окуп. ' + pay + '</span>' : '') + '</span>'
+        + '<i class="clk-ubar"><i></i></i>'
         + '</button>';
     }).join('');
     const more = teaser
-      ? '<div class="clk-teaser muted small">Далі на драбині ще є верстати: наступний відкриється після першого рівня «'
+      ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(teaser) + '</span>' : '')
+        + 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «'
         + esc(ups[prevIdle(ups, teaser)].name) + '»</div>'
       : '';
     if (swap(st.shop, cards + more)) {
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
       for (const b of st.buys) {
         b._price = b.querySelector('.clk-price');
+        b._bar = b.querySelector('.clk-ubar i');
+        b._pct = -1;
         b.onclick = () => {
           const u = st.ups[b.dataset.buy];
           const a = afford(u, st.shown, st.mode);
@@ -978,8 +1001,10 @@
     const marks = st.markList.slice().sort((a, b) => a.price - b.price);
     const mhtml = marks.length
       ? '<div class="clk-sub">Віхи<span class="muted small"> · одноразово, ×2 назавжди (до обпалу)</span></div><div class="clk-marks">'
-        + marks.map((m) => '<button type="button" class="clk-mark" data-mark="' + esc(m.key) + '" data-price="' + m.price + '" disabled>'
-          + '<b>' + esc(m.name) + '</b><span class="muted small">' + esc(m.desc) + '</span>'
+        + marks.map((m) => '<button type="button" class="clk-mark" data-mark="' + esc(m.key) + '" data-price="' + m.price + '" title="'
+          + esc(m.name + ' — ' + m.desc) + '" disabled>'
+          + (H.api.upIcon ? '<span class="clk-uico">' + H.api.upIcon(m.on || String(m.key).split(':')[0]) + '</span>' : '')
+          + '<span class="clk-umain"><b>' + esc(m.name) + '</b><span class="clk-udesc">' + esc(m.desc) + '</span></span>'
           + '<span class="clk-price">' + short(m.price) + '</span></button>').join('')
         + '</div>'
       : '';
@@ -1074,102 +1099,9 @@
 
   // ---------- хата: сцена, що росте від покупок ----------
 
+  /// Саму хату (стіни, знаряддя, прикраси, підмайстрів, світ за хатою, день і ніч) малює жива хата — clicker-scene.js
+  /// у свій шар .clk-house. Тут лишились тільки запасні значки для полиці «Хата», поки та частина не завантажилась.
   const TOOL_ICON = { paddle: '🥄', string: '🧵', sponge: '🧽', ribs: '📏', lantern: '🏮', apron: '🥼', bucket: '🪣', whistle: '🎶', scales: '⚖️', iron: '🔖' };
-  const TIER_ICON = { fair: '🎪', artel: '🤝', chumaks: '🐂', pit: '⛏️', school: '📜', chaika: '⛵', museum: '🏛️', tsar: '👑' };
-
-  /// Кругла бляшка з емодзі: знаряддя на гачку, емблема верстата на стіні.
-  const badge = (x, y, icon, title, esc) => '<g class="clk-badge" transform="translate(' + x + ' ' + y + ')"><title>' + esc(title) + '</title>'
-    + '<circle r="13"/><text dy=".36em" text-anchor="middle">' + icon + '</text></g>';
-
-  /// Фігурка підмайстра біля кола.
-  const figure = (x, y, coat) => '<circle cx="' + x + '" cy="' + y + '" r="8" fill="#e0b48a"/>'
-    + '<path d="M' + (x - 11) + ' ' + (y + 8) + 'h22v30q0 4-4 4h-14q-4 0-4-4z" fill="' + coat + '"/>'
-    + '<path d="M' + (x - 6) + ' ' + (y + 14) + 'v10M' + (x + 6) + ' ' + (y + 14) + 'v10" stroke="#f4efe3" stroke-width="1.2"/>';
-
-  /// Усе, що видно в хаті понад полицю й коло: прапорці ярмарку, ікона, рушник, вікно, знаряддя на гачках,
-  /// емблеми драбини, горно, підмайстри, півень, собака, скриня. Малюється у viewBox 360×396 поверх фону сцени.
-  function houseSvg(st) {
-    const esc = (st.ctx && st.ctx.esc) || ((x) => String(x));
-    const ups = st.ups;
-    const lvl = (k) => (ups[k] && ups[k].level) || 0;
-    const has = (k) => st.decorList.some((d) => d.key === k && d.owned);
-    let s = '';
-    // Прапорці ярмарку в Сорочинцях — уздовж стелі.
-    if (lvl('fair') > 0) {
-      const colors = ['#d7372b', '#f2c230', '#2f5fa8', '#4c9a3f'];
-      s += '<path d="M0 4q90 8 180 4t180-4" stroke="#8a6a4a" stroke-width="1.2" fill="none"/>';
-      for (let x = 18, i = 0; x < 360; x += 30, i++) s += '<path d="M' + (x - 8) + ' 6l16 0-8 15z" fill="' + colors[i % 4] + '"/>';
-    }
-    if (has('icon')) {
-      s += '<rect x="20" y="48" width="42" height="52" rx="3" fill="#5a3a1a" stroke="#d9a92f" stroke-width="1.5"/>'
-        + '<circle cx="41" cy="66" r="9" fill="#f4c542" opacity=".9"/><circle cx="41" cy="66" r="5" fill="#e0b48a"/>'
-        + '<rect x="33" y="76" width="16" height="18" rx="2" fill="#8b3a22"/>';
-    }
-    if (has('towel')) {
-      for (const x of [8, 306]) {
-        s += '<path d="M' + x + ' 30h46v54l-23 10-23-10z" fill="#f4efe3" stroke="#d9d2c2"/>'
-          + '<path d="M' + (x + 4) + ' 58h38M' + (x + 4) + ' 64h38" stroke="#d7372b" stroke-width="2"/>'
-          + '<path d="M' + (x + 4) + ' 70h38" stroke="#2a1a12" stroke-width="1.4"/>';
-      }
-    }
-    if (has('window')) {
-      s += '<rect x="262" y="46" width="76" height="74" rx="4" fill="#0c1a2b" stroke="#6b4423" stroke-width="4"/>'
-        + '<path d="M300 46v74M262 83h76" stroke="#6b4423" stroke-width="3"/>'
-        + '<g fill="#f4efe3" opacity=".8"><circle cx="278" cy="60" r="1.2"/><circle cx="322" cy="56" r="1"/><circle cx="312" cy="70" r="1.4"/></g>'
-        + '<path d="M266 118q10-22 26-30" stroke="#4c9a3f" stroke-width="2" fill="none"/>'
-        + '<g fill="#d7372b"><circle cx="286" cy="92" r="3"/><circle cx="292" cy="96" r="3"/><circle cx="288" cy="100" r="3"/><circle cx="294" cy="89" r="2.6"/></g>';
-    }
-    // Знаряддя на гачках лівої стіни, двома стовпчиками.
-    let i = 0;
-    for (const t of st.tools) {
-      if (!t.owned) continue;
-      s += badge(24 + (i % 2) * 28, 118 + Math.floor(i / 2) * 28, TOOL_ICON[t.key] || '🔧', t.name, esc);
-      i++;
-    }
-    // Емблеми драбини на правій стіні.
-    let j = 0;
-    for (const k of Object.keys(TIER_ICON)) {
-      if (lvl(k) <= 0) continue;
-      s += badge(284 + (j % 3) * 28, 138 + Math.floor(j / 3) * 28, TIER_ICON[k], ups[k].name + ' · ' + lvl(k), esc);
-      j++;
-    }
-    // Горно: що більше печей, то яскравіше горить.
-    const kiln = lvl('kiln');
-    if (kiln > 0) {
-      const glow = Math.min(0.55, 0.15 + kiln / 80).toFixed(2);
-      s += '<ellipse cx="321" cy="262" rx="34" ry="30" fill="rgba(255,138,61,' + glow + ')"/>'
-        + '<path d="M292 302V214q0-24 29-24t29 24v88z" fill="#8f6d4b" stroke="#5c4530" stroke-width="1.5"/>'
-        + '<rect x="307" y="248" width="28" height="34" rx="5" fill="#2a1508"/>'
-        + '<path class="clk-flame" d="M321 280c-9-8-7-19 0-26 2 6 6 7 4 15 4-4 6-9 4-15 8 8 7 20-8 26z" fill="#ff8a3d"/>'
-        + '<path class="clk-flame" d="M321 279c-4-4-4-10 0-14 1 4 3 4 2 8 3-2 3-5 2-8 4 4 4 10-4 14z" fill="#f4c542"/>';
-    }
-    // Підмайстри ліворуч від кола: один, з десятого рівня — двоє, з двадцять п'ятого — троє.
-    const a = lvl('apprentice');
-    if (a >= 1) s += figure(40, 232, '#7a4b2a');
-    if (a >= 10) s += figure(22, 264, '#4a6b8a');
-    if (a >= 25) s += figure(58, 268, '#8a4a6b');
-    if (has('rooster')) {
-      s += '<path d="M72 372h40" stroke="#6b4423" stroke-width="3"/>'
-        + '<path d="M78 366q-8-12-2-20 2 10 8 14z" fill="#2f5fa8"/><ellipse cx="90" cy="362" rx="11" ry="7" fill="#3a2a1a"/>'
-        + '<circle cx="101" cy="353" r="4.6" fill="#3a2a1a"/><path d="M99 348l2-5 2 5 2-4 1 5z" fill="#d7372b"/>'
-        + '<path d="M105 354l5 1-5 2z" fill="#f2c230"/><path d="M86 369v5M94 369v5" stroke="#f2c230" stroke-width="1.5"/>';
-    }
-    if (has('dog')) {
-      s += '<path d="M292 360q-10-8-4-18" stroke="#5a4636" stroke-width="3" fill="none"/>'
-        + '<ellipse cx="314" cy="362" rx="22" ry="9" fill="#5a4636"/><circle cx="337" cy="354" r="8" fill="#5a4636"/>'
-        + '<path d="M342 346l7-9v13z" fill="#3e2f24"/><circle cx="340" cy="353" r="1.4" fill="#111"/><circle cx="345" cy="357" r="1.6" fill="#111"/>';
-    }
-    if (has('chest')) {
-      s += '<rect x="10" y="336" width="60" height="40" rx="5" fill="#8b3a22" stroke="#4a1e10"/><rect x="10" y="336" width="60" height="12" rx="5" fill="#a54a2c"/>'
-        + '<circle cx="40" cy="360" r="4.5" fill="#f2c230"/><circle cx="26" cy="362" r="2.6" fill="#4c9a3f"/><circle cx="54" cy="362" r="2.6" fill="#4c9a3f"/>'
-        + '<circle cx="40" cy="342" r="1.6" fill="#f4efe3"/>';
-    }
-    return s;
-  }
-
-  function paintHouse(st) {
-    swap(st.house, houseSvg(st));
-  }
 
   // ---------- хата: полиця з глиною, знаряддям і прикрасами ----------
 
@@ -1184,12 +1116,12 @@
     const tools = '<div class="clk-sub">Знаряддя гончаря<span class="muted small"> · раз і назавжди, видно на стіні</span></div>'
       + '<div class="clk-tools">' + st.tools.map((t) => '<button type="button" class="clk-tool' + (t.owned ? ' owned' : '')
         + '" data-house="tool" data-key="' + esc(t.key) + '" data-price="' + t.price + '" data-owned="' + (t.owned ? 1 : 0) + '" disabled>'
-        + '<span class="clk-ticon">' + (TOOL_ICON[t.key] || '🔧') + '</span><b>' + esc(t.name) + '</b><span class="muted small">' + esc(t.desc) + '</span>'
+        + '<span class="clk-ticon">' + ((H.api.toolIcon && H.api.toolIcon(t.key)) || TOOL_ICON[t.key] || '🔧') + '</span><b>' + esc(t.name) + '</b><span class="muted small">' + esc(t.desc) + '</span>'
         + '<span class="clk-price' + (t.owned ? ' done' : '') + '">' + (t.owned ? '✓ на стіні' : short(t.price)) + '</span></button>').join('') + '</div>';
     const decor = '<div class="clk-sub">Прикраси хати<span class="muted small"> · +2 % до всього кожна, лишаються назавжди</span></div>'
       + '<div class="clk-tools">' + st.decorList.map((d) => '<button type="button" class="clk-tool decor' + (d.owned ? ' owned' : '')
         + '" data-house="adorn" data-key="' + esc(d.key) + '" data-price="' + d.price + '" data-owned="' + (d.owned ? 1 : 0) + '" disabled>'
-        + '<b>' + esc(d.name) + '</b><span class="muted small">' + esc(d.desc) + '</span>'
+        + (H.api.decorIcon ? '<span class="clk-ticon">' + H.api.decorIcon(d.key) + '</span>' : '') + '<b>' + esc(d.name) + '</b><span class="muted small">' + esc(d.desc) + '</span>'
         + '<span class="clk-price' + (d.owned ? ' done' : '') + '">' + (d.owned ? '✓ у хаті' : short(d.price)) + '</span></button>').join('') + '</div>';
     if (swap(st.housePane, clays + tools + decor)) {
       st.clayBtns = [...st.housePane.querySelectorAll('[data-clay]')];
@@ -1252,6 +1184,7 @@
       const at = Date.parse(p.at);
       if (!Number.isFinite(at) || serverNow(st) - at > 120000) continue;
       popAt(st, '+' + short(p.pay), 'big', 50, 40);
+      H.api.sfx('coins');
       sparks(st, st.fx, 10, true, 50, 44);
       if (ctx.toast) ctx.toast('🐴 ' + p.merchant + ' повернувся: +' + short(p.pay) + ' ' + potsWord(p.pay), 'ok');
     }
@@ -1308,7 +1241,7 @@
       b.textContent = label;
       const after = [...st.tabs.querySelectorAll('[data-tab]')].find((x) => +(x.dataset.order || 50) > (order || 50));
       st.tabs.insertBefore(b, after || null);
-      b.onclick = () => setTab(st, key);
+      b.onclick = () => { H.api.sfx('tap'); setTab(st, key); };
       const pane = document.createElement('div');
       pane.className = 'clk-pane';
       pane.dataset.pane = key;
@@ -1332,7 +1265,8 @@
     },
     showTab: (st, key) => setTab(st, key),
     pane: (st, key) => st.panes[key] || null,
-    /// Свій шар частини: back — <g> у SVG під колом (viewBox 360×396), front — <div> над сценою.
+    /// Свій шар частини: back — <g> у SVG під колом (viewBox 360×450, опорні точки — api.scene з clicker-scene.js),
+    /// front — <div> над сценою (координати у відсотках сцени).
     layer(st, name, id) {
       const host = name === 'back' ? st.back : st.front;
       let el = host.querySelector('[data-part="' + id + '"]');
@@ -1384,10 +1318,10 @@
         + '<div class="clk-rate muted small"></div>'
         + '<div class="clk-rival small" hidden></div>'
         + '<div class="clk-stage">'
-        // Хата, що росте від покупок: шар під полицею й колом (viewBox 360×396, тягнеться за сценою).
-        + '<svg class="clk-house" viewBox="0 0 360 396" preserveAspectRatio="none" aria-hidden="true"></svg>'
+        // Хата, що росте від покупок: шар під полицею й колом (viewBox 360×450 — сцена 4:5; малює clicker-scene.js).
+        + '<svg class="clk-house" viewBox="0 0 360 450" preserveAspectRatio="none" aria-hidden="true"></svg>'
         // Шари для частин (api.layer): back — SVG під колом у тих самих координатах, що й хата; front — DOM над сценою.
-        + '<svg class="clk-layer-back" viewBox="0 0 360 396" preserveAspectRatio="none" aria-hidden="true"></svg>'
+        + '<svg class="clk-layer-back" viewBox="0 0 360 450" preserveAspectRatio="none" aria-hidden="true"></svg>'
         + '<div class="clk-shelf"><div class="clk-shelf-jugs"></div></div>'
         + '<div class="clk-wheelbox">'
         + '<svg class="clk-heat" viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="47"/>'
@@ -1400,7 +1334,8 @@
         + '<circle class="clk-ring" cx="50" cy="50" r="35"/>'
         + '<circle class="clk-ring" cx="50" cy="50" r="24"/>'
         + '<circle class="clk-speck" cx="50" cy="12" r="2.6"/></g>'
-        + '<g class="clk-jugbox"></g>'
+        // Обгортка для «пружини» глини на клік (жива хата): у самого .clk-jugbox transform уже зайнятий розгоном.
+        + '<g class="clk-squash"><g class="clk-jugbox"></g></g>'
         + '</svg></button>'
         + '<div class="clk-sparks"></div><div class="clk-pops"></div></div>'
         + '<button type="button" class="clk-gold" hidden aria-label="Розписний глек — лови!" title="Розписний глек — лови!">'
@@ -1528,7 +1463,7 @@
       st.one.onclick = () => order(st, 'sell', { pots: st.rateOf });
       st.all.onclick = () => order(st, 'sell', { pots: +st.all.dataset.pots });
       st.fire._btn.onclick = () => fire(st);
-      for (const b of st.tabs.querySelectorAll('[data-tab]')) b.onclick = () => setTab(st, b.dataset.tab);
+      for (const b of st.tabs.querySelectorAll('[data-tab]')) b.onclick = () => { H.api.sfx('tap'); setTab(st, b.dataset.tab); };
       for (const b of st.modes.querySelectorAll('[data-mode]')) b.onclick = () => setMode(st, b.dataset.mode);
       // Вкладка частини (горно, альбом…) з'явиться, коли частина завантажиться: доти — майстерня, а пам'ять не чіпаємо.
       setTab(st, st.panes[st.tab] ? st.tab : 'shop', false);
@@ -1641,7 +1576,6 @@
       }
       wheelJug(st);
       paintSign(st);
-      paintHouse(st);
       shop(st, ctx);
       housePane(st, ctx);
       ordersPane(st, ctx);

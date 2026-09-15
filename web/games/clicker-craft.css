@@ -7,15 +7,16 @@
 /* ---- полиця над колом: сирці ---- */
 .clk-shelf-jugs { gap: 1px; justify-content: center; }
 .clkw-rack { display: inline-flex; }
-.clkw-rack svg { width: 26px; height: 28px; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
+/* Розмір — у частках ширини сцени (сцена — контейнер): десять сирців влазять і на телефоні, і на ПК. */
+.clkw-rack svg { width: 6.4cqw; height: 6.9cqw; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
 .clkw-rack:not(.dry) svg { opacity: .88; }
 .clkw-rack.dry svg { animation: clkwdry .5s ease-out; }
-.clkw-more { font-size: 11px; color: var(--muted); align-self: center; padding: 0 2px; }
-.clkw-empty { font-size: 10px; color: var(--muted); opacity: .7; padding-bottom: 2px; }
+.clkw-more { font-size: max(10px, 2.8cqw); color: var(--muted); align-self: center; padding: 0 2px; }
+.clkw-empty { font-size: max(10px, 2.6cqw); color: #e9dcc4; opacity: .75; padding-bottom: 2px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
 @keyframes clkwdry { from { transform: scale(1.15); } to { transform: scale(1); } }
 
 /* ---- рядок ремесла під сценою ---- */
-.clk-craft { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 360px; }
+.clk-craft { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 520px; }
 .clk-craft-pick { display: flex; align-items: center; gap: 4px; padding: 4px 8px; white-space: nowrap; flex: none; }
 .clk-craft-pick .clkw-ico { width: 22px; height: 24px; }
 .clk-craft-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
