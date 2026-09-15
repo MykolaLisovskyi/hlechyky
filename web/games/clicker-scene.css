@@ -1,1 +1,208 @@
-/* Частина «scene» Гончарного кола — див. docs/games/specs/clicker-v7.md. Поки порожньо. */
+/*
+  Жива хата Гончарного кола: рух у хаті (дим, віз, чайка, підмайстри, кіт), день і ніч (змінні --clks-* ставить
+  clicker-scene.js на .clk-stage), руки гончаря, спалах, кнопка звуку, банер «Наступна ціль», картка «Поки тебе не було».
+  Усі анімації — CSS; скрипт лише перемикає класи й змінні.
+*/
+
+/* Типові значення змінних неба — на випадок, якщо скрипт ще не встиг їх поставити (день). */
+.clk-stage {
+  --clks-sky1: #3d82c4; --clks-sky2: #a8d3ee; --clks-far: #6f9463; --clks-near: #88a743; --clks-river: #5b9ad0;
+  --clks-road: #a2835a; --clks-wall: #6d513a; --clks-wall2: #50392a; --clks-floor: #45321f; --clks-thatch: #b89150;
+  --clks-lamp: .1; --clks-stars: 0; --clks-sunop: 1; --clks-moonop: 0; --clks-sunx: 180px; --clks-suny: 30px;
+  --clks-moonx: 180px; --clks-moony: 30px;
+}
+
+/* ---- небо ---- */
+.clks-sunpos { transform: translate(var(--clks-sunx), var(--clks-suny)); transition: transform 20s linear; }
+.clks-moonpos { transform: translate(var(--clks-moonx), var(--clks-moony)); transition: transform 20s linear; }
+.clks-tw { animation: clks-twinkle 3.2s ease-in-out infinite alternate; }
+.clks-stars circle:nth-child(3n).clks-tw { animation-delay: -1.4s; }
+.clks-cloud { animation: clks-drift 80s ease-in-out infinite alternate; }
+.clks-cloud.c2 { animation-duration: 110s; animation-delay: -40s; }
+.clks-cloud.c3 { animation-duration: 95s; animation-delay: -20s; }
+.clks-ripple { animation: clks-ripple 3s ease-in-out infinite alternate; }
+.clks-lit { opacity: calc((var(--clks-lamp) - .35) * 1.6); }
+.clks-glint { animation: clks-glint 4s ease-in-out infinite; }
+.clks-flag { transform-box: fill-box; transform-origin: 0 50%; animation: clks-flag 1.4s ease-in-out infinite alternate; }
+
+/* Дим: чотири клуби по черзі (від'ємні затримки — одразу посеред руху, без «спалаху» на старті). */
+.clks-smoke { filter: blur(.7px); }
+.clks-smoke circle {
+  fill: rgba(225, 225, 225, .5); opacity: .3; transform-box: fill-box; transform-origin: center;
+  animation: clks-smoke 5s ease-out infinite;
+}
+.clks-smoke circle:nth-child(2) { animation-delay: -1.25s; }
+.clks-smoke circle:nth-child(3) { animation-delay: -2.5s; }
+.clks-smoke circle:nth-child(4) { animation-delay: -3.75s; }
+.clks-smoke.thick circle { fill: rgba(235, 238, 242, .75); }
+.clks-smoke.kiln circle { fill: rgba(120, 115, 110, .6); animation-duration: 3.8s; }
+.clks-smoke.sm circle { animation-duration: 4.2s; }
+
+/* Чайка пливе річкою, віз їде дорогою раз на ~75 с; без руху (reduced motion) — стоять посередині. */
+.clks-boat { transform: translateX(300px); animation: clks-sail 70s linear infinite; }
+.clks-boat.b2 { animation-delay: -34s; }
+.clks-wagon { transform: translateX(240px); animation: clks-cart 75s linear infinite backwards; }
+.clks-wagon.w2 { animation-delay: 3s; }
+.clks-ox { animation: clks-bob .6s ease-in-out infinite alternate; }
+.clks-hoist { transform-box: view-box; transform-origin: -20px -25px; animation: clks-hoist 4s ease-in-out infinite alternate; }
+.clks-leaf, .clks-petal { animation: clks-leaf 7s ease-in infinite; }
+.clks-rain .clks-fall1, .clks-snow .clks-fall1 { animation: clks-fall1 .8s linear infinite; }
+.clks-rain .clks-fall2, .clks-snow .clks-fall2 { animation: clks-fall2 .8s linear infinite; }
+.clks-snow .clks-fall1, .clks-snow .clks-fall2 { animation-duration: 9s; }
+
+/* ---- люди й звірі ---- */
+.clks-kneader .clks-arms { transform-origin: -6px -44px; animation: clks-knead .8s ease-in-out infinite alternate; }
+.clks-knead { transform-box: fill-box; transform-origin: 50% 100%; animation: clks-lump .8s ease-in-out infinite alternate; }
+.clks-walker { animation: clks-walk 24s linear infinite; }
+.clks-walker.w2 { animation-duration: 29s; animation-delay: -15s; }
+.clks-walker .clks-leg.l { transform-origin: -3.5px -26px; animation: clks-step .45s ease-in-out infinite alternate; }
+.clks-walker .clks-leg.r { transform-origin: 3.5px -26px; animation: clks-step .45s ease-in-out infinite alternate-reverse; }
+.clks-walker .clks-person { animation: clks-bob .225s ease-in-out infinite alternate; }
+.clks-stoker .clks-arms { transform-origin: -6px -44px; animation: clks-stoke 2.6s ease-in-out infinite; }
+.clks-tail { transform-origin: 6px -2px; animation: clks-tail 2.8s ease-in-out infinite alternate; }
+.clks-eyes { transform-box: fill-box; transform-origin: center; animation: clks-blink 6s infinite; }
+.clks-rhead { transform-box: fill-box; transform-origin: 20% 90%; animation: clks-peck 5s ease-in-out infinite; }
+.clks-dtail { transform-origin: -18px -4px; animation: clks-wag .5s ease-in-out infinite alternate; }
+.clks-flick { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame .9s ease-in-out infinite alternate; }
+.clks-glow { opacity: calc(var(--clks-lamp) * .35); }
+.clks-embers circle { transform-box: fill-box; transform-origin: center; animation: clks-ember 1.8s ease-out infinite; }
+.clks-embers circle:nth-child(2) { animation-delay: -.6s; }
+.clks-embers circle:nth-child(3) { animation-delay: -1.2s; }
+.clk-flame.f2 { animation-duration: .8s; animation-delay: -.3s; }
+
+/* ---- руки гончаря біля кола ---- */
+.clks-hands { pointer-events: none; opacity: 0; transition: opacity .3s ease-out; }
+.clks-hand { transition: transform .3s ease-out; }
+.clks-hand.l { transform: translate(-10px, 16px); }
+.clks-hand.r { transform: translate(10px, 16px); }
+.clk-wheelbox.clks-handson .clks-hands { opacity: 1; }
+.clk-wheelbox.clks-handson .clks-hand { transform: translate(0, 0); }
+.clk-wheelbox.clks-handson .clks-rub { animation: clks-rub .32s ease-in-out infinite alternate; }
+.clk-wheelbox.clks-handson .clks-hand.r .clks-rub { animation-delay: -.16s; }
+
+/* ---- бризки глини: краплі з дугою падіння, кольору глини на колі ---- */
+.clk-sparks .clk-spark:not(.gold) {
+  width: 7px; height: 8px; margin: -4px -3.5px; border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .38), rgba(255, 255, 255, 0) 45%), var(--clay);
+  animation: clks-splat .62s cubic-bezier(.2, .7, .4, 1) forwards;
+}
+.clk-sparks .clk-spark:nth-child(3n) { width: 5px; height: 6px; }
+.clk-sparks .clk-spark:nth-child(4n) { width: 9px; height: 9px; }
+
+/* Спалах для рідкісного (розписний глек, дзвінкий виріб). */
+.clks-flash {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(circle at var(--fx, 50%) var(--fy, 55%), rgba(255, 240, 170, .9) 0, rgba(255, 205, 90, .35) 22%, rgba(255, 205, 90, 0) 58%);
+  mix-blend-mode: screen; animation: clks-flash .9s ease-out forwards;
+}
+
+/* ---- кнопка звуку в куті сцени ---- */
+.clks-snd { position: absolute; top: 8px; right: 8px; z-index: 4; display: flex; flex-direction: row-reverse; align-items: center; gap: 6px; }
+.clk .clks-sndbtn {
+  width: 32px; height: 32px; padding: 5px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(8, 14, 10, .5); color: #f4efe3; display: grid; place-items: center; backdrop-filter: blur(2px);
+}
+.clk .clks-sndbtn:hover { background: rgba(8, 14, 10, .72); }
+.clks-sndbtn svg { width: 20px; height: 20px; display: block; }
+.clks-snd:not(.on) .clks-sndbtn .on, .clks-snd.on .clks-sndbtn .off { display: none; }
+.clks-snd:not(.on) .clks-sndbtn { color: rgba(244, 239, 227, .7); }
+.clks-sndpop {
+  display: none; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(8, 14, 10, .78); border: 1px solid rgba(255, 255, 255, .14);
+}
+.clks-snd.on.open .clks-sndpop { display: flex; }
+@media (hover: hover) {
+  .clks-snd.on:hover .clks-sndpop, .clks-snd.on:focus-within .clks-sndpop { display: flex; }
+  .clks-sndoff { display: none; }
+}
+.clks-sndpop input { width: 92px; accent-color: var(--accent); }
+.clk .clks-sndoff { padding: 1px 8px; font-size: .78em; }
+
+/* ---- банер «Наступна ціль» над вкладками ---- */
+.clk .clks-goal {
+  display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; align-items: center; width: 100%; text-align: left;
+  padding: 6px 10px 8px 6px; border-radius: 12px; position: relative; overflow: hidden; white-space: normal;
+  background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
+}
+.clk .clks-goal[hidden] { display: none; }
+.clk .clks-goal:hover { background: linear-gradient(100deg, rgba(217, 169, 47, .26), var(--panel3) 60%); }
+.clks-goal.ready { border-color: var(--accent); box-shadow: 0 0 14px rgba(244, 197, 66, .18); }
+.clks-gico { width: 38px; height: 38px; border-radius: 10px; background: rgba(0, 0, 0, .25); display: grid; place-items: center; }
+.clks-gico svg { width: 32px; height: 32px; display: block; }
+.clks-gmain { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.clks-gtitle { display: flex; justify-content: space-between; gap: 8px; font-size: .7em; text-transform: uppercase; letter-spacing: .06em; }
+.clks-glabel { color: var(--accent2); font-weight: 700; }
+.clks-geta { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clks-goal.ready .clks-geta { color: var(--accent); font-weight: 700; }
+.clks-gtext { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clks-gsub { font-size: .74em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clks-gsub:empty { display: none; }
+.clks-gbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
+.clks-gbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
+
+/* ---- «Поки тебе не було» ---- */
+.clks-awayov .clk-ov-box { max-width: 380px; margin-top: 30px; }
+.clks-away { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.clks-away-art { width: 100%; }
+.clks-away-art svg { width: 100%; height: auto; display: block; border-radius: 10px; }
+.clks-away-head { font-weight: 700; font-size: 1.05em; }
+.clks-away-pots { font-size: 1.9em; font-weight: 800; color: var(--accent); line-height: 1.1; text-shadow: 0 0 18px rgba(244, 197, 66, .35); font-variant-numeric: tabular-nums; }
+.clks-away-row { display: flex; align-items: center; gap: 8px; text-align: left; font-size: .9em; background: var(--panel); padding: 6px 10px; border-radius: 10px; width: 100%; }
+.clks-away-row svg { width: 30px; height: 30px; flex: none; }
+.clks-away-notes { margin: 0; padding: 6px 10px 6px 26px; text-align: left; font-size: .88em; background: var(--panel); border-radius: 10px; width: 100%; box-sizing: border-box; }
+.clks-away-go { min-width: 60%; margin-top: 4px; }
+
+/* ---- полиця «Хата»: мальовані значки замість емодзі ---- */
+.clk-ticon svg { width: 26px; height: 34px; display: block; }
+.clk-tool.decor .clk-ticon svg { width: 30px; height: 30px; }
+
+/* ---- ремесло: рядок під сценою такої ж ширини, як сцена ---- */
+.clk-craft { max-width: 520px; }
+
+@keyframes clks-twinkle { from { opacity: 1; } to { opacity: .25; } }
+@keyframes clks-drift { from { transform: translateX(-18px); } to { transform: translateX(26px); } }
+@keyframes clks-ripple { from { opacity: .15; } to { opacity: .6; } }
+@keyframes clks-glint { 0%, 70%, 100% { opacity: .2; } 85% { opacity: 1; } }
+@keyframes clks-flag { from { transform: scaleX(1) skewY(0); } to { transform: scaleX(.8) skewY(8deg); } }
+@keyframes clks-smoke {
+  0% { opacity: .55; transform: translate(0, 0) scale(.6); }
+  100% { opacity: 0; transform: translate(9px, -36px) scale(2.8); }
+}
+@keyframes clks-sail { from { transform: translateX(390px); } to { transform: translateX(-40px); } }
+@keyframes clks-cart { 0% { transform: translateX(-80px); } 40% { transform: translateX(440px); } 100% { transform: translateX(440px); } }
+@keyframes clks-bob { from { transform: translateY(0); } to { transform: translateY(-1.4px); } }
+@keyframes clks-hoist { from { transform: rotate(-6deg); } to { transform: rotate(8deg); } }
+@keyframes clks-leaf { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-22px, 22px) rotate(220deg); } }
+@keyframes clks-fall1 { from { transform: translate(0, 0); } to { transform: translate(-8px, 150px); } }
+@keyframes clks-fall2 { from { transform: translate(8px, -150px); } to { transform: translate(0, 0); } }
+@keyframes clks-knead { from { transform: rotate(-12deg); } to { transform: rotate(10deg); } }
+@keyframes clks-lump { from { transform: scale(1.08, .86); } to { transform: scale(.95, 1.06); } }
+@keyframes clks-walk {
+  0% { transform: translateX(0) scaleX(1); }
+  46% { transform: translateX(270px) scaleX(1); }
+  50% { transform: translateX(270px) scaleX(-1); }
+  96% { transform: translateX(0) scaleX(-1); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+@keyframes clks-step { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+@keyframes clks-stoke { 0%, 100% { transform: rotate(8deg); } 45% { transform: rotate(-28deg); } 60% { transform: rotate(14deg); } }
+@keyframes clks-tail { from { transform: rotate(-16deg); } to { transform: rotate(20deg); } }
+@keyframes clks-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes clks-peck { 0%, 80%, 100% { transform: rotate(0); } 86% { transform: rotate(28deg); } 92% { transform: rotate(-4deg); } }
+@keyframes clks-wag { from { transform: rotate(-14deg); } to { transform: rotate(16deg); } }
+@keyframes clks-ember { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(2px, -18px); } }
+@keyframes clks-rub { from { transform: translate(0, 0); } to { transform: translate(0, -1.6px); } }
+@keyframes clks-splat {
+  0% { opacity: 1; transform: translate(0, 0) scale(1.15); }
+  55% { opacity: 1; transform: translate(calc(var(--dx, 0px) * .8), calc(var(--dy, -40px) * .8)) scale(.9); }
+  100% { opacity: 0; transform: translate(var(--dx, 0px), calc(var(--dy, -40px) + 28px)) scale(.4); }
+}
+@keyframes clks-flash { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Без руху: хата стоїть (віз і чайка — на місці, дим — застиглий клуб), руки й спалах — без анімації. */
+@media (prefers-reduced-motion: reduce) {
+  .clk-house *, .clks-hands * { animation: none !important; }
+  .clks-sunpos, .clks-moonpos, .clks-hand, .clks-hands { transition: none; }
+  .clks-flash { animation-duration: .2s; }
+  .clk-sparks .clk-spark:not(.gold) { animation: none; opacity: 0; }
+}

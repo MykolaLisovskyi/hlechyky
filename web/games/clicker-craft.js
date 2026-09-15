@@ -253,7 +253,7 @@
       const inner = wareSvg(api, c.ware, {
         progress: full ? 1 : step / PROGRESS_STEPS, raw: true, dry: false, clay: st.clayBody, slot: 'wheel-craft', wrap: false,
       });
-      st.jugBox.innerHTML = '<g transform="translate(50 69) scale(.66) translate(-50 -86)">' + inner + '</g>';
+      st.jugBox.innerHTML = '<g transform="translate(50 70) scale(.78) translate(-50 -86)">' + inner + '</g>';
     }
     if (st.craftUi) {
       const pct = Math.round(p * 1000) / 10 + '%';
