@@ -1,8 +1,8 @@
 /*
-  Гончарне коло. Соло-клікер: тиснеш на коло — ліпиш глеки, купуєш верстати й віхи, ловиш розписні глеки,
-  збираєш розписи, обпалюєш майстерню за клейма майстра, міняєш глеки на черепки.
+  Гончарне коло. Соло-клікер: тиснеш на коло — ліпиш глеки, купуєш верстати й віхи, ловиш розписні глеки та глеки,
+  що падають з полиці, збираєш розписи, обпалюєш майстерню за клейма майстра, міняєш глеки на черепки.
 
-  Правила рахує сервер (Impl/Clicker.cs). Клієнт понад малювання робить рівно чотири речі:
+  Правила рахує сервер (Impl/Clicker.cs). Клієнт понад малювання робить рівно п'ять речей:
   1) батчить кліки — збирає відбитки справжніх натисків і шле Act('spin', { c: [[dt, press, x, y, src], …] }) раз на
      700 мс, а не двадцять разів за секунду. Рахуються лише isTrusted-натиски на коло (pointerdown → pointerup) і
      пробіл без автоповтору (keydown → keyup): el.click() чи dispatchEvent зі скрипта кліком не стають, а сервер за
@@ -10,8 +10,11 @@
   2) доліковує лічильник між подіями 'room' — за view.baseSecond і ярмарком, зі стелею офлайну, як на сервері.
      Простій беремо серверний (view.now − view.lastSync) і додаємо лише те, що натікало ВІД отримання виду, —
      так збитий годинник у гравця не малює неіснуючих глеків. Прийшов новий вид — беремо його число, а не своє;
-  3) показує розписний глек у його вікні (view.golden) і, коли той утік, питає наступний розклад Act('look');
-  4) показує Око майстра (view.guard): полицю-картинку, де треба торкнутись усіх глечиків (Act('answer', { taps })),
+  3) веде той самий рахунок розгону, що й сервер (view.heat спадає за heatTau, множник — від heatFull і momentumMax),
+     щоб «+N» над колом і лічильник обіцяли те, що сервер справді дорахує;
+  4) показує розписний глек у його вікні (view.golden) і глек з полиці (view.fall) у його три секунди польоту; коли
+     той чи той утік/розбився — питає наступний розклад Act('look');
+  5) показує Око майстра (view.guard): полицю-картинку, де треба торкнутись усіх глечиків (Act('answer', { taps })),
      або паузу кола з відліком. Де глечики — клієнт не знає: це знає лише сервер.
 
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
@@ -19,9 +22,10 @@
     canSellToday, soldToday, cap, rate, lastSync, now, offlineHours, golden: { at, until, x, y }, caught,
     fair: { until, mult }, inspire: { until, mult }, allMult, stamps, stampsFree, stampsReady, nextStampAt,
     stampBonus, stampCap, firings, secrets: [...], styles: [...], wear,
+    heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain }, grabbed,
     guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why } }.
-  Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, look, fire, secret { key }, paint { key }, wear { key },
-    answer { taps: [[x, y], …] }.
+  Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, grab, look, fire, secret { key }, paint { key },
+    wear { key }, answer { taps: [[x, y], …] }.
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -37,6 +41,7 @@
   const BOARD_MS = 60 * 1000;             // як часто перепитуємо таблицю «Гончарне коло» для рядка про суперника
   const SLOW_MS = 200;                    // таймери бонусів, прогрес клейм — не частіше, ніж так
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
+  const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -165,7 +170,7 @@
   };
 
   /// Глек у SVG-групі: тіло, орнамент по силуету, обведення й відблиск. <slot> — постійне ім'я місця
-  /// (колесо, картка розпису, розписний глек): id для clipPath мусить бути сталим, інакше HTML полиці
+  /// (колесо, картка розпису, розписний глек, полиця): id для clipPath мусить бути сталим, інакше HTML полиці
   /// щоразу виходив би новим і swap() перемальовував би її на кожну пачку кліків.
   function jug(style, slot) {
     const s = STYLE[style] || STYLE[''];
@@ -176,7 +181,7 @@
       + '<path d="' + JUG + '" fill="none" stroke="rgba(0,0,0,.28)" stroke-width=".8"/>'
       + '<path d="M39.6 42.5c-1.6 3.8-1.6 10.6.4 15" stroke="rgba(255,255,255,.22)" stroke-width="1.8" fill="none" stroke-linecap="round"/></g>';
   }
-  /// Окремий глек (картка розпису, розписний глек): видноколо обрізане по самому глеку.
+  /// Окремий глек (картка розпису, розписний глек, глек з полиці): видноколо обрізане по самому глеку.
   const jugSvg = (style, cls, slot) => '<svg class="' + (cls || '') + '" viewBox="31 22 38 45" aria-hidden="true">' + jug(style, slot) + '</svg>';
 
   // ---------- стан модуля ----------
@@ -184,17 +189,22 @@
   function state(root) {
     if (!root._clk) {
       root._clk = {
-        el: null, count: null, rate: null, rival: null, wheel: null, jugBox: null, pops: null, buffs: null, gold: null,
-        one: null, all: null, left: null, tabs: null, panes: {}, shop: null, modes: null, marks: null, styles: null, fire: null,
+        el: null, count: null, rate: null, rival: null, sign: null, stage: null, wheelBox: null, wheel: null, turn: null,
+        jugBox: null, heatRing: null, pops: null, sparks: null, fx: null, buffs: null, gold: null, fallEl: null, fallJug: null,
+        shelfJugs: null, one: null, all: null, left: null, tabs: null, panes: {}, shop: null, modes: null, marks: null,
+        styles: null, fire: null,
         buys: [], markBtns: [], styleBtns: [], secretBtns: [],
         base: 0, total: 0, lastSync: 0, viewNow: 0, recvAt: Date.now(), offlineMs: 8 * 3600 * 1000,
         clickBase: 1, baseSecond: 0, fairUntil: 0, fairMult: 7, inspireUntil: 0, inspireMult: 25,
         rateOf: 100, canSell: 0, mine: false, wear: null,
         golden: null, goldenGone: 0, lookedFor: 0,
+        fall: null, fallGone: 0, fallBroke: 0, fallLooked: 0, fallGain: 0, fallStreak: 0,
+        heat: 0, heatAt: Date.now(), heatFull: 18, heatTau: 3, momentumMax: 1,
+        angle: 0, angleAt: 0, ringOff: -1, glow: -1, jugScale: -1,
         stamps: 0, stampsFree: 0, stampBonus: 0.02, fireArmed: 0,
         ups: {}, markList: [], styleList: [], secretList: [],
         tab: storeGet('clk.tab', 'shop'), mode: storeGet('clk.mode', '1'),
-        hands: [], inflight: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
+        hands: [], handsGain: 0, inflight: 0, inflightGain: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
         downs: new Map(), keyDown: 0, lastDown: 0, onKeyUp: null,
         guard: null, eye: null, taps: [], eyeBusy: false,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
@@ -228,6 +238,12 @@
   }
   const secondNow = (st) => st.baseSecond * (serverNow(st) < st.fairUntil ? st.fairMult : 1);
 
+  /// Розгін просто зараз — той самий спад, що й на сервері: у e разів за heatTau секунд.
+  const heatNow = (st) => st.heat * Math.exp(-Math.max(0, Date.now() - st.heatAt) / 1000 / st.heatTau);
+  /// Множник кліка від розгону: ×1 на холодному колі, стеля маховика — на heatFull гарячих кліках.
+  const momentumOf = (st, heat) => 1 + (st.momentumMax - 1) * Math.min(1, Math.max(0, heat) / st.heatFull);
+  const heatFrac = (st) => Math.min(1, heatNow(st) / st.heatFull);
+
   /// Скільки рівнів влазить у глеки і скільки вони коштують. Геометрична сума: на сервері кожна ціна
   /// округлюється вгору, тож тут це оцінка — купує однаково сервер, і рівно стільки, скільки влізе.
   function afford(u, pots, want) {
@@ -249,7 +265,7 @@
     // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
     // і кнопки прилавка (уже без них).
     const sure = firm(st);
-    let n = sure + (st.hands.length + st.inflight) * clickNow(st);
+    let n = sure + st.handsGain + st.inflightGain;
     // Дрібний відкат — це не витрата, а різниця округлень між нашим доліком і сервером: не смикаємо число.
     if (st.shown >= 0 && n < st.shown && st.shown - n <= 2) n = st.shown;
     if (n !== st.shown) {
@@ -293,7 +309,9 @@
     const label = 'Усе (' + num(many) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
 
+    paintWheel(st);
     paintGolden(st);
+    paintFall(st);
 
     const now = Date.now();
     if (now - st.slowAt >= SLOW_MS) {
@@ -302,22 +320,52 @@
     }
   }
 
+  /// Коло крутиться від пасиву й від розгону, кільце навколо нього — це розгін, сяйво — теж. Усе за кадр і
+  /// лише різницями: стилі пишемо тоді, коли число справді зрушило.
+  function paintWheel(st) {
+    const t = performance.now();
+    const dt = st.angleAt ? Math.min(0.1, (t - st.angleAt) / 1000) : 0;
+    st.angleAt = t;
+    const frac = heatFrac(st);
+    const sec = secondNow(st);
+    // Градусів за секунду: без підмайстрів коло стоїть, з піччю повільно пливе, а від швидких кліків розкручується.
+    const speed = (sec > 0 ? 30 + 30 * Math.log10(1 + sec) : 0) + 420 * frac;
+    if (speed > 0 && dt > 0) {
+      st.angle = (st.angle + speed * dt) % 360;
+      st.turn.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
+    }
+    const off = Math.round(RING * (1 - frac) * 10) / 10;
+    if (off !== st.ringOff) { st.ringOff = off; st.heatRing.style.strokeDashoffset = off; }
+    const glow = Math.round(frac * 50) / 50;
+    if (glow !== st.glow) {
+      st.glow = glow;
+      st.wheel.style.setProperty('--clk-glow', glow);
+      st.wheelBox.classList.toggle('hot', frac >= 0.98 && st.momentumMax > 1);
+    }
+    const scale = Math.round((1 + 0.1 * frac) * 100) / 100;
+    if (scale !== st.jugScale) { st.jugScale = scale; st.jugBox.style.transform = 'scale(' + scale + ')'; }
+  }
+
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
   function paintSlow(st, shown) {
     const sn = serverNow(st);
     const sec = secondNow(st);
+    const heat = heatNow(st);
+    const mom = momentumOf(st, heat);
     const rate = 'за клік +' + short(clickNow(st))
+      + (st.momentumMax > 1 ? ' · розгін до ×' + dec(st.momentumMax) : '')
       + (sec > 0 ? ' · без тебе +' + short(sec) + ' за секунду' : ' · підмайстрів ще нема');
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
-
-    // Швидкість обертання — від пасиву: коло без підмайстрів стоїть, з піччю крутиться помітно.
-    const spin = (sec > 0 ? Math.max(0.6, 9 / Math.log10(10 + sec)) : 0) + 's';
-    if (st.wheel._spin !== spin) { st.wheel._spin = spin; st.wheel.style.setProperty('--clk-spin', spin); }
 
     let buffs = '';
     if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + st.fairMult + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
     if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
+    if (st.momentumMax > 1 && mom > 1.05) buffs += '<span class="clk-buff heat">🌀 Розгін ×' + dec(mom) + '</span>';
+    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +' + Math.min(100, st.fallStreak * 10) + ' %</span>';
     if (st.buffs._html !== buffs) { st.buffs._html = buffs; st.buffs.innerHTML = buffs; st.buffs.hidden = !buffs; }
+    const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
+    if (st.stage.classList.contains('fair') !== fair) st.stage.classList.toggle('fair', fair);
+    if (st.stage.classList.contains('inspire') !== inspire) st.stage.classList.toggle('inspire', inspire);
 
     const liveTotal = st.total + (shown - st.base);
     if (visible(st)) loadBoard(st);
@@ -337,12 +385,12 @@
     press: 'Кнопку відпускали миттєво, раз за разом, — так клацає автоклікер (або тачпад). Покажи майстрові, що це рука: ',
   };
 
-  /// Панель майстра замість кола: відлік паузи або полиця, де треба торкнутись глечиків.
+  /// Панель майстра замість сцени: відлік паузи або полиця, де треба торкнутись глечиків.
   function paintEye(st) {
     const e = st.eye;
     const g = st.guard;
     const on = guardOn(st) && st.mine;
-    if (st.wheelBox.hidden !== on) st.wheelBox.hidden = on;
+    if (st.stage.hidden !== on) st.stage.hidden = on;
     if (e.el.hidden === on) e.el.hidden = !on;
     if (!on) return;
 
@@ -352,7 +400,7 @@
     if (locked) {
       const s = Math.ceil(left / 1000);
       text = '🔒 Коло стоїть ще ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '. Три полиці поспіль — не ті глеки.'
-        + ' Пасив, покупки й прилавок працюють; кліки й розписні глеки — ні. Після паузи майстер спитає ще раз.';
+        + ' Пасив, покупки й прилавок працюють; кліки й глеки — ні. Після паузи майстер спитає ще раз.';
     } else {
       const ask = 'усіх глечиків на полиці — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Поки не відповіси, кліки не рахуються.';
       text = DOUBT[g.why] ? DOUBT[g.why] + 'торкнись ' + ask : 'Майстер дивиться, чи коло крутить рука, а не автоклікер. Торкнись ' + ask;
@@ -404,6 +452,8 @@
     paintEye(st);
   }
 
+  // ---------- розписний глек і глек з полиці ----------
+
   /// Розписний глек: стоїть у своєму вікні; утік — один раз питаємо сервер про наступний.
   function paintGolden(st) {
     const g = st.golden;
@@ -429,6 +479,37 @@
     // прибиральник ніколи не прибере.
     if (now > g.until + CATCH_GRACE_MS + 5000 && st.lookedFor !== g.until && st.ctx && visible(st)) {
       st.lookedFor = g.until;
+      st.ctx.act('look');
+    }
+  }
+
+  /// Глек з полиці: три секунди летить від полиці до долівки (CSS-анімація, а від'ємна затримка дає стати в
+  /// політ посередині, якщо картку відкрили пізно). Спіймали — «+N» і золоті бризки; долетів — черепки.
+  function paintFall(st) {
+    const f = st.fall;
+    const b = st.fallEl;
+    if (!f || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; return; }
+    const now = serverNow(st);
+    const show = now >= f.at && now <= f.until && st.fallGone !== f.at;
+    if (b.hidden === show) {
+      b.hidden = !show;
+      if (show) {
+        b.style.left = f.x + '%';
+        b.style.setProperty('--clk-fallms', (f.until - f.at) + 'ms');
+        b.style.setProperty('--clk-drop', (st.stage.clientHeight * 0.92) + 'px');
+        b.style.animationDelay = (-(now - f.at)) + 'ms';
+        b.classList.remove('run');
+        void b.offsetWidth;
+        b.classList.add('run');
+      }
+    }
+    // Розбився — але лише той, що розбився щойно і на очах: після довгої відсутності черепків не малюємо.
+    if (now > f.until && now - f.until < 1500 && st.fallGone !== f.at && st.fallBroke !== f.at) {
+      st.fallBroke = f.at;
+      shatter(st, f.x);
+    }
+    if (now > f.until + CATCH_GRACE_MS + 5000 && st.fallLooked !== f.until && st.ctx && visible(st)) {
+      st.fallLooked = f.until;
       st.ctx.act('look');
     }
   }
@@ -490,18 +571,64 @@
     st.raf = requestAnimationFrame(() => loop(st));
   }
 
-  /// «+12», що злітає над колом. Живе рівно доти, доки триває анімація.
-  function pop(st, amount) {
+  /// Елемент, що живе рівно доти, доки триває його анімація. У фоновій вкладці анімації не крутяться, а отже й
+  /// animationend не прилетить — прибираємо і за часом, інакше «+N» назбирувались би там сотнями до самого повернення.
+  function fleeting(host, el, ms) {
+    el.addEventListener('animationend', () => el.remove());
+    setTimeout(() => el.remove(), ms);
+    host.appendChild(el);
+  }
+
+  /// «+12», що злітає над колом; при розкрученому колі — гарячіше й більше.
+  function pop(st, amount, cls) {
     if (st.pops.childElementCount > 12) return;   // палець швидший за око: більше однаково не роздивитись
     const el = document.createElement('span');
-    el.className = 'clk-pop';
+    el.className = 'clk-pop' + (cls ? ' ' + cls : '');
     el.textContent = '+' + short(amount);
     el.style.left = (32 + Math.random() * 36) + '%';
-    el.addEventListener('animationend', () => el.remove());
-    // У фоновій вкладці анімації не крутяться, а отже й animationend не прилетить — прибираємо і за часом,
-    // інакше «+N» назбирувались би там сотнями до самого повернення.
-    setTimeout(() => el.remove(), 2000);
-    st.pops.appendChild(el);
+    fleeting(st.pops, el, 2000);
+  }
+
+  /// Напис у довільному місці сцени (x, y — у відсотках): «+N» над спійманим глеком, «трісь» над розбитим.
+  function popAt(st, text, cls, x, y) {
+    const el = document.createElement('span');
+    el.className = 'clk-pop ' + cls;
+    el.textContent = text;
+    el.style.left = x + '%';
+    el.style.top = y + '%';
+    fleeting(st.fx, el, 2500);
+  }
+
+  /// Бризки глини (або золоті іскри) з точки (x, y у відсотках host-а; без них — з центру кола).
+  function sparks(st, host, count, gold, x, y) {
+    if (host.childElementCount > 48) return;
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement('i');
+      el.className = 'clk-spark' + (gold ? ' gold' : '');
+      if (x != null) { el.style.left = x + '%'; el.style.top = y + '%'; }
+      const a = Math.random() * Math.PI * 2;
+      const d = (gold ? 50 : 34) + Math.random() * (gold ? 70 : 40);
+      el.style.setProperty('--dx', (Math.cos(a) * d).toFixed(0) + 'px');
+      el.style.setProperty('--dy', (Math.sin(a) * d - 24).toFixed(0) + 'px');
+      fleeting(host, el, 1200);
+    }
+  }
+
+  /// Глек долетів до долівки: черепки навсібіч і тихе «трісь».
+  function shatter(st, x) {
+    for (let i = 0; i < 8; i++) {
+      const el = document.createElement('i');
+      el.className = 'clk-shard';
+      el.style.left = x + '%';
+      el.style.top = '90%';
+      const a = -Math.PI * (0.15 + Math.random() * 0.7);
+      const d = 24 + Math.random() * 46;
+      el.style.setProperty('--dx', (Math.cos(a) * d).toFixed(0) + 'px');
+      el.style.setProperty('--dy', (Math.sin(a) * d + 40).toFixed(0) + 'px');
+      el.style.setProperty('--rot', Math.round(Math.random() * 360 - 180) + 'deg');
+      fleeting(st.fx, el, 1500);
+    }
+    popAt(st, 'трісь… серія обірвалась', 'miss', Math.min(70, Math.max(20, x)), 78);
   }
 
   // ---------- дії ----------
@@ -509,15 +636,21 @@
   function flush(st) {
     if (!st.hands.length || !st.ctx) return;
     // Поки майстер чекає, сервер кліків однаково не зарахує: не шлемо і не обіцяємо їх на лічильнику.
-    if (guardOn(st)) { st.hands.length = 0; return; }
+    if (guardOn(st)) { st.hands.length = 0; st.handsGain = 0; return; }
     const c = st.hands.splice(0, MAX_BATCH);
     const n = c.length;
+    // Скільки з обіцяного на лічильнику полетіло з цією пачкою: усе, якщо це був увесь хвіст, інакше частка.
+    const g = st.hands.length ? Math.min(st.handsGain, c.reduce((s, h) => s + (h[5] || 0), 0)) : st.handsGain;
+    st.handsGain = Math.max(0, st.handsGain - g);
+    // Серверу — лише п'ять полів відбитка; шосте (наша оцінка глеків за клік) лишається тут.
+    const wire = c.map((h) => h.slice(0, 5));
     st.inflight += n;
-    const back = () => { st.inflight = Math.max(0, st.inflight - n); };
+    st.inflightGain += g;
+    const back = () => { st.inflight = Math.max(0, st.inflight - n); st.inflightGain = Math.max(0, st.inflightGain - g); };
     // Кліки, що вже полетіли, знімає з рахунку сам вид (див. update): вид і відповідь приходять різними
     // кадрами вебсокета, і якби ми чекали відповіді, між ними лічильник встигав би показати їх двічі.
     // Лишається тільки невдача: тоді виду не буде взагалі, і порахувати назад мусимо ми.
-    st.ctx.act('spin', { c }).then((r) => { if (!r || !r.ok) back(); }, back);
+    st.ctx.act('spin', { c: wire }).then((r) => { if (!r || !r.ok) back(); }, back);
   }
 
   /// Точка на колі 0…1000 — так її чекає сервер.
@@ -544,7 +677,7 @@
     spin(st, d.t, ev.timeStamp - d.t, d.x, d.y, d.src);
   }
 
-  /// Один справжній клік: відбиток у пачку, «+N» над колом. downAt і press — у мс шкали event.timeStamp.
+  /// Один справжній клік: відбиток у пачку, розгін +1, «+N» над колом і бризки. downAt і press — у мс шкали event.timeStamp.
   function spin(st, downAt, press, x, y, src) {
     if (!st.ctx || !st.mine || guardOn(st)) return;
     const dt = st.lastDown ? Math.max(0, Math.min(60000, Math.round(downAt - st.lastDown))) : 60000;
@@ -556,10 +689,22 @@
     st.tokensAt = now;
     if (st.tokens < 1) return;
     st.tokens -= 1;
-    st.hands.push([dt, Math.max(0, Math.round(press)), x, y, src]);
+    // Розгін — як на сервері: спад від останнього кліка, множник на півкліка вперед, потім +1 гарячий.
+    const heat = heatNow(st);
+    const mult = momentumOf(st, heat + 0.5);
+    st.heat = heat + 1;
+    st.heatAt = now;
+    const gain = clickNow(st) * mult;
+    st.hands.push([dt, Math.max(0, Math.round(press)), x, y, src, gain]);
+    st.handsGain += gain;
     // Більше трьох пачок не копимо: якщо зв'язок завис, хвіст однаково не долетів би.
-    if (st.hands.length > MAX_BATCH * 3) st.hands.splice(0, st.hands.length - MAX_BATCH * 3);
-    pop(st, clickNow(st));
+    if (st.hands.length > MAX_BATCH * 3) {
+      const dropped = st.hands.splice(0, st.hands.length - MAX_BATCH * 3);
+      st.handsGain = Math.max(0, st.handsGain - dropped.reduce((s, h) => s + (h[5] || 0), 0));
+    }
+    const hot = st.momentumMax > 1 && mult >= 1 + (st.momentumMax - 1) * 0.9;
+    pop(st, gain, hot ? 'hot' : '');
+    sparks(st, st.sparks, hot ? 5 : 3, hot);
     // Сервер ціною кліка вважає мить, коли пачка ДОЛЕТІЛА. Під кінець натхнення чи ярмарку 700 мс чекання
     // перетворили б «+25×» на екрані на «+1×» на сервері — тож останні півтори секунди бонусу шлемо одразу.
     const sn = serverNow(st);
@@ -583,6 +728,25 @@
     st.goldenGone = st.golden.at;      // ховаємо одразу: другий клік по тому самому глеку — лише червоний тост
     st.gold.hidden = true;
     order(st, 'catch');
+  }
+
+  /// Спіймали глек з полиці: ховаємо, малюємо «+N» (суму знає вид — fall.gain) і золоті іскри там, де він був.
+  function grabFall(st, ev) {
+    if (!ev.isTrusted || !st.fall || !st.mine || guardOn(st)) return;
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    ev.preventDefault();
+    const f = st.fall;
+    st.fallGone = f.at;
+    const sr = st.stage.getBoundingClientRect();
+    const r = st.fallEl.getBoundingClientRect();
+    st.fallEl.hidden = true;
+    if (sr.width && sr.height) {
+      const x = ((r.left + r.width / 2 - sr.left) / sr.width) * 100;
+      const y = ((r.top + r.height / 2 - sr.top) / sr.height) * 100;
+      popAt(st, '+' + short(st.fallGain), 'big', x, Math.max(6, y - 8));
+      sparks(st, st.fx, 14, true, x, y);
+    }
+    order(st, 'grab');
   }
 
   function fire(st) {
@@ -645,7 +809,8 @@
       const maxed = u.max > 0 && u.level >= u.max;
       const pay = u.gain > 0 && !maxed ? 'окупиться за ' + span(u.price / u.gain) : '';
       const x2 = u.boost > 1 ? ' · ×' + u.boost : '';
-      return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + '" data-buy="' + esc(k) + '" disabled>'
+      return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '')
+        + '" data-buy="' + esc(k) + '" disabled>'
         + '<b>' + esc(u.name) + '</b>'
         + '<span class="clk-lvl">' + (u.level ? 'рівень ' + u.level : 'ще не куплено') + (u.max > 0 ? ' з ' + u.max : '') + x2 + '</span>'
         + '<span class="muted small">' + esc(u.desc) + '</span>'
@@ -748,11 +913,25 @@
     st.slowAt = 0;
   }
 
-  /// Глек на колі: перемальовуємо лише тоді, коли гончар поставив інший розпис.
+  /// Глек на колі, глек на полиці й глечики над полицею: перемальовуємо лише тоді, коли гончар поставив інший розпис.
   function wheelJug(st) {
     if (st.jugBox._wear === st.wear) return;
     st.jugBox._wear = st.wear;
     st.jugBox.innerHTML = jug(st.wear || '', 'wheel');
+    st.fallJug.innerHTML = jugSvg(st.wear || '', 'clk-fall-jug', 'fall');
+    // На полиці — три глечики: у розписі, що на колі, простий і знову в розписі (без розпису — усі прості).
+    st.shelfJugs.innerHTML = jugSvg(st.wear || '', '', 'shelf-a') + jugSvg('', '', 'shelf-b') + jugSvg(st.wear || '', '', 'shelf-c');
+  }
+
+  /// Вивіска над лічильником: найвищий верстат драбини, що вже куплений.
+  function paintSign(st) {
+    let text = '';
+    for (const k of Object.keys(st.ups)) {
+      const u = st.ups[k];
+      if (u.kind === 'idle' && u.level > 0) text = u.name + ' · ' + u.level;
+    }
+    text = text ? '🏠 ' + text : '🏠 Хата гончаря';
+    if (st.sign.textContent !== text) st.sign.textContent = text;
   }
 
   /// Таблицю тягнемо з paintSlow — тобто лише тоді, коли картку видно: схована картка суперника однаково не
@@ -777,12 +956,21 @@
 
     mount(root, ctx) {
       const st = state(root);
-      root.innerHTML = '<div class="clk">'
-        + '<div class="clk-stage">'
+      // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
+      const card = root.closest && root.closest('.gtable');
+      if (card) card.classList.add('clk-wide');
+      root.innerHTML = '<div class="clk"><div class="clk-lay">'
+        // Ліворуч (або зверху на телефоні): вивіска, лічильник, сцена з полицею й колом, бонуси, прилавок.
+        + '<div class="clk-scene">'
+        + '<div class="clk-sign"></div>'
         + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small">глеків</span></div>'
         + '<div class="clk-rate muted small"></div>'
         + '<div class="clk-rival small" hidden></div>'
-        + '<div class="clk-wheelbox"><div class="clk-pops"></div>'
+        + '<div class="clk-stage">'
+        + '<div class="clk-shelf"><div class="clk-shelf-jugs"></div></div>'
+        + '<div class="clk-wheelbox">'
+        + '<svg class="clk-heat" viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="47"/>'
+        + '<circle class="fg" cx="50" cy="50" r="47"/></svg>'
         + '<button type="button" class="clk-wheel" aria-label="Крутити коло">'
         // Крутиться сам круг із борознами й цяткою (без неї обертання ідеального кола не видно),
         // а глек стоїть рівно: гончар його тримає.
@@ -792,21 +980,27 @@
         + '<circle class="clk-ring" cx="50" cy="50" r="24"/>'
         + '<circle class="clk-speck" cx="50" cy="12" r="2.6"/></g>'
         + '<g class="clk-jugbox"></g>'
-        + '</svg></button></div>'
-        // Око майстра стає на місце кола: відлік паузи або полиця з глечиками.
+        + '</svg></button>'
+        + '<div class="clk-sparks"></div><div class="clk-pops"></div></div>'
+        + '<button type="button" class="clk-gold" hidden aria-label="Розписний глек — лови!" title="Розписний глек — лови!">'
+        + '<svg class="clk-gold-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/></svg>'
+        + jugSvg('golden', 'clk-gold-jug', 'gold') + '</button>'
+        + '<button type="button" class="clk-fall" hidden aria-label="Глек падає з полиці — лови!" title="Лови!"><span class="clk-fall-box"></span></button>'
+        + '<div class="clk-fx"></div>'
+        + '</div>'
+        // Око майстра стає на місце сцени: відлік паузи або полиця з глечиками.
         + '<div class="clk-eye" hidden><div class="clk-eye-head"><b>👁 Око майстра</b><span class="clk-eye-tries small"></span></div>'
         + '<div class="clk-eye-text small"></div>'
         + '<div class="clk-eye-pic"><img alt="Полиця з глечиками, горщиками, мисками й черепками" draggable="false">'
         + '<div class="clk-eye-marks"></div></div>'
         + '<button type="button" class="ghost small clk-eye-reset" disabled>Скинути торкання</button></div>'
         + '<div class="clk-buffs" hidden></div>'
-        + '<button type="button" class="clk-gold" hidden aria-label="Розписний глек — лови!" title="Розписний глек — лови!">'
-        + '<svg class="clk-gold-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/></svg>'
-        + jugSvg('golden', 'clk-gold-jug', 'gold') + '</button>'
-        + '</div>'
         + '<div class="clk-sell"><button type="button" class="primary clk-one" disabled></button>'
         + '<button type="button" class="ghost clk-all" data-pots="0" disabled></button></div>'
         + '<div class="clk-left muted small"></div>'
+        + '</div>'
+        // Праворуч (або нижче): вкладки з верстатами, розписами й обпалом.
+        + '<div class="clk-side">'
         + '<div class="clk-tabs" role="tablist">'
         + '<button type="button" class="ghost" data-tab="shop">Майстерня</button>'
         + '<button type="button" class="ghost" data-tab="styles">Розписи</button>'
@@ -822,18 +1016,29 @@
         + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-next muted small"></div>'
         + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
-        + '</div>';
+        + '</div>'
+        + '</div></div>';
       const q = (s) => root.querySelector(s);
       st.el = q('.clk');
       st.count = q('.clk-count');
       st.rate = q('.clk-rate');
       st.rival = q('.clk-rival');
+      st.sign = q('.clk-sign');
+      st.stage = q('.clk-stage');
+      st.wheelBox = q('.clk-wheelbox');
       st.wheel = q('.clk-wheel');
+      st.turn = q('.clk-turn');
       st.jugBox = q('.clk-jugbox');
       st.jugBox._wear = null;
+      st.heatRing = q('.clk-heat .fg');
       st.pops = q('.clk-pops');
+      st.sparks = q('.clk-sparks');
+      st.fx = q('.clk-fx');
       st.buffs = q('.clk-buffs');
       st.gold = q('.clk-gold');
+      st.fallEl = q('.clk-fall');
+      st.fallJug = q('.clk-fall-box');
+      st.shelfJugs = q('.clk-shelf-jugs');
       st.one = q('.clk-one');
       st.all = q('.clk-all');
       st.left = q('.clk-left');
@@ -849,9 +1054,12 @@
       st.fire._btn = q('.clk-fire');
       st.fire._after = q('.clk-after');
       st.fire._static = q('.clk-firestatic');
-      st.wheelBox = q('.clk-wheelbox');
       st.eye = { el: q('.clk-eye'), text: q('.clk-eye-text'), tries: q('.clk-eye-tries'), pic: q('.clk-eye-pic'),
         img: q('.clk-eye-pic img'), marks: q('.clk-eye-marks'), reset: q('.clk-eye-reset') };
+      st.ringOff = -1;
+      st.glow = -1;
+      st.jugScale = -1;
+      st.angleAt = 0;
       st.ctx = ctx;
       ctx.clk = st;                     // щоб onKey дістався до стану: там є лише ctx
       // Клік — це пара справжніх pointerdown/pointerup на колі, а не подія click: її дає і el.click() зі скрипта,
@@ -861,6 +1069,10 @@
       st.wheel.addEventListener('pointercancel', (e) => releaseWheel(st, e));
       st.wheel.addEventListener('contextmenu', (e) => e.preventDefault());   // довгий тап на телефоні — не меню
       st.gold.addEventListener('click', (e) => catchGolden(st, e));
+      // Глек, що падає, ловимо на pointerdown: за час між натиском і відпусканням він устигає посунутись, і click
+      // на рухомій кнопці міг би не спрацювати.
+      st.fallEl.addEventListener('pointerdown', (e) => grabFall(st, e));
+      st.fallEl.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.img.addEventListener('pointerdown', (e) => tapShelf(st, e));
       st.eye.img.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.reset.onclick = () => { st.taps = []; paintEye(st); };
@@ -897,6 +1109,7 @@
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
         st.inflight = 0;
+        st.inflightGain = 0;
         st.base = v.pots;
         st.total = v.total || 0;
         const now = Date.parse(v.now);
@@ -921,10 +1134,22 @@
         st.stamps = v.stamps || 0;
         st.stampsFree = v.stampsFree || 0;
         st.stampBonus = v.stampBonus || 0.02;
+        // Розгін — серверний, плюс наші кліки, що ще не полетіли (сервер про них не знає).
+        st.heatFull = v.heatFull || 18;
+        st.heatTau = v.heatTau || 3;
+        st.momentumMax = v.momentumMax || 1;
+        if (v.heat != null) { st.heat = Math.max(0, v.heat) + st.hands.length; st.heatAt = Date.now(); }
         if (v.golden) {
           const at = Date.parse(v.golden.at);
           const until = Date.parse(v.golden.until);
           if (Number.isFinite(at) && Number.isFinite(until)) st.golden = { at, until, x: v.golden.x || 0, y: v.golden.y || 0 };
+        }
+        if (v.fall) {
+          const at = Date.parse(v.fall.at);
+          const until = Date.parse(v.fall.until);
+          if (Number.isFinite(at) && Number.isFinite(until)) st.fall = { at, until, x: v.fall.x || 40 };
+          st.fallGain = v.fall.gain || 0;
+          st.fallStreak = v.fall.streak || 0;
         }
         const g = v.guard;
         st.guard = g ? {
@@ -932,7 +1157,7 @@
           misses: g.misses || 0, maxMisses: g.maxMisses || 3, lockUntil: (g.lockUntil && Date.parse(g.lockUntil)) || 0, why: g.why || '',
         } : null;
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
-        if (st.guard) st.hands.length = 0;
+        if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
       }
       const one = 'Продати ' + num(st.rateOf) + ' → 🏺1';
       if (st.one.textContent !== one) st.one.textContent = one;
@@ -948,6 +1173,7 @@
         if (b.textContent !== t) b.textContent = t;
       }
       wheelJug(st);
+      paintSign(st);
       shop(st, ctx);
       styles(st, ctx);
       firePane(st, ctx);
@@ -972,7 +1198,7 @@
       const v = ctx.view || {};
       if (v.total == null) return '';
       return 'усього наліплено ' + short(v.total) + ' · розписних спіймано ' + num(v.caught || 0)
-        + ' · обміняно сьогодні ' + num(v.soldToday || 0);
+        + ' · з полиці ' + num(v.grabbed || 0) + ' · обміняно сьогодні ' + num(v.soldToday || 0);
     },
 
     unmount(root) {
@@ -981,6 +1207,8 @@
       clearInterval(st.timer);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
+      const card = root.closest && root.closest('.gtable');
+      if (card) card.classList.remove('clk-wide');
       st.raf = 0;
       st.el = null;
       root._clk = null;

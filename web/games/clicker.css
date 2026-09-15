@@ -1,17 +1,42 @@
 /*
-  Гончарне коло. Своє тут лише коло, «+N», що злітає, розписний глек, вкладки й полиці — решта кольорів
-  спільна зі style.css. Свою змінну оголошуємо на :root, як і core.css, і завжди з фолбеком у коді.
+  Гончарне коло. Своє тут лише сцена (полиця, коло, кільце розгону, глек, що падає), «+N», що злітає, розписний
+  глек, вкладки й полиці — решта кольорів спільна зі style.css. Свою змінну оголошуємо на :root, як і core.css,
+  і завжди з фолбеком у коді.
+
+  Формфактор: .clk — контейнер (container-type), і коли картка ширша за 640 px, .clk-lay стає двома стовпцями:
+  ліворуч сцена з лічильником і прилавком, праворуч вкладки з верстатами. На телефоні — як і було, стовпчиком.
 */
 :root {
   --clk-disc: #2b4c3c;      /* сам круг гончарного кола */
   --clk-groove: #1c3328;    /* борозни на крузі */
-  --clk-fire: #ff8a3d;      /* обпал і клейма */
+  --clk-fire: #ff8a3d;      /* обпал, клейма, розкручене коло */
+  --clk-wood: #6b4423;      /* полиця над колом */
+  --clk-wood2: #402712;
 }
 
-.clk { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: center; }
+/* Картка кімнати — на всю ширину сітки столів: у половині стовпця коло, лічильник і три вкладки лягали б
+   одним довгим стовпчиком. Клас ставить сам модуль на mount. */
+.gtable.clk-wide { grid-column: 1 / -1; }
+.clk { width: 100%; container-type: inline-size; }
+.clk-lay { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
+.clk-scene { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.clk-side { width: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
-/* ---- сцена: лічильник, коло, розписний глек ---- */
-.clk-stage { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+@container (min-width: 640px) {
+  .clk-lay {
+    display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    gap: 12px 20px; align-items: start; justify-items: stretch;
+  }
+  .clk-scene { gap: 8px; }
+  .clk-count { font-size: 2.4em; }
+}
+
+/* ---- шапка сцени: вивіска, лічильник, швидкість, суперник ---- */
+.clk-sign {
+  font-size: .78em; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 999px; padding: 2px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clk-sign:empty { display: none; }
 .clk-head { display: flex; align-items: baseline; gap: 6px; }
 .clk-count {
   font-size: 2.1em; font-weight: 700; color: var(--accent);
@@ -25,32 +50,167 @@
   max-width: 100%; overflow-wrap: anywhere;
 }
 
-/* ---- коло ---- */
-.clk-wheelbox { position: relative; width: min(190px, 62%); aspect-ratio: 1; }
+/* ---- сцена: полиця вгорі, коло внизу, між ними падає глек ---- */
+.clk-stage {
+  position: relative; width: 100%; max-width: 360px; aspect-ratio: 1 / 1.1; border-radius: 18px; isolation: isolate;
+  background: radial-gradient(120% 70% at 50% 105%, #2b4838 0%, var(--bg2) 55%, #0d1a14 100%);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow .4s;
+}
+/* Долівка: тінь під колом, щоб воно стояло, а не висіло. */
+.clk-stage::before {
+  content: ''; position: absolute; left: 14%; right: 14%; bottom: 3%; height: 12%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0)); pointer-events: none;
+}
+.clk-stage.fair { box-shadow: inset 0 0 0 1px var(--accent2), inset 0 0 70px rgba(244, 197, 66, .22); }
+.clk-stage.inspire { box-shadow: inset 0 0 0 1px #6f8fe0, inset 0 0 70px rgba(120, 150, 255, .22); }
+.clk-stage.fair.inspire { box-shadow: inset 0 0 0 1px var(--accent2), inset 0 0 70px rgba(244, 197, 66, .22), inset 0 0 30px rgba(120, 150, 255, .3); }
+
+.clk-shelf {
+  position: absolute; left: 7%; right: 7%; top: 9%; height: 7px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--clk-wood), var(--clk-wood2)); box-shadow: 0 4px 8px rgba(0, 0, 0, .5);
+}
+.clk-shelf-jugs {
+  position: absolute; left: 4%; right: 4%; bottom: 100%; display: flex; justify-content: space-between; align-items: flex-end;
+  pointer-events: none;
+}
+.clk-shelf-jugs svg { width: 22px; height: 26px; opacity: .8; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .4)); }
+
+/* ---- коло з кільцем розгону ---- */
+.clk-wheelbox { position: absolute; left: 50%; bottom: 6%; width: 62%; aspect-ratio: 1; transform: translateX(-50%); }
+.clk-heat { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+.clk-heat circle { fill: none; stroke-width: 3; }
+.clk-heat .bg { stroke: rgba(255, 255, 255, .07); }
+.clk-heat .fg {
+  stroke: var(--accent2); stroke-linecap: round; stroke-dasharray: 295.3; stroke-dashoffset: 295.3;
+  transition: stroke-dashoffset .12s linear, stroke .3s;
+}
+.clk-wheelbox.hot .clk-heat .fg { stroke: var(--clk-fire); filter: drop-shadow(0 0 5px rgba(255, 138, 61, .9)); }
 .clk-wheel {
-  width: 100%; height: 100%; padding: 0; border: none; border-radius: 50%;
+  position: absolute; inset: 6%; width: 88%; height: 88%; padding: 0; border: none; border-radius: 50%;
   background: transparent; display: block; cursor: pointer;
   transition: transform .08s ease-out;
+  /* Сяйво від розгону: --clk-glow 0…1 виставляє клієнт. */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45),
+    0 0 calc(var(--clk-glow, 0) * 34px) calc(var(--clk-glow, 0) * 8px) rgba(244, 197, 66, .5);
   /* Швидкі тапи на телефоні: без цього подвійний тап масштабує сторінку й рве pointerdown/pointerup. */
   touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .clk-wheel:hover { background: transparent; }
 .clk-wheel:active { transform: scale(.96); }
 .clk-wheel.hit { animation: clkhit .18s ease-out; }
-.clk-wheel svg { width: 100%; height: 100%; display: block; }
-.clk-turn { transform-origin: 50px 50px; animation: clkspin var(--clk-spin, 0s) linear infinite; }
+.clk-wheel svg { width: 100%; height: 100%; display: block; overflow: visible; }
+/* Крутить круг клієнт (rotate у style): CSS-анімація з мінливою тривалістю смикала б коло на кожній зміні швидкості. */
+.clk-turn { transform-origin: 50px 50px; }
 .clk-disc { fill: var(--clk-disc); stroke: var(--line); stroke-width: 2; }
 .clk-ring { fill: none; stroke: var(--clk-groove); stroke-width: 2; }
 .clk-speck { fill: var(--accent2); }
+.clk-jugbox { transform-origin: 50px 61px; transition: transform .25s ease-out; }
 
 /* «+N», що злітає над колом; клікам воно не заважає — шар наскрізний. */
-.clk-pops { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 1; }
+.clk-pops { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
 .clk-pop {
   position: absolute; bottom: 46%; color: var(--accent); font-weight: 700; font-size: .95em; white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .5); animation: clkpop .8s ease-out forwards;
 }
+.clk-pop.hot { color: var(--clk-fire); font-size: 1.2em; }
+.clk-pop.big { font-size: 1.45em; color: #fff7d6; text-shadow: 0 0 14px var(--accent), 0 1px 3px rgba(0, 0, 0, .6); animation-duration: 1.3s; }
+.clk-pop.miss { color: var(--muted); font-weight: 600; font-size: .85em; }
 
-/* ---- Око майстра: стає на місце кола, поки майстер чекає відповіді або коло стоїть ---- */
+/* Бризки глини на кожен клік. */
+.clk-sparks, .clk-fx { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.clk-sparks { z-index: 3; }
+.clk-fx { z-index: 6; }
+/* Напис у довільній точці сцени центруємо по x — своя анімація, бо clkpop переписала б transform. */
+.clk-fx .clk-pop { bottom: auto; animation-name: clkpopc; }
+.clk-spark {
+  position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%;
+  background: var(--clay); animation: clkspark .55s ease-out forwards;
+}
+.clk-spark.gold { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.clk-shard {
+  position: absolute; width: 9px; height: 9px; margin: -4px; background: var(--clay);
+  clip-path: polygon(0 0, 100% 25%, 70% 100%, 8% 78%); animation: clkshard .75s ease-in forwards;
+}
+
+/* ---- бонуси розписного глека й розгін ---- */
+.clk-buffs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.clk-buff {
+  font-size: .82em; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  font-variant-numeric: tabular-nums; animation: clkglow 1.4s ease-in-out infinite alternate;
+}
+.clk-buff.fair { background: #5a3d0a; color: var(--accent); }
+.clk-buff.inspire { background: #2e3c66; color: #cfe0ff; }
+.clk-buff.heat { background: #4a2612; color: #ffb27a; animation: none; }
+.clk-buff.streak { background: var(--panel3); color: var(--text); animation: none; }
+
+/* ---- розписний глек: з'являється десь на сцені на кілька секунд ---- */
+.clk-gold {
+  position: absolute; z-index: 5; width: 58px; height: 58px; padding: 0; border: none; border-radius: 50%;
+  background: radial-gradient(circle, rgba(244, 197, 66, .35) 0%, rgba(244, 197, 66, 0) 70%);
+  cursor: pointer; animation: clkwobble .9s ease-in-out infinite; transform-origin: 50% 90%;
+}
+.clk-gold:hover { background: radial-gradient(circle, rgba(244, 197, 66, .55) 0%, rgba(244, 197, 66, 0) 72%); }
+.clk-gold-jug { position: absolute; inset: 7px; width: 44px; height: 44px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); }
+.clk-gold-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.clk-gold-ring circle {
+  fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round;
+  stroke-dasharray: 113.1; stroke-dashoffset: 0;
+}
+.clk-gold.run .clk-gold-ring circle { animation: clkring var(--clk-left, 12s) linear forwards; }
+
+/* ---- глек, що падає з полиці: три секунди від полиці до долівки, спіймати треба рукою ---- */
+.clk-fall {
+  position: absolute; z-index: 5; top: 4%; width: 62px; height: 72px; margin-left: -31px; padding: 0; border: none;
+  background: transparent; cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+.clk-fall.run { animation: clkdrop var(--clk-fallms, 3200ms) cubic-bezier(.4, 0, .85, .55) forwards; }
+.clk-fall:hover { background: transparent; }
+.clk-fall-jug {
+  width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, .55));
+  animation: clktumble 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes clkhit { 40% { transform: scale(1.07); } }
+@keyframes clkpop {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-52px); }
+}
+@keyframes clkpopc {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -52px); }
+}
+@keyframes clkwobble {
+  0%, 100% { transform: rotate(-8deg) scale(1); }
+  50% { transform: rotate(8deg) scale(1.08); }
+}
+@keyframes clkring { to { stroke-dashoffset: 113.1; } }
+@keyframes clkglow { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+@keyframes clkspark {
+  from { opacity: 1; transform: translate(0, 0) scale(1); }
+  to { opacity: 0; transform: translate(var(--dx, 0), var(--dy, -40px)) scale(.3); }
+}
+@keyframes clkshard {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  60% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 30px)) rotate(var(--rot, 90deg)); }
+}
+@keyframes clkdrop {
+  from { transform: translateY(-30px); }
+  to { transform: translateY(var(--clk-drop, 320px)); }
+}
+@keyframes clktumble {
+  from { transform: rotate(-14deg); }
+  to { transform: rotate(14deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clk-wheel.hit, .clk-gold, .clk-buff, .clk-fall-jug, .clk-spark, .clk-shard { animation: none; }
+  .clk-pop { animation-duration: .3s; }
+  .clk-fall.run { animation-timing-function: linear; }
+}
+
+/* ---- Око майстра: стає на місце сцени, поки майстер чекає відповіді або коло стоїть ---- */
 .clk-eye {
   width: min(420px, 100%); display: flex; flex-direction: column; gap: 6px; align-items: stretch;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px;
@@ -71,47 +231,6 @@
   color: #fff; font: 700 13px/22px system-ui, sans-serif; font-style: normal; text-align: center;
 }
 .clk-eye-reset { align-self: center; }
-
-/* ---- бонуси розписного глека ---- */
-.clk-buffs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.clk-buff {
-  font-size: .82em; font-weight: 600; padding: 2px 9px; border-radius: 999px;
-  font-variant-numeric: tabular-nums; animation: clkglow 1.4s ease-in-out infinite alternate;
-}
-.clk-buff.fair { background: #5a3d0a; color: var(--accent); }
-.clk-buff.inspire { background: #2e3c66; color: #cfe0ff; }
-
-/* ---- розписний глек: з'являється десь на сцені на кілька секунд ---- */
-.clk-gold {
-  position: absolute; z-index: 3; width: 58px; height: 58px; padding: 0; border: none; border-radius: 50%;
-  background: radial-gradient(circle, rgba(244, 197, 66, .35) 0%, rgba(244, 197, 66, 0) 70%);
-  cursor: pointer; animation: clkwobble .9s ease-in-out infinite; transform-origin: 50% 90%;
-}
-.clk-gold:hover { background: radial-gradient(circle, rgba(244, 197, 66, .55) 0%, rgba(244, 197, 66, 0) 72%); }
-.clk-gold-jug { position: absolute; inset: 7px; width: 44px; height: 44px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); }
-.clk-gold-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.clk-gold-ring circle {
-  fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round;
-  stroke-dasharray: 113.1; stroke-dashoffset: 0;
-}
-.clk-gold.run .clk-gold-ring circle { animation: clkring var(--clk-left, 12s) linear forwards; }
-
-@keyframes clkspin { to { transform: rotate(360deg); } }
-@keyframes clkhit { 40% { transform: scale(1.07); } }
-@keyframes clkpop {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-52px); }
-}
-@keyframes clkwobble {
-  0%, 100% { transform: rotate(-8deg) scale(1); }
-  50% { transform: rotate(8deg) scale(1.08); }
-}
-@keyframes clkring { to { stroke-dashoffset: 113.1; } }
-@keyframes clkglow { from { filter: brightness(1); } to { filter: brightness(1.25); } }
-@media (prefers-reduced-motion: reduce) {
-  .clk-turn, .clk-wheel.hit, .clk-gold, .clk-buff { animation: none; }
-  .clk-pop { animation-duration: .3s; }
-}
 
 /* ---- прилавок ---- */
 .clk-sell { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
@@ -140,6 +259,7 @@
 .clk-up:not(:disabled):hover, .clk-mark:not(:disabled):hover, .clk-secret:not(:disabled):hover { background: var(--panel3); }
 .clk-up b, .clk-mark b, .clk-secret b { font-size: .95em; }
 .clk-up.best { border-color: var(--accent2); }
+.clk-up.skill { border-color: rgba(255, 138, 61, .45); }
 .clk-mark { border-style: dashed; border-color: var(--accent2); }
 .clk-lvl { color: var(--accent2); font-size: .8em; }
 .clk-pay { color: var(--ok); font-size: .76em; }
@@ -186,10 +306,12 @@
 /* ---- телефон: картка на 380 px не має розповзатись ---- */
 @media (max-width: 480px) {
   .clk-count { font-size: 1.8em; }
-  .clk-wheelbox { width: min(160px, 58%); }
+  .clk-stage { aspect-ratio: 1 / 1.02; }
+  .clk-wheelbox { width: 58%; }
   .clk-shop, .clk-marks, .clk-secrets { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 6px; }
   .clk-styles { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
   .clk-up, .clk-mark, .clk-secret { padding: 7px 8px 24px; }
   .clk-gold { width: 52px; height: 52px; }
   .clk-gold-jug { inset: 6px; width: 40px; height: 40px; }
+  .clk-fall { width: 56px; height: 66px; margin-left: -28px; }
 }

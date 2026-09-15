@@ -5,8 +5,8 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games.Impl;
 
-/// <summary>Що дає верстат: більше глеків за клік, глеки без тебе чи множник до всього.</summary>
-public enum ClickerKind { Click, Idle, Mult }
+/// <summary>Що дає верстат: більше глеків за клік, глеки без тебе, множник до всього чи вправність (розгін, глеки з полиці).</summary>
+public enum ClickerKind { Click, Idle, Mult, Skill }
 
 /// <summary>Віха верстата: одноразове покращення, яке відкривається, коли верстат доріс до рівня.</summary>
 public sealed record ClickerMark(int Level, string Name);
@@ -60,9 +60,11 @@ public sealed record ClickerStyle(string Key, string Name, long Price);
 /// через тиждень — коло крутилось і без тебе (але не більше ніж вісім годин, інакше з відпустки повертались
 /// би мільйонери). Валюта тут своя, глеки; у черепки вони переходять лише через прилавок, сотнями.
 ///
-/// Понад кліки й верстати тут є ще чотири речі, заради яких варто повертатись: віхи верстатів (×2), розписний
+/// Понад кліки й верстати тут є ще кілька речей, заради яких варто повертатись: віхи верстатів (×2), розписний
 /// глек, що з'являється на колі на кілька секунд, обпал (скинути майстерню за вічні клейма майстра) і колекція
-/// розписів. Правила живуть тільки тут: клієнт батчить кліки й малює плавний долік, але кожен глек рахує
+/// розписів. А щоб і клацати було за що: розгін кола («Маховик» — швидкі кліки поспіль дають дедалі більше)
+/// і глек, що раз на хвилину-дві падає з полиці: спіймав — кілька хвилин пасиву однією жменею, не спіймав —
+/// черепки. Правила живуть тільки тут: клієнт батчить кліки й малює плавний долік, але кожен глек рахує
 /// сервер за <see cref="IRoomContext.Clock"/>.
 ///
 /// Від автоклікерів і скриптів коло стереже Око майстра (<see cref="ClickerGuard"/>): кліки приходять із почерком,
@@ -109,6 +111,34 @@ public sealed class Clicker : Game
     /// <summary>Що буде в розписному глеку. Вирішується, коли глек з'являється, а гравцеві показується, лише коли впіймав.</summary>
     public enum GoldenKind { Merchant, Fair, Inspire }
 
+    // ---------- розгін кола ----------
+
+    /// <summary>За скільки секунд розгін спадає в e разів: перестав клацати — за кілька секунд коло стало.</summary>
+    public const double HeatTau = 3.0;
+    /// <summary>Стільки «гарячих» кліків — повний розгін: приблизно шість кліків за секунду протягом трьох секунд.</summary>
+    public const double HeatFull = 18;
+    /// <summary>Скільки до стелі розгону додає один рівень «Маховика». Без маховика коло не розганяється зовсім.</summary>
+    public const double FlywheelStep = 0.5;
+
+    // ---------- глек з полиці ----------
+
+    /// <summary>Скільки глек летить з полиці до долівки: спіймати треба рукою, а не прочитати у виді.</summary>
+    public static readonly TimeSpan FallShown = TimeSpan.FromSeconds(3.2);
+    public const int FallMinSeconds = 50, FallMaxSeconds = 130;
+    /// <summary>З «Котом на полиці» глеки падають частіше.</summary>
+    public const int CatMinSeconds = 30, CatMaxSeconds = 80;
+    /// <summary>Що в спійманому глеку: дві хвилини пасиву плюс сотня кліків — щоб і новачкові, і магнатові було за що ловити.</summary>
+    public const double FallSeconds = 120;
+    public const int FallClicks = 100;
+    /// <summary>Дно: навіть на голому колі спійманий глек — це відчутно.</summary>
+    public const int FallFloor = 20;
+    /// <summary>Кожен рівень «Кошика» — плюс п'ята частина до глека з полиці.</summary>
+    public const double BasketBonus = 0.2;
+    /// <summary>Серія спійманих поспіль: +10 % за кожен, не більше десяти. Розбився — серія обірвалась.</summary>
+    public const double StreakBonus = 0.1;
+    public const int StreakMax = 10;
+    public const int GrabsForAchievement = 100, StreakForAchievement = 10;
+
     // ---------- обпал ----------
 
     /// <summary>Клейма рахуються від глеків за весь час: <c>⌊√(total / 1 млрд)⌋</c>.</summary>
@@ -136,6 +166,8 @@ public sealed class Clicker : Game
         new("kiln", "Піч", "+3 глеки за секунду", 1_000, ClickerKind.Idle, Rate: 3,
             Marks: [new(10, "Дубові дрова"), new(25, "Двоярусний горн"), new(50, "Вічний вогонь")]),
         new("clay", "Гарна глина", "×1,25 до всього", 10_000, ClickerKind.Mult, MaxLevel: 5),
+        new("flywheel", "Маховик", "Швидкі кліки поспіль розкручують коло: +0,5 до стелі розгону", 250, ClickerKind.Skill, MaxLevel: 8),
+        new("basket", "Кошик під полицею", "+20 % до глеків, що падають з полиці", 2_500, ClickerKind.Skill, MaxLevel: 10),
         Tier("workshop", "Гончарня", 100_000, 25, "Новий дах", "Полиці до стелі", "Вивіска на всю вулицю"),
         Tier("fair", "Ярмарок у Сорочинцях", 2_000_000, 150, "Намет із прапорцем", "Ярмаркові зазивали", "Гоголь приїхав"),
         Tier("artel", "Артіль в Опішні", 50_000_000, 900, "Спільна глина", "Артільний кошовий", "Знак Опішні"),
@@ -156,6 +188,7 @@ public sealed class Clicker : Game
     [
         new("night", "Довга ніч", "Коло крутиться без тебе 12 годин замість 8", 3),
         new("omen", "Прикмета", "Розписні глеки з'являються частіше", 5),
+        new("cat", "Кіт на полиці", "Глеки падають з полиці частіше — котові нудно", 6),
         new("kin", "Родинний круг", $"Після обпалу коло, підмайстри й піч одразу на рівні {KinLevels}", 8),
         new("longfair", "Довгий ярмарок", "Бонуси розписних глеків тривають удвічі довше", 12),
         new("recipe", "Бабусин рецепт", "Гарна глина не згорає при обпалі", 20),
@@ -221,6 +254,18 @@ public sealed class Clicker : Game
     int _caught;
     int _stamps;
     int _firings;
+
+    /// <summary>
+    /// Розгін кола: «гарячі» кліки, що спадають експоненційно (<see cref="HeatTau"/>). Рахуємо на мить
+    /// <c>_heatAt</c>; що більше кліків підряд — то більший множник, аж до стелі маховика.
+    /// </summary>
+    double _heat;
+    DateTimeOffset _heatAt;
+
+    /// <summary>Наступний глек з полиці, серія спійманих поспіль і спіймані за весь час.</summary>
+    FallRow _fall = new(default, default, 0);
+    int _fallStreak;
+    int _grabbed;
 
     /// <summary>
     /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
@@ -306,6 +351,27 @@ public sealed class Clicker : Game
     /// <summary>Глеків за секунду без тебе просто зараз.</summary>
     public double PerSecond => PassiveBase * (FairOn ? FairMult : 1);
 
+    /// <summary>Стеля розгону: ×1 без маховика (коло не розганяється), +0,5 за кожен його рівень — до ×5.</summary>
+    public double MomentumMax => 1 + FlywheelStep * Level("flywheel");
+
+    /// <summary>Розгін на мить <paramref name="now"/>: те, що було, спадає в e разів за <see cref="HeatTau"/> секунд.</summary>
+    double HeatAt(DateTimeOffset now) =>
+        _heatAt == default || !(_heat > 0) ? 0 : _heat * Math.Exp(-Math.Max(0, (now - _heatAt).TotalSeconds) / HeatTau);
+
+    /// <summary>Множник кліка від розгону: лінійно від ×1 на холодному колі до стелі на <see cref="HeatFull"/> гарячих кліках.</summary>
+    public double MomentumOf(double heat) => 1 + (MomentumMax - 1) * Math.Min(1, Math.Max(0, heat) / HeatFull);
+
+    /// <summary>
+    /// Що дасть глек з полиці, якщо спіймати його просто зараз: дві хвилини пасиву й сотня кліків, помножені на
+    /// кошик, серію і ярмарок, плюс дно. Ця сама сума їде у вид — клієнт малює її над спійманим глеком, не чекаючи відповіді.
+    /// </summary>
+    long FallGain()
+    {
+        var raw = PassiveBase * FallSeconds + (double)ClickBase * FallClicks;
+        var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1);
+        return Sum(ToLong(raw * mult), FallFloor);
+    }
+
     TimeSpan OfflineNow => Has("night") ? LongOfflineCap : OfflineCap;
 
     /// <summary>
@@ -364,6 +430,11 @@ public sealed class Clicker : Game
         _firings = 0;
         ScheduleGolden(_lastSync);
         _guard.Reset(Ctx.Rng);
+        _heat = 0;
+        _heatAt = _lastSync;
+        _fallStreak = 0;
+        _grabbed = 0;
+        ScheduleFall(_lastSync);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -377,7 +448,8 @@ public sealed class Clicker : Game
             "mark" => BuyMark(payload),
             "sell" => Sell(payload),
             "catch" => Catch(),
-            // Клієнт питає свіжий вид, коли розписний глек утік: наступний розклад знає лише сервер.
+            "grab" => Grab(),
+            // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
             "look" => ActResult.Done,
             "fire" => Fire(),
             "secret" => BuySecret(payload),
@@ -435,6 +507,13 @@ public sealed class Clicker : Game
         // Утік — наступний. Від «зараз», а не від кінця старого: хто повернувся за добу, не мусить
         // перебирати пропущені глеки, щоб дійти до сьогоднішнього.
         if (now > _golden.Until + CatchGrace) ScheduleGolden(now);
+        // Глек з полиці, якого ніхто не спіймав, — розбитий: серія обірвалась. Спійманий сюди не доходить —
+        // Grab одразу ставить на полицю наступний.
+        if (now > _fall.Until + CatchGrace)
+        {
+            _fallStreak = 0;
+            ScheduleFall(now);
+        }
     }
 
     /// <summary>Нарахувати пасив разом із недоліпленим залишком.</summary>
@@ -478,6 +557,14 @@ public sealed class Clicker : Game
         _golden = new GoldenRow(at, at + GoldenShown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
     }
 
+    /// <summary>Коли й де впаде наступний глек з полиці: за хвилину-дві (з котом — частіше), x — у відсотках сцени.</summary>
+    void ScheduleFall(DateTimeOffset from)
+    {
+        var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
+        var at = from + TimeSpan.FromSeconds(min + Ctx.Rng.NextDouble() * (max - min));
+        _fall = new FallRow(at, at + FallShown, Ctx.Rng.Next(8, 80));
+    }
+
     // ---------- дії ----------
 
     /// <summary>
@@ -506,7 +593,7 @@ public sealed class Clicker : Game
 
         var taken = Math.Min(hands.Count, Allowance());
         _tokens -= taken;
-        Add(Mul(PerClick, taken));
+        Add(ClickGain(taken));
         _guard.Spend(taken);
         // Під ярмарком і натхненням не перебиваємо: бонус тікає секундами, а перевірка почекає до його кінця.
         if (_guard.Due && !FairOn && !InspireOn) _guard.Check();
@@ -669,6 +756,53 @@ public sealed class Clicker : Game
     }
 
     /// <summary>
+    /// Глеків за пачку кліків з розгоном. Розгін спадає від останньої пачки, а множник беремо на середині цієї:
+    /// перші її кліки холодніші за останні. Пачка, з якої відро нічого не віддало, кола не гріє. Без маховика
+    /// множник рівно один — і рахуємо, як рахували, цілими, без double.
+    /// </summary>
+    long ClickGain(int taken)
+    {
+        var now = Ctx.Clock.UtcNow;
+        var heat = HeatAt(now);
+        var mult = MomentumOf(heat + taken / 2.0);
+        if (taken > 0)
+        {
+            _heat = heat + taken;
+            _heatAt = now;
+        }
+        return mult <= 1 ? Mul(PerClick, taken) : ToLong((double)PerClick * taken * mult);
+    }
+
+    /// <summary>
+    /// Глек з полиці: спіймав, поки летів, — жменя глеків (див. <see cref="FallGain"/>) і плюс один до серії;
+    /// не встиг — він уже черепки. Те саме Око майстра, що й у розписного: скрипт бачить у виді, коли й де
+    /// впаде, тож поки коло стоїть чи майстер чекає — не ловиться, а кожен спійманий наближає перевірку.
+    /// </summary>
+    ActResult Grab()
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (now < _fall.At - EarlyGrace || now > _fall.Until + CatchGrace)
+            return ActResult.Fail("Глек уже розбився");
+        if (_guard.Locked(now) || _guard.Pending)
+            return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+        if (_guard.Due && !FairOn && !InspireOn)
+        {
+            _guard.Check();
+            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");
+        }
+
+        var gain = FallGain();
+        Add(gain);
+        _fallStreak++;
+        _grabbed++;
+        _guard.Spend(ClickerGuard.CatchWeight);
+        if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
+        if (_fallStreak == StreakForAchievement) Ctx.Award(0, 0, "ach:potter-streak");
+        ScheduleFall(now);
+        return ActResult.Accept($"🤲 Спіймав! +{Short(gain)} {Pots(gain)}" + (_fallStreak > 1 ? $" · серія {_fallStreak}" : ""));
+    }
+
+    /// <summary>
     /// Обпал: глеки, верстати й віхи згорають, а клейма за глеки за весь час лишаються назавжди. Клейма
     /// рахуються від усього наліпленого, тож ранній обпал нічого не губить: пізніше дорахується решта.
     /// </summary>
@@ -760,6 +894,7 @@ public sealed class Clicker : Game
         var passive = PassiveBase;
         var spent = StampsSpent;
         var stampsAll = StampsFor(_total);
+        var heat = HeatAt(Ctx.Clock.UtcNow);
         return new
         {
             pots = _pots,
@@ -828,6 +963,15 @@ public sealed class Clicker : Game
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, owned = _secrets.Contains(s.Key) }),
             styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
             wear = _wear,
+            // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
+            heat,
+            heatFull = HeatFull,
+            heatTau = HeatTau,
+            momentum = MomentumOf(heat),
+            momentumMax = MomentumMax,
+            // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain() },
+            grabbed = _grabbed,
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна) і/або пауза.
             guard = _guard.View(Ctx.Clock.UtcNow),
         };
@@ -860,13 +1004,16 @@ public sealed class Clicker : Game
 
     sealed record GoldenRow(DateTimeOffset At, DateTimeOffset Until, GoldenKind Kind, int X, int Y);
 
+    sealed record FallRow(DateTimeOffset At, DateTimeOffset Until, int X);
+
     sealed record Snapshot(
         long Pots, long Total, double Carry, DateTimeOffset LastSync,
         Dictionary<string, int> Upgrades, SoldRow SoldToday, BucketRow Clicks,
         List<string>? Marks = null, GoldenRow? Golden = null,
         DateTimeOffset FairUntil = default, DateTimeOffset InspireUntil = default, int Caught = 0,
         int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
-        ClickerGuard.Row? Guard = null);
+        ClickerGuard.Row? Guard = null,
+        FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -874,7 +1021,8 @@ public sealed class Clicker : Game
             new SoldRow(_soldDay, _soldShards), new BucketRow(_tokens, _tokensAt),
             _marks.Order(StringComparer.Ordinal).ToList(), _golden, _fairUntil, _inspireUntil, _caught,
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
-            _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save()),
+            _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
+            _fall, _fallStreak, _grabbed, _heat, _heatAt),
         Wire);
 
     public override void Load(string json)
@@ -922,6 +1070,17 @@ public sealed class Clicker : Game
             ScheduleGolden(Ctx.Clock.UtcNow);    // збереження з часів до розписних глеків
         // Пауза кола й недороблена перевірка переживають F5 — інакше перезавантаження знімало б і те, і те.
         _guard.Load(s.Guard, Ctx.Rng);
+
+        // Розгін переживає F5 теж (він однаково спаде за кілька секунд), а глек з полиці — або той, що вже
+        // на розкладі, або, для збережень із часів до полиці, новий.
+        _heat = double.IsFinite(s.Heat) ? Math.Clamp(s.Heat, 0, 10 * HeatFull) : 0;
+        _heatAt = s.HeatAt;
+        _fallStreak = Math.Max(0, s.FallStreak);
+        _grabbed = Math.Max(0, s.Grabbed);
+        if (s.Fall is { } f && f.Until > f.At)
+            _fall = f with { X = Math.Clamp(f.X, 0, 90) };
+        else
+            ScheduleFall(Ctx.Clock.UtcNow);
     }
 
     static void Fill(HashSet<string> set, List<string>? from, Func<string, bool> known)
