@@ -20,6 +20,8 @@ public sealed class SkilkyQuestion
     public string? Unit { get; init; }
     /// <summary>Звідки число, якщо його варто чимось підперти. У гру не потрапляє — це записка для людей.</summary>
     public string? Src { get; init; }
+    /// <summary>Тема для налаштування столу — один із ключів <see cref="SkilkyTopics.All"/>.</summary>
+    public string? Topic { get; init; }
 
     public bool IsDynamic => !string.IsNullOrWhiteSpace(Dyn);
 
@@ -31,6 +33,30 @@ public sealed class SkilkyQuestion
     /// запитання й так варто вважати новим.
     /// </summary>
     public string Key => _key ??= Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Q.Trim())))[..16];
+}
+
+/// <summary>
+/// Теми банку. «radio» — динамічні запитання про наше радіо: окремою темою їх не обирають, вони йдуть лише
+/// в «Усі теми».
+/// </summary>
+public static class SkilkyTopics
+{
+    public const string Any = "all";
+    public const string Radio = "radio";
+
+    /// <summary>Те, що бачить господар у списку при «+ Стіл», у тому самому порядку.</summary>
+    public static readonly IReadOnlyList<(string Key, string Label)> All =
+    [
+        (Any, "Усі теми"),
+        ("ukraine", "Україна"),
+        ("culture", "Музика, кіно й ігри"),
+        ("science", "Наука, природа й тіло"),
+        ("world", "Світ, спорт і побут"),
+        ("tech", "IT, техніка й історія"),
+    ];
+
+    /// <summary>Чи годиться запитання для обраної теми.</summary>
+    public static bool Fits(SkilkyQuestion q, string topic) => topic == Any || q.Topic == topic;
 }
 
 /// <summary>

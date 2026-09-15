@@ -82,6 +82,7 @@
 }
 .sksrow > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sksrow b { color: var(--text); font-variant-numeric: tabular-nums; }
+.skshard { font-style: normal; font-size: .9em; color: var(--accent); white-space: nowrap; }
 .sksrow.win { color: var(--text); background: var(--skrow); }
 
 /* ---- широка картка: рахунок праворуч ---- */

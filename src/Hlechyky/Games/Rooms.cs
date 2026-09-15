@@ -225,7 +225,9 @@ public sealed class Rooms
         }
 
         var outbox = new Outbox();
-        var reply = new RoomReply(true, "Стіл готовий. Треба ще одного гравця", room.Id);
+        var reply = new RoomReply(true, info.MinPlayers <= 1
+            ? "Стіл готовий. Можна почати самому або дочекатись друзів"
+            : "Стіл готовий. Треба ще одного гравця", room.Id);
         string? failed = null;
         lock (room.Sync)
         {
@@ -858,7 +860,8 @@ public sealed class Rooms
             {
                 drop =
                     room.Occupied == 0
-                    || (room.Status == RoomStatus.Lobby && room.Occupied < room.Info.MinPlayers && now - room.LastActivity > LobbyLife)
+                    // самотній стіл у лобі — засиджений, навіть якщо гра дозволяє почати самому («Скільки?»)
+                    || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
                     || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife);
             }

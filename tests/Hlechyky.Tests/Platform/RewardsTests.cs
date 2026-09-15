@@ -192,6 +192,26 @@ public class RewardsTests
     }
 
     [Fact]
+    public void Points_turned_into_shards_pay_without_a_daily_cap()
+    {
+        using var rig = new EconomyRig();
+        for (var round = 1; round <= 10; round++)
+            rig.Events.Raise(new AwardEvent("skilky", "room1", "Оля", 7, $"points:{round}"));
+        Assert.Equal(70, rig.Paid("Оля", "points:skilky"));    // понад AwardDailyCap = 30
+        Assert.Equal(0, rig.Paid("Оля", "award:skilky"));      // і не з'їдає спільну стелю нагород
+    }
+
+    [Fact]
+    public void The_same_match_pays_its_points_once()
+    {
+        using var rig = new EconomyRig();
+        rig.Events.Raise(new AwardEvent("skilky", "room1", "Оля", 4, "points:2"));
+        rig.Events.Raise(new AwardEvent("skilky", "room1", "Оля", 4, "points:2"));
+        rig.Events.Raise(new AwardEvent("skilky", "room2", "Оля", 4, "points:2"));   // інший стіл — інша партія
+        Assert.Equal(8, rig.Paid("Оля", "points:skilky"));
+    }
+
+    [Fact]
     public void Ad_contest_pays_the_winner_outside_the_award_cap()
     {
         using var rig = new EconomyRig();

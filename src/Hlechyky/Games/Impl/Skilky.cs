@@ -25,10 +25,15 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed class Skilky : Game
 {
-    /// <summary>Скільки запитань у партії. Менше буває лише тоді, коли банк геть куций.</summary>
+    /// <summary>Скільки запитань у партії, якщо господар не обрав іншого. Менше буває лише тоді, коли тема геть куца.</summary>
     public const int Questions = 5;
-    /// <summary>Скільки секунд дано на число.</summary>
+    /// <summary>Скільки секунд дано на число, якщо господар не обрав іншого.</summary>
     public const int AskSeconds = 30;
+    /// <summary>Скільки очок партії коштує один черепок. Без денної стелі — рішення господаря сайту.</summary>
+    public const int PointsPerShard = 5;
+
+    static readonly int[] QuestionChoices = [3, 5, 7, 10, 15];
+    static readonly int[] SecondChoices = [15, 30, 45, 60];
     /// <summary>Скільки секунд висить розкриття, перш ніж поїхати далі.</summary>
     public const int RevealSeconds = 6;
     /// <summary>Коротка пауза перед кожним запитанням: «зараз буде», щоб питання не впало людям на голову.</summary>
@@ -45,7 +50,10 @@ public sealed class Skilky : Game
     public const int Bullseye = 5;
     /// <summary>Промах на одиницю на цілій відповіді — «майже»: щонайменше стільки, хоч у відсотках це й 11 %.</summary>
     public const int OffByOne = 4;
-    /// <summary>Найближчому за столом — завжди, навіть коли за точність він нічого не взяв: тоді це його єдине очко.</summary>
+    /// <summary>
+    /// Найближчому за столом — завжди, навіть коли за точність він нічого не взяв: тоді це його єдине очко.
+    /// Крім гри самому: «найближчий з одного» — не заслуга.
+    /// </summary>
     public const int BestBonus = 1;
     /// <summary>За однакової відстані швидшому хоча б на <see cref="SpeedGap"/>.</summary>
     public const int SpeedBonus = 1;
@@ -65,10 +73,26 @@ public sealed class Skilky : Game
         public int Points => Accuracy + Bonus + Fast;
     }
 
+    // Мінімум — один: господар може почати й сам, а хто встигне підсісти до старту, грає разом.
     public override GameInfo Info { get; } = new(
-        "skilky", "Скільки?", "«Скільки?»", GameGroup.Party, 2, MaxSeats,
+        "skilky", "Скільки?", "«Скільки?»", GameGroup.Party, 1, MaxSeats,
         TickMs: 1000, Start: StartMode.ByHost, Hidden: true, Rated: false,
-        Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок, найближчому ще й бонус. П'ять питань");
+        Options:
+        [
+            new GameOption("questions", "Питань", [.. QuestionChoices.Select(n => (Str(n), Str(n)))], Str(Questions)),
+            new GameOption("seconds", "Час на відповідь", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(AskSeconds)),
+            new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any),
+        ],
+        Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок і черепків. Можна й самому");
+
+    static string Str(int n) => n.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Скільки запитань у цій кімнаті (опція «Питань»).</summary>
+    int _questions = Questions;
+    /// <summary>Скільки секунд на число в цій кімнаті (опція «Час на відповідь»).</summary>
+    int _seconds = AskSeconds;
+    /// <summary>Тема запитань цієї кімнати (опція «Теми»).</summary>
+    string _topic = SkilkyTopics.Any;
 
     /// <summary>Запитання цієї партії разом із уже порахованою правильною відповіддю.</summary>
     readonly List<(SkilkyQuestion Q, double A)> _asked = [];
@@ -98,6 +122,16 @@ public sealed class Skilky : Game
     // ---------------------------------------------------------------------------------------
     // партія
     // ---------------------------------------------------------------------------------------
+
+    /// <summary>Опції столу. Каркас уже звів кожну до одного з дозволених значень, лишається прочитати.</summary>
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        if (options.TryGetValue("questions", out var q) && int.TryParse(q, CultureInfo.InvariantCulture, out var n)
+            && QuestionChoices.Contains(n)) _questions = n;
+        if (options.TryGetValue("seconds", out var s) && int.TryParse(s, CultureInfo.InvariantCulture, out var sec)
+            && SecondChoices.Contains(sec)) _seconds = sec;
+        if (options.TryGetValue("topic", out var t) && SkilkyTopics.All.Any(x => x.Key == t)) _topic = t;
+    }
 
     public override void Start()
     {
@@ -129,15 +163,16 @@ public sealed class Skilky : Game
     }
 
     /// <summary>
-    /// П'ять різних запитань на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені найдавніше.
-    /// Динамічне беремо лише тоді, коли база вже щось назбирала: питати «скільки треків зіграло», коли
-    /// відповідь нуль, — не загадка, а знущання.
+    /// Різні запитання обраної теми на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені
+    /// найдавніше. Динамічне беремо лише тоді, коли база вже щось назбирала: питати «скільки треків
+    /// зіграло», коли відповідь нуль, — не загадка, а знущання.
     /// </summary>
     List<(SkilkyQuestion Q, double A)> Pick()
     {
         var pool = new List<(SkilkyQuestion Q, double A)>();
         foreach (var q in SkilkyBank.All)
         {
+            if (!SkilkyTopics.Fits(q, _topic)) continue;
             if (q.IsDynamic)
             {
                 var value = _stats!.Value(q.Dyn);
@@ -152,7 +187,7 @@ public sealed class Skilky : Game
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var last = _seen!.LastSeen(Nicks());
-        return SkilkySeen.Freshest(pool, x => x.Q.Key, last, Questions);
+        return SkilkySeen.Freshest(pool, x => x.Q.Key, last, _questions);
     }
 
     /// <summary>Ключі ніків за столом — так їх пам'ятає <see cref="SkilkySeen"/>.</summary>
@@ -229,7 +264,7 @@ public sealed class Skilky : Game
         {
             case PhaseBetween:
                 _phase = PhaseAsk;
-                _endsAt = now.AddSeconds(AskSeconds);
+                _endsAt = now.AddSeconds(_seconds);
                 // «Бачив» — з тієї секунди, коли запитання з'явилось на екрані. Ті, до яких недограна партія
                 // так і не дійшла, лишаються свіжими.
                 _seen!.Mark(Nicks(), _asked[_at].Q, now);
@@ -280,6 +315,7 @@ public sealed class Skilky : Game
         // повз 36.6 однаково, але в бітах це 0.20000000000000284 і 0.19999999999999574. Гравці побачили б
         // однакову різницю й бонус лише в одного. Усередині групи першим стоїть швидший.
         var rows = new List<Row>(sorted.Count);
+        var company = Enumerable.Range(0, MaxSeats).Count(Ctx.Seated) > 1;
         for (var i = 0; i < sorted.Count;)
         {
             var j = i + 1;
@@ -287,7 +323,7 @@ public sealed class Skilky : Game
             var group = sorted.GetRange(i, j - i).OrderBy(r => _answeredAt[r.Seat]).ThenBy(r => r.Seat).ToList();
             var faster = group.Count > 1 && _answeredAt[group[1].Seat] - _answeredAt[group[0].Seat] >= SpeedGap;
             for (var k = 0; k < group.Count; k++)
-                rows.Add(group[k] with { Bonus = i == 0 ? BestBonus : 0, Fast = faster && k == 0 ? SpeedBonus : 0 });
+                rows.Add(group[k] with { Bonus = i == 0 && company ? BestBonus : 0, Fast = faster && k == 0 ? SpeedBonus : 0 });
             i = j;
         }
         foreach (var r in rows) _scores[r.Seat] += r.Points;
@@ -365,7 +401,11 @@ public sealed class Skilky : Game
     static bool SameDiff(double a, double b) =>
         Math.Abs(a - b) <= 1e-9 * Math.Max(1, Math.Max(Math.Abs(a), Math.Abs(b)));
 
-    /// <summary>Кінець партії: лідери беруть перемогу, а якщо ніхто не набрав жодного очка — нічия.</summary>
+    /// <summary>
+    /// Кінець партії: лідери беруть перемогу, а якщо ніхто не набрав жодного очка — нічия. Кожен, хто дограв,
+    /// отримує черепок за кожні <see cref="PointsPerShard"/> очок — і вдвох, і самому. Це понад звичайну
+    /// виплату каркаса за перемогу чи участь (та — лише в компанії й зі стелею партій на день).
+    /// </summary>
     void Done()
     {
         _phase = PhaseDone;
@@ -373,8 +413,15 @@ public sealed class Skilky : Game
         var best = seats.Count == 0 ? 0 : seats.Max(s => _scores[s]);
         _winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
         var scores = seats.ToDictionary(s => s, s => _scores[s]);
+        foreach (var s in seats)
+            if (Shards(_scores[s]) is > 0 and var shards)
+                // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
+                Ctx.Award(s, shards, $"points:{Ctx.Round.ToString(CultureInfo.InvariantCulture)}");
         Ctx.Finish(_winners, Summary(seats, best), scores);
     }
+
+    /// <summary>Скільки черепків за стільки очок партії.</summary>
+    public static int Shards(long points) => points <= 0 ? 0 : (int)Math.Min(int.MaxValue, points / PointsPerShard);
 
     /// <summary>Рядок Журналу: рахунок усіх за столом від більшого, бо ніки відмінювати нема як.</summary>
     string Summary(List<int> seats, long best)
@@ -387,8 +434,8 @@ public sealed class Skilky : Game
     }
 
     /// <summary>
-    /// Хтось встав посеред партії. Компанійська гра це переживає: решта грає далі, а того, хто пішов,
-    /// просто не рахуємо. Партія закінчується лише тоді, коли грати вже нема кому.
+    /// Хтось встав посеред партії. Компанійська гра це переживає: решта грає далі (навіть один — тоді вже сам),
+    /// а того, хто пішов, просто не рахуємо. Партія закінчується лише тоді, коли за столом нікого.
     /// </summary>
     public override void OnLeave(int seat)
     {
@@ -396,10 +443,8 @@ public sealed class Skilky : Game
         var left = Enumerable.Range(0, MaxSeats).Where(s => s != seat && Ctx.Seated(s)).ToList();
         if (left.Count >= Info.MinPlayers) return;
         _phase = PhaseDone;
-        _winners = [.. left];
-        Ctx.Finish(_winners, left.Count == 1
-            ? $"{Info.Title}: усі, крім {Ctx.NickOf(left[0])}, розійшлись"
-            : $"{Info.Title}: гравці розійшлись, партію не дограли");
+        _winners = [];
+        Ctx.Finish(_winners, $"{Info.Title}: гравці розійшлись, партію не дограли");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -416,6 +461,8 @@ public sealed class Skilky : Game
         question = _phase == PhaseBetween ? "" : Current?.Q ?? "",
         unit = _phase == PhaseBetween ? null : Current?.Unit,
         endsAt = _endsAt,
+        // Скільки триває відповідь у цій кімнаті — клієнтові для повної дуги таймера.
+        seconds = _seconds,
         answered = Answered(),
         // Єдине, що в цьому виді своє для кожного місця: чуже число до розкриття не бачить ніхто.
         my = seat is { } s && s >= 0 && s < MaxSeats ? _answers[s] : null,

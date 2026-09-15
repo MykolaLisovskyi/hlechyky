@@ -22,7 +22,11 @@
   /// Шкала очок словами — та сама, що в Skilky.Accuracy на сервері. Міняєш там — міняй і тут.
   const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 4 (промах на одиницю — теж 4), до 25 % — 3, до 50 % — 2, '
     + 'до двох разів — 1. Роки: точно — 5, ±2 — 4, ±5 — 3, ±15 — 2, ±50 — 1. '
-    + 'Найближчому +1, навіть коли всі мимо. Однаково близько — швидшому ще +1';
+    + 'Найближчому +1, навіть коли всі мимо (самому — без цього). Однаково близько — швидшому ще +1. '
+    + 'За кожні 5 очок партії — 🏺 черепок';
+
+  /// Скільки очок партії коштує черепок — те саме, що Skilky.PointsPerShard на сервері.
+  const POINTS_PER_SHARD = 5;
 
   /// Число для ока: ціле — з пробілами між тисячами, дробове — без хвоста нулів.
   function num(v) {
@@ -88,8 +92,14 @@
     const html = !ctx.playing && !v.result ? '' : seats(ctx)
       .slice()
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
-      .map((i) => '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
-        + '<span>' + ctx.esc(ctx.nickOf(i)) + '</span><b>' + (sc[i] || 0) + '</b></div>').join('');
+      .map((i) => {
+        // Після кінця партії поруч із рахунком — скільки черепків він приніс (сервер платить так само).
+        const shards = v.result ? Math.floor((sc[i] || 0) / POINTS_PER_SHARD) : 0;
+        return '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
+          + '<span>' + ctx.esc(ctx.nickOf(i)) + '</span>'
+          + (shards > 0 ? '<i class="skshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
+          + '<b>' + (sc[i] || 0) + '</b></div>';
+      }).join('');
     if (box.innerHTML !== html) box.innerHTML = html;
   }
 
@@ -163,14 +173,16 @@
     // Дуга живе лише поки партія йде: у лобі та після кінця відліку нема.
     const top = root.querySelector('.sktop');
     if (ctx.playing && v.endsAt && phase !== 'done') {
-      HGames.ui.timerArc(top, v.endsAt, MS[phase] || 30000);
+      // Час на відповідь господар обирає сам (15–60 с), тож повну дугу для «ask» беремо з виду.
+      const total = phase === 'ask' && v.seconds ? v.seconds * 1000 : (MS[phase] || 30000);
+      HGames.ui.timerArc(top, v.endsAt, total);
     } else {
       const arc = top.querySelector(':scope > .garc');
       if (arc) { if (arc._arc) arc._arc.stop(); arc.remove(); }
     }
 
     const q = root.querySelector('.skq');
-    const qText = phase === 'between' && !v.reveal && !ctx.playing ? 'Стіл зібрався — господар тисне «Почати»'
+    const qText = phase === 'between' && !v.reveal && !ctx.playing ? 'Господар тисне «Почати» — можна й самому, а хто встигне, підсяде'
       : phase === 'between' ? 'Готуйсь…'
       : (v.question || '');
     if (q.textContent !== qText) q.textContent = qText;

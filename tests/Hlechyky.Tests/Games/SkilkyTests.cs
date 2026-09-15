@@ -697,15 +697,137 @@ public class SkilkyTests
     }
 
     [Fact]
-    public void When_only_one_is_left_the_match_is_over()
+    public void A_player_left_alone_plays_on()
     {
         var h = Table(2);
         Until(h, Skilky.PhaseAsk);
         h.Leave("Петро");
 
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c });
+        h.Tick(1);
+        Assert.Equal(Skilky.PhaseReveal, Phase(h));
+        Assert.Equal(Skilky.Bullseye, Score(h, 0));   // сам — без бонусу «найближчому»
+    }
+
+    [Fact]
+    public void When_everyone_leaves_the_match_is_over()
+    {
+        var h = Table(2);
+        Until(h, Skilky.PhaseAsk);
+        h.Leave("Петро");
+        h.Leave("Оля");
+
+        Assert.Empty(h.Finished.Single().Result.Winners);
+        Assert.Contains("розійшлись", h.Finished.Single().Result.Text);
+    }
+
+    // ---------- соло, налаштування й черепки ----------
+
+    [Fact]
+    public void One_player_can_start_alone_and_play_a_whole_match()
+    {
+        var h = new RoomHarness("skilky");
+        h.Join("Оля");
+        Assert.Contains("самому", h.Reply.Message);
+        Assert.True(h.Start().Ok);
+
+        PlayAll(h, (0, 0));
+
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("розійшлись", h.Room.Result.Text);
+        // Самому бонус «найближчому» не дається: лише точність.
+        Assert.Equal(Skilky.Questions * Skilky.Bullseye, Score(h, 0));
+        var award = Assert.Single(h.Awards);
+        Assert.Equal((Skilky.Questions * Skilky.Bullseye) / Skilky.PointsPerShard, award.Shards);
+        Assert.Equal("points:1", award.Reason);
+    }
+
+    [Fact]
+    public void Everyone_who_played_to_the_end_gets_shards_for_points_and_a_rematch_pays_again()
+    {
+        var h = Table(2);
+        PlayAll(h, (0, 0), (1, 50));
+
+        foreach (var seat in new[] { 0, 1 })
+        {
+            var shards = Skilky.Shards(Score(h, seat));
+            var paid = h.Awards.Where(a => a.Nick == h.NickOf(seat)).ToList();
+            if (shards == 0) Assert.Empty(paid);
+            else Assert.Equal(shards, Assert.Single(paid).Shards);
+        }
+        Assert.Equal(Skilky.Questions * Perfect / Skilky.PointsPerShard, h.Awards.Single(a => a.Nick == "Оля").Shards);
+
+        Assert.True(h.Rematch("Оля").Ok);
+        PlayAll(h, (0, 0), (1, 0));
+        Assert.Contains(h.Awards, a => a.Reason == "points:2");
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(4, 0)]
+    [InlineData(5, 1)]
+    [InlineData(34, 6)]
+    [InlineData(105, 21)]
+    public void Five_points_make_a_shard(long points, int shards)
+    {
+        Assert.Equal(shards, Skilky.Shards(points));
+    }
+
+    [Fact]
+    public void The_host_picks_questions_time_and_topic()
+    {
+        var h = new RoomHarness("skilky", options: new { questions = "3", seconds = "15", topic = "ukraine" });
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Start();
+
+        Until(h, Skilky.PhaseAsk);
+        Assert.Equal(3, h.View(0).GetProperty("of").GetInt32());
+        Assert.Equal(15, h.View(0).GetProperty("seconds").GetInt32());
+        h.Tick(15);
+        Assert.Equal(Skilky.PhaseReveal, Phase(h));   // 15 секунд, а не 30
+
+        var asked = new List<SkilkyQuestion>();
+        var fresh = new RoomHarness("skilky", seed: 11, options: new { questions = "15", topic = "ukraine" });
+        fresh.Join("Оля");
+        fresh.Start();
+        while (fresh.Room.Status == RoomStatus.Playing)
+        {
+            Until(fresh, Skilky.PhaseAsk);
+            if (fresh.Room.Status != RoomStatus.Playing) break;
+            asked.Add(Question(fresh));
+            fresh.Act(0, "answer", new { value = 1 });
+            Close(fresh);
+        }
+        Assert.Equal(15, asked.Count);
+        Assert.All(asked, q => Assert.Equal("ukraine", q.Topic));
+    }
+
+    [Fact]
+    public void Options_that_are_not_on_the_list_fall_back_to_defaults()
+    {
+        var h = new RoomHarness("skilky", options: new { questions = "99", seconds = "1", topic = "космос" });
+        h.Join("Оля");
+        h.Start();
+        Until(h, Skilky.PhaseAsk);
+
+        Assert.Equal(Skilky.Questions, h.View(0).GetProperty("of").GetInt32());
+        Assert.Equal(Skilky.AskSeconds, h.View(0).GetProperty("seconds").GetInt32());
+    }
+
+    [Fact]
+    public void Every_question_has_a_topic_and_only_radio_questions_are_about_the_radio()
+    {
+        var known = SkilkyTopics.All.Select(t => t.Key).Where(k => k != SkilkyTopics.Any).ToHashSet();
+        Assert.All(SkilkyBank.All, q =>
+        {
+            if (q.IsDynamic) Assert.Equal(SkilkyTopics.Radio, q.Topic);
+            else Assert.Contains(q.Topic!, known);
+        });
+        // Кожну тему є з чого грати навіть на п'ятнадцять запитань по кілька разів.
+        Assert.All(known, k => Assert.True(SkilkyBank.All.Count(q => q.Topic == k) >= 150, k));
     }
 
     // ---------- приховане, види й кадри ----------
@@ -970,10 +1092,13 @@ public class SkilkyTests
         Assert.True(game.Hidden);
         Assert.False(game.Rated);
         Assert.Equal(1000, game.TickMs);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);                 // можна й самому
         Assert.Equal(Skilky.MaxSeats, game.MaxPlayers);
         Assert.Equal("skilky", game.Module);
         Assert.True(game.HasCss);
+        Assert.Equal(["questions", "seconds", "topic"], game.Options.Select(o => o.Key));
+        Assert.Equal("5", game.Options[0].Default);
+        Assert.Equal(["3", "5", "7", "10", "15"], game.Options[0].Values.Select(v => v[0]));
     }
 
     [Fact]

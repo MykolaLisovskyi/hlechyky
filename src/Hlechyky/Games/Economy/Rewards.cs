@@ -194,6 +194,11 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
                     "clicker", o.ClickerDailyCap, e.Shards);
             else if (e.Reason.StartsWith("ad:", StringComparison.Ordinal))
                 economy.Grant(e.Nick, e.Shards, e.Reason, $"ad:{e.RoomId}:{e.Reason[3..]}:{nickKey}");
+            // Очки партії, які гра сама перевела в черепки («Скільки?»): без денної стелі, і соло теж. Після
+            // двокрапки — номер партії в кімнаті, тож «Ще раз» за тим самим столом платить заново, а повтор
+            // тієї самої події — ні.
+            else if (e.Reason.StartsWith("points:", StringComparison.Ordinal))
+                economy.Grant(e.Nick, e.Shards, $"points:{e.GameId}", $"points:{e.GameId}:{e.RoomId}:{e.Reason[7..]}:{nickKey}");
             else if (!e.Reason.StartsWith("ach:", StringComparison.Ordinal))
                 economy.GrantCapped(e.Nick, e.Shards, $"award:{e.Reason}",
                     $"award:{e.RoomId}:{e.Reason}:{nickKey}", "award", o.AwardDailyCap, e.Shards);
