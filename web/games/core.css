@@ -149,9 +149,9 @@
   font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line);
   border-radius: 10px; padding: 9px 10px; width: 100%; outline: none;
 }
-.gstakes { display: flex; gap: 6px; flex-wrap: wrap; }
-.gstake { padding: 6px 12px; }
-.gstake.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.gstakes, .gpicks { display: flex; gap: 6px; flex-wrap: wrap; }
+.gstake, .gpick { padding: 6px 12px; }
+.gstake.on, .gpick.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 .grow { display: flex; gap: 8px; }
 .grow .primary { flex: 1; justify-content: center; }
 

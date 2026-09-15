@@ -81,7 +81,7 @@ public sealed class Skilky : Game
         [
             new GameOption("questions", "Питань", [.. QuestionChoices.Select(n => (Str(n), Str(n)))], Str(Questions)),
             new GameOption("seconds", "Час на відповідь", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(AskSeconds)),
-            new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any),
+            new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any, Multi: true),
         ],
         Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок і черепків. Можна й самому");
 
@@ -91,8 +91,8 @@ public sealed class Skilky : Game
     int _questions = Questions;
     /// <summary>Скільки секунд на число в цій кімнаті (опція «Час на відповідь»).</summary>
     int _seconds = AskSeconds;
-    /// <summary>Тема запитань цієї кімнати (опція «Теми»).</summary>
-    string _topic = SkilkyTopics.Any;
+    /// <summary>Теми запитань цієї кімнати (опція «Теми», можна кілька); null — усі.</summary>
+    IReadOnlySet<string>? _topics;
 
     /// <summary>Запитання цієї партії разом із уже порахованою правильною відповіддю.</summary>
     readonly List<(SkilkyQuestion Q, double A)> _asked = [];
@@ -130,7 +130,7 @@ public sealed class Skilky : Game
             && QuestionChoices.Contains(n)) _questions = n;
         if (options.TryGetValue("seconds", out var s) && int.TryParse(s, CultureInfo.InvariantCulture, out var sec)
             && SecondChoices.Contains(sec)) _seconds = sec;
-        if (options.TryGetValue("topic", out var t) && SkilkyTopics.All.Any(x => x.Key == t)) _topic = t;
+        if (options.TryGetValue("topic", out var t)) _topics = SkilkyTopics.Parse(t);
     }
 
     public override void Start()
@@ -163,7 +163,7 @@ public sealed class Skilky : Game
     }
 
     /// <summary>
-    /// Різні запитання обраної теми на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені
+    /// Різні запитання обраних тем на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені
     /// найдавніше. Динамічне беремо лише тоді, коли база вже щось назбирала: питати «скільки треків
     /// зіграло», коли відповідь нуль, — не загадка, а знущання.
     /// </summary>
@@ -172,7 +172,7 @@ public sealed class Skilky : Game
         var pool = new List<(SkilkyQuestion Q, double A)>();
         foreach (var q in SkilkyBank.All)
         {
-            if (!SkilkyTopics.Fits(q, _topic)) continue;
+            if (!SkilkyTopics.Fits(q, _topics)) continue;
             if (q.IsDynamic)
             {
                 var value = _stats!.Value(q.Dyn);

@@ -71,7 +71,7 @@ type RoomView = {
 ```ts
 { games: { id, title, accusative, group: 'board'|'live'|'party'|'solo', minPlayers, maxPlayers,
            tickMs, start: 'whenFull'|'byHost'|'immediate', hidden, private, rated,
-           options: { key, label, values: [value, label][], default }[], hint, hasCss: boolean,
+           options: { key, label, values: [value, label][], default, multi: boolean }[], hint, hasCss: boolean,
            daily: boolean, module: string }[],
   stakes: number[] }   // дозволені ставки, напр. [0, 5, 10, 25]
 ```
@@ -80,6 +80,10 @@ type RoomView = {
 якщо `hasCss`). Типово це `id`, але кілька ігор можуть ділити один файл (`ttt3` → `ttt`), і тоді він
 вантажиться один раз. Ставку каркас показує в попапі створення там само, де її приймає сервер: `maxPlayers == 2`
 і `rated`.
+
+`multi` — опцію можна обрати кількома значеннями (теми «Скільки?»): попап малює чипи, у `CreateRoom` і в
+`room.options` значення йдуть одним рядком через кому (`"ukraine,science"`; масив рядків сервер теж приймає).
+`default` такої опції — «усе»: з рештою не поєднується, і до нього сервер зводить порожній або чужий вибір.
 
 Інші HTTP (WP1): `GET /api/games/leaderboard?game=&period=`, `GET /api/games/profile?nick=`,
 `GET /api/games/daily`, `GET /api/games/wallet` (свій баланс). Форми відповідей — у ARCHITECTURE §7 і в

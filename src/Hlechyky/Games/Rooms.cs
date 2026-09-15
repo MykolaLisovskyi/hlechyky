@@ -18,20 +18,26 @@ public sealed record RoomReply(bool Ok, string Message = "", string? RoomId = nu
 /// </summary>
 public static class RoomOptions
 {
-    /// <summary>Зводить будь-яке значення до рядка: рядок лишається собою, число й решта — своїм текстом.</summary>
+    /// <summary>
+    /// Зводить будь-яке значення до рядка: рядок лишається собою, масив (кілька значень однієї опції) —
+    /// рядком через кому, число й решта — своїм текстом.
+    /// </summary>
     public static Dictionary<string, string>? From(IReadOnlyDictionary<string, JsonElement>? raw)
     {
         if (raw is null) return null;
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, value) in raw)
-            result[key] = value.ValueKind switch
-            {
-                JsonValueKind.String => value.GetString() ?? "",
-                JsonValueKind.Null or JsonValueKind.Undefined => "",
-                _ => value.GetRawText(),
-            };
+            result[key] = Text(value);
         return result;
     }
+
+    static string Text(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? "",
+        JsonValueKind.Null or JsonValueKind.Undefined => "",
+        JsonValueKind.Array => string.Join(GameOption.Separator, value.EnumerateArray().Select(Text)),
+        _ => value.GetRawText(),
+    };
 }
 
 /// <summary>
@@ -345,10 +351,25 @@ public sealed class Rooms
         foreach (var opt in info.Options ?? [])
         {
             var value = options is not null && options.TryGetValue(opt.Key, out var v) ? v : opt.Default;
-            if (opt.Values.Count > 0 && !opt.Values.Any(x => x.Value == value)) value = opt.Default;
+            if (opt.Multi) value = Several(opt, value);
+            else if (opt.Values.Count > 0 && !opt.Values.Any(x => x.Value == value)) value = opt.Default;
             result[opt.Key] = value;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Кілька значень однієї опції: лише знайомі, без повторів і в порядку паспорта — «science,космос,ukraine»
+    /// стає «ukraine,science». «Усе» (<see cref="GameOption.Default"/>) серед обраних перемагає решту, а
+    /// порожній вибір до нього й зводиться.
+    /// </summary>
+    static string Several(GameOption opt, string value)
+    {
+        var picked = GameOption.Split(value);
+        if (opt.Values.Count == 0) return string.Join(GameOption.Separator, picked.Distinct(StringComparer.Ordinal));
+        if (picked.Contains(opt.Default, StringComparer.Ordinal)) return opt.Default;
+        var known = opt.Values.Select(x => x.Value).Where(x => picked.Contains(x, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal).ToList();
+        return known.Count == 0 ? opt.Default : string.Join(GameOption.Separator, known);
     }
 
     /// <summary>Ставка з опцій лобі. Дозволена лише там, де є що ділити: рівно двоє і партія рейтингова.</summary>

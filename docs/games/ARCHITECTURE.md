@@ -102,7 +102,7 @@ public sealed record GameInfo(
     bool Persistent = false,// стан зберігається (Save/Load) — соло/щоденне
     bool Rated = false,     // Ело (тільки MaxPlayers == 2)
     ScoreOrder Score = ScoreOrder.None,     // соло-таблиця: HigherIsBetter | LowerIsBetter
-    GameOption[]? Options = null,           // що обирають при створенні (варіант, ставка додається каркасом)
+    GameOption[]? Options = null,           // що обирають при створенні (варіант, ставка додається каркасом; Multi — кілька через кому)
     string Hint = "",       // рядок під назвою в лобі
     string Client = "");    // ім'я модуля web/games/<Client>.js; порожньо — той самий, що Id
 ```

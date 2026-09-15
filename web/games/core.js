@@ -573,6 +573,35 @@
   /// Те саме правило на сервері (Rooms.ReadStake), тому змійка й дуель теж зі ставками.
   const stakeable = (g) => !!g && g.maxPlayers === 2 && !!g.rated;
 
+  /// Пари [значення, підпис] опції — з каталогу вони приходять масивами, але терпимо й {value, label}.
+  const optPairs = (o) => (o.values || []).map((v) => Array.isArray(v) ? v : [v.value, v.label || v.value]);
+
+  /// Опція в попапі: звичайна — випадайка, multi — чипи, де можна ввімкнути кілька.
+  function optHtml(o) {
+    if (o.multi) {
+      const on = String(o.default || '').split(',');
+      return '<div class="gopt"><span class="muted small">' + esc(o.label) + '</span>'
+        + '<div class="gpicks" data-key="' + esc(o.key) + '" data-any="' + esc(o.default || '') + '">'
+        + optPairs(o).map(([val, lab]) => '<button type="button" class="gpick' + (on.includes(val) ? ' on' : '')
+          + '" data-val="' + esc(val) + '">' + esc(lab) + '</button>').join('')
+        + '</div></div>';
+    }
+    return '<label class="gopt"><span class="muted small">' + esc(o.label) + '</span>'
+      + '<select data-key="' + esc(o.key) + '">'
+      + optPairs(o).map(([val, lab]) => '<option value="' + esc(val) + '"' + (val === o.default ? ' selected' : '') + '>' + esc(lab) + '</option>').join('')
+      + '</select></label>';
+  }
+
+  /// Клік по чипу multi-опції. Типове значення — «усе»: воно гасить решту, а будь-який інший чип гасить
+  /// його; вимкнули останній — «усе» повертається само (сервер робить із порожнім вибором те саме).
+  function togglePick(box, chip) {
+    const chips = [...box.querySelectorAll('.gpick')];
+    const any = chips.find((x) => x.dataset.val === box.dataset.any);
+    if (chip === any) { chips.forEach((x) => x.classList.toggle('on', x === any)); return; }
+    chip.classList.toggle('on');
+    if (any) any.classList.toggle('on', !chips.some((x) => x !== any && x.classList.contains('on')));
+  }
+
   function openCreate(g) {
     if (!g) return;
     const opts = g.options || [];
@@ -582,13 +611,7 @@
     wrap.innerHTML = '<div class="card">'
       + '<h3>' + iconOf(g.id) + esc(g.title) + '</h3>'
       + (g.hint ? '<div class="muted small">' + esc(g.hint) + '</div>' : '')
-      + opts.map((o) => '<label class="gopt"><span class="muted small">' + esc(o.label) + '</span>'
-        + '<select data-key="' + esc(o.key) + '">'
-        + (o.values || []).map((v) => {
-          const val = Array.isArray(v) ? v[0] : v.value, lab = Array.isArray(v) ? v[1] : (v.label || v.value);
-          return '<option value="' + esc(val) + '"' + (val === o.default ? ' selected' : '') + '>' + esc(lab) + '</option>';
-        }).join('')
-        + '</select></label>').join('')
+      + opts.map(optHtml).join('')
       + (stakes.length > 1 ? '<div class="gopt"><span class="muted small">Ставка з кожного</span><div class="gstakes">'
         + stakes.map((s, i) => '<button type="button" class="gstake' + (i === 0 ? ' on' : '') + '" data-stake="' + s + '">🏺' + s + '</button>').join('')
         + '</div></div>' : '')
@@ -601,9 +624,12 @@
     wrap.querySelectorAll('.gstake').forEach((b) => b.onclick = () => {
       wrap.querySelectorAll('.gstake').forEach((x) => x.classList.toggle('on', x === b));
     });
+    wrap.querySelectorAll('.gpicks').forEach((box) => box.querySelectorAll('.gpick').forEach((b) => b.onclick = () => togglePick(box, b)));
     wrap.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'ставлю…', async () => {
       const payload = {};
       wrap.querySelectorAll('select[data-key]').forEach((s) => payload[s.dataset.key] = s.value);
+      wrap.querySelectorAll('.gpicks').forEach((box) => payload[box.dataset.key] =
+        [...box.querySelectorAll('.gpick.on')].map((x) => x.dataset.val).join(','));
       const st = wrap.querySelector('.gstake.on');
       if (st) payload.stake = +st.dataset.stake;
       const r = await openRoom('CreateRoom', g.id, payload);
@@ -708,8 +734,10 @@
     for (const o of (g && g.options) || []) {
       const v = room.options && room.options[o.key];
       if (v == null || v === o.default) continue;
-      const pair = (o.values || []).find((x) => (Array.isArray(x) ? x[0] : x.value) === v);
-      modes.push('<span class="gmode">' + esc(pair ? (Array.isArray(pair) ? pair[1] : pair.label) : v) + '</span>');
+      // multi-опція: «ukraine,science» → «Україна · Наука, природа й тіло» (кома вже буває в самих підписах)
+      const label = (o.multi ? v.split(',') : [v])
+        .map((x) => { const pair = optPairs(o).find((p) => p[0] === x); return pair ? pair[1] : x; }).join(' · ');
+      modes.push('<span class="gmode">' + esc(label) + '</span>');
     }
     return '<span class="gtitle">' + iconOf(room.game) + esc(titleOf(room.game)) + '</span>'
       + modes.join('')

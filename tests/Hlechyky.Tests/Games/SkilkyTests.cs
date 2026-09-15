@@ -806,6 +806,68 @@ public class SkilkyTests
     }
 
     [Fact]
+    public void The_host_may_pick_several_topics()
+    {
+        var h = new RoomHarness("skilky", seed: 11, options: new { questions = "15", topic = "science,world" });
+        h.Join("Оля");
+        Assert.Equal("science,world", h.Room.Options["topic"]);
+        h.Start();
+
+        var asked = new List<SkilkyQuestion>();
+        while (h.Room.Status == RoomStatus.Playing)
+        {
+            Until(h, Skilky.PhaseAsk);
+            if (h.Room.Status != RoomStatus.Playing) break;
+            asked.Add(Question(h));
+            h.Act(0, "answer", new { value = 1 });
+            Close(h);
+        }
+        Assert.Equal(15, asked.Count);
+        Assert.All(asked, q => Assert.Contains(q.Topic, new[] { "science", "world" }));
+        // Обидві теми справді йдуть у партію, а не лише перша зі списку.
+        Assert.Equal(2, asked.Select(q => q.Topic).Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("world,космос,ukraine,world", "ukraine,world")]   // лише знайомі, без повторів, у порядку паспорта
+    [InlineData(" tech , culture ", "culture,tech")]
+    [InlineData("ukraine,all", "all")]                              // «усі» перемагають решту
+    [InlineData("radio", "all")]                                    // радіо окремою темою не обирають
+    [InlineData("космос", "all")]
+    [InlineData("", "all")]
+    [InlineData(",,", "all")]
+    public void Several_topics_are_cleaned_up_by_the_platform(string sent, string kept)
+    {
+        var h = new RoomHarness("skilky", options: new { topic = sent });
+        h.Join("Оля");
+        Assert.Equal(kept, h.Room.Options["topic"]);
+    }
+
+    [Fact]
+    public void Topics_from_the_option_become_a_set_and_all_means_any()
+    {
+        Assert.Null(SkilkyTopics.Parse(null));
+        Assert.Null(SkilkyTopics.Parse("all"));
+        Assert.Null(SkilkyTopics.Parse("science,all"));
+        Assert.Null(SkilkyTopics.Parse("radio"));
+        Assert.Equal(["science", "ukraine"], SkilkyTopics.Parse("science,ukraine")!.Order());
+
+        var radio = new SkilkyQuestion { Q = "Скільки треків?", Dyn = "plays7d", Topic = SkilkyTopics.Radio };
+        var ukraine = new SkilkyQuestion { Q = "Скільки областей?", A = 24, Topic = "ukraine" };
+        Assert.True(SkilkyTopics.Fits(radio, null));
+        Assert.False(SkilkyTopics.Fits(radio, SkilkyTopics.Parse("ukraine,science")));
+        Assert.True(SkilkyTopics.Fits(ukraine, SkilkyTopics.Parse("ukraine,science")));
+    }
+
+    [Fact]
+    public void Several_topics_may_come_from_the_wire_as_an_array()
+    {
+        const string wire = "{\"questions\":\"3\",\"topic\":[\"tech\",\"ukraine\"]}";
+        var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(wire, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal("tech,ukraine", RoomOptions.From(raw)!["topic"]);
+    }
+
+    [Fact]
     public void Options_that_are_not_on_the_list_fall_back_to_defaults()
     {
         var h = new RoomHarness("skilky", options: new { questions = "99", seconds = "1", topic = "космос" });
@@ -1099,6 +1161,8 @@ public class SkilkyTests
         Assert.Equal(["questions", "seconds", "topic"], game.Options.Select(o => o.Key));
         Assert.Equal("5", game.Options[0].Default);
         Assert.Equal(["3", "5", "7", "10", "15"], game.Options[0].Values.Select(v => v[0]));
+        Assert.Equal([false, false, true], game.Options.Select(o => o.Multi));   // теми — можна кілька
+        Assert.Equal("all", game.Options[2].Default);
     }
 
     [Fact]

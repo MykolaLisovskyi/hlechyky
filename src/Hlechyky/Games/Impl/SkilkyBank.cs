@@ -36,8 +36,8 @@ public sealed class SkilkyQuestion
 }
 
 /// <summary>
-/// Теми банку. «radio» — динамічні запитання про наше радіо: окремою темою їх не обирають, вони йдуть лише
-/// в «Усі теми».
+/// Теми банку. Господар обирає одну, кілька або «Усі теми». «radio» — динамічні запитання про наше радіо:
+/// окремою темою їх не обирають, вони йдуть лише в «Усі теми».
 /// </summary>
 public static class SkilkyTopics
 {
@@ -55,8 +55,21 @@ public static class SkilkyTopics
         ("tech", "IT, техніка й історія"),
     ];
 
-    /// <summary>Чи годиться запитання для обраної теми.</summary>
-    public static bool Fits(SkilkyQuestion q, string topic) => topic == Any || q.Topic == topic;
+    /// <summary>
+    /// Обрані теми з опції столу («ukraine,science»). null — усі теми разом із радіо: так і коли обрано «Усі
+    /// теми», і коли зі знайомих тем не лишилось жодної.
+    /// </summary>
+    public static IReadOnlySet<string>? Parse(string? option)
+    {
+        var picked = GameOption.Split(option);
+        if (picked.Contains(Any)) return null;
+        var known = picked.Where(k => All.Any(t => t.Key == k)).ToHashSet(StringComparer.Ordinal);
+        return known.Count == 0 ? null : known;
+    }
+
+    /// <summary>Чи годиться запитання для обраних тем (null — годиться будь-яке).</summary>
+    public static bool Fits(SkilkyQuestion q, IReadOnlySet<string>? topics) =>
+        topics is null || q.Topic is { } t && topics.Contains(t);
 }
 
 /// <summary>

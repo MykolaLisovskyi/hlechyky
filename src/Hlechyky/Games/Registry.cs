@@ -2,8 +2,8 @@ using System.Reflection;
 
 namespace Hlechyky.Games;
 
-/// <summary>Опція гри так, як її бачить лобі: пари [значення, підпис] і те, що обрано типово.</summary>
-public sealed record CatalogOption(string Key, string Label, IReadOnlyList<string[]> Values, string Default);
+/// <summary>Опція гри так, як її бачить лобі: пари [значення, підпис], що обрано типово і чи можна обрати кілька.</summary>
+public sealed record CatalogOption(string Key, string Label, IReadOnlyList<string[]> Values, string Default, bool Multi);
 
 /// <summary>Рядок каталогу <c>GET /api/games/catalog</c> (PROTOCOL §2).</summary>
 public sealed record CatalogGame(
@@ -71,7 +71,7 @@ public sealed class Registry
     static CatalogGame Describe(Type type, GameInfo i) => new(
         i.Id, i.Title, i.Accusative, Camel(i.Group.ToString()), i.MinPlayers, i.MaxPlayers, i.TickMs,
         Camel(i.Start.ToString()), i.Hidden, i.Private, i.Rated,
-        [.. (i.Options ?? []).Select(o => new CatalogOption(o.Key, o.Label, [.. o.Values.Select(v => new[] { v.Value, v.Label })], o.Default))],
+        [.. (i.Options ?? []).Select(o => new CatalogOption(o.Key, o.Label, [.. o.Values.Select(v => new[] { v.Value, v.Label })], o.Default, o.Multi))],
         i.Hint,
         File.Exists(Paths.Resolve($"web/games/{i.Module}.css")),
         typeof(IDailyGame).IsAssignableFrom(type),

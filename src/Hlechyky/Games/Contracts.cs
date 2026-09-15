@@ -19,8 +19,23 @@ public enum ScoreOrder { None, HigherIsBetter, LowerIsBetter }
 
 public enum RoomStatus { Lobby, Playing, Finished }
 
-/// <summary>Опція, яку обирають при створенні кімнати (варіант шахів, розмір поля). Ставку каркас додає сам.</summary>
-public sealed record GameOption(string Key, string Label, IReadOnlyList<(string Value, string Label)> Values, string Default);
+/// <summary>
+/// Опція, яку обирають при створенні кімнати (варіант шахів, розмір поля). Ставку каркас додає сам.
+/// <para>
+/// <see cref="Multi"/> — можна обрати кілька значень (теми «Скільки?»): до гри вони доходять одним рядком
+/// через кому, без повторів і в порядку <see cref="Values"/>. <see cref="Default"/> такої опції — «усе»: з
+/// рештою воно не поєднується, і до нього ж каркас зводить порожній або геть чужий вибір.
+/// </para>
+/// </summary>
+public sealed record GameOption(string Key, string Label, IReadOnlyList<(string Value, string Label)> Values, string Default, bool Multi = false)
+{
+    /// <summary>Чим розділені значення <see cref="Multi"/>-опції в рядку.</summary>
+    public const char Separator = ',';
+
+    /// <summary>Значення <see cref="Multi"/>-опції окремо: «ukraine,science» → [ukraine, science]. Порожнє — порожній список.</summary>
+    public static IReadOnlyList<string> Split(string? value) =>
+        string.IsNullOrEmpty(value) ? [] : value.Split(Separator, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+}
 
 /// <summary>Паспорт гри. Один на клас, читається реєстром через зразковий екземпляр.</summary>
 public sealed record GameInfo(
