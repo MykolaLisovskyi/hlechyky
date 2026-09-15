@@ -1,1 +1,162 @@
-/* Частина «album» Гончарного кола — див. docs/games/specs/clicker-v7.md. Поки порожньо. */
+/* Альбом майстра Гончарного кола: зведення, розписи, сітка «виріб × розпис», кахляна піч, трипільський музей. */
+
+.clka { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
+.clka-sec { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* ---- зведення ---- */
+.clka-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px;
+  border-radius: 12px; border: 1px solid var(--line);
+  background: radial-gradient(120% 140% at 0% 0%, rgba(244, 197, 66, .12), transparent 60%), var(--panel);
+}
+.clka-bonus { display: flex; flex-direction: column; }
+.clka-bonus b { font-size: 1.5em; color: var(--accent2); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clka-rings { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.clka-rg { display: flex; align-items: center; gap: 5px; }
+.clka-rg span { display: flex; flex-direction: column; line-height: 1.15; font-size: .82em; }
+.clka-rg i { font-style: normal; font-size: .85em; }
+.clka-ring { width: 34px; height: 34px; transform: rotate(-90deg); flex: none; }
+.clka-ring circle { fill: none; stroke-width: 5; }
+.clka-ring .bg { stroke: rgba(255, 255, 255, .08); }
+.clka-ring .fg { stroke: var(--clay); stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
+.clka-ring.tile .fg { stroke: #4f8fc0; }
+.clka-ring.museum .fg { stroke: #d9884a; }
+.clka-ring.mastery .fg { stroke: var(--accent2); }
+
+/* ---- розписи (вузол ядра всередині альбому) ---- */
+.clka-stylesec > summary { cursor: pointer; font-weight: 600; font-size: .92em; list-style: none; }
+.clka-stylesec > summary::-webkit-details-marker { display: none; }
+.clka-stylesec > summary::before { content: '▸ '; color: var(--muted); }
+.clka-stylesec[open] > summary::before { content: '▾ '; }
+.clka-styles { margin-top: 6px; }
+.clka-stylesin { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- сітка ---- */
+.clka-scroll {
+  overflow-x: auto; max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+}
+.clka-grid { border-collapse: separate; border-spacing: 2px; margin: 0; }
+.clka-grid th, .clka-grid td { padding: 0; }
+.clka-corner { position: sticky; left: 0; z-index: 4; background: var(--panel); text-align: left; padding: 0 4px !important; }
+.clka-colh { height: 34px; }
+.clka-colh.full { background: rgba(244, 197, 66, .16); border-radius: 6px; }
+.clka-colj { width: 22px; height: 28px; display: block; margin: 0 auto; }
+.clka-rowh {
+  position: sticky; left: 0; z-index: 3; background: var(--panel); text-align: left; padding: 2px 6px 2px 4px !important;
+  font-weight: 500;
+}
+.clka-rh { width: 96px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1px 4px; }
+.clka-grid tr.full .clka-rowh { box-shadow: inset 3px 0 0 var(--accent2); }
+.clka-wn { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clka-lv { font-size: .7em; color: var(--accent2); font-variant-numeric: tabular-nums; }
+.clka-lv.max { color: #f4c542; font-weight: 700; }
+.clka-mbar { grid-column: 1 / -1; display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.clka-mbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--clay), var(--accent2)); border-radius: 2px; }
+
+.clka-cell {
+  position: relative; width: 34px; height: 36px; padding: 0; border-radius: 7px; display: grid; place-items: center;
+  border: 1px solid transparent; background: rgba(0, 0, 0, .18); min-width: 0;
+}
+.clka-cell:hover { border-color: var(--line); }
+.clka-cell.open { background: radial-gradient(circle at 50% 70%, rgba(244, 197, 66, .12), rgba(0, 0, 0, .1)); }
+.clka-cell.star { border-color: rgba(244, 197, 66, .5); }
+.clka-w { width: 28px; height: 30px; }
+.clka-w.shadow, .clka-big.shadow { filter: brightness(0) opacity(.36); }
+.clka-star { position: absolute; right: 1px; top: -2px; font-style: normal; font-size: 10px; color: #f4c542; text-shadow: 0 0 3px rgba(0, 0, 0, .8); }
+.clka-cell.new { animation: clkanew 2.4s ease-out; z-index: 1; }
+.clka-cell.new::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 9px; border: 2px solid #f4c542; opacity: 0;
+  animation: clkaring 1.2s ease-out 3;
+}
+@keyframes clkanew {
+  0% { transform: scale(1.35); background: rgba(244, 197, 66, .7); }
+  25% { transform: scale(1); }
+  100% { background: radial-gradient(circle at 50% 70%, rgba(244, 197, 66, .12), rgba(0, 0, 0, .1)); }
+}
+@keyframes clkaring { 0% { opacity: 1; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.35); } }
+
+/* ---- картка ---- */
+.clka-card { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: start; }
+.clka-cardpic { display: grid; place-items: center; background: radial-gradient(circle, rgba(244, 197, 66, .12), transparent 70%); border-radius: 12px; padding: 6px; }
+.clka-big { width: 104px; height: 108px; }
+.clka-cardtxt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.clka-fact { margin: 0; line-height: 1.45; font-size: .9em; }
+.clka-ok { color: var(--ok); }
+.clka-mast { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.clka-mast .clka-mbar { height: 5px; }
+@media (max-width: 480px) {
+  .clka-card { grid-template-columns: 1fr; }
+  .clka-big { width: 84px; height: 88px; }
+}
+
+/* ---- кахляна піч ---- */
+.clka-stovebox { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: start; }
+.clka-stove { width: 150px; height: 204px; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+.clka-stoveside { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clka-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px; }
+.clka-tilebtn {
+  position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; text-align: left;
+  padding: 4px 8px; white-space: normal;
+}
+.clka-tilebtn .clk-price { position: static; }
+.clka-tilebtn span { display: flex; flex-direction: column; min-width: 0; }
+.clka-tilebtn i { font-style: normal; }
+.clka-tmini { width: 34px; height: 34px; }
+.clka-done { color: var(--accent2); }
+.clka-stovesec.pulse .clka-stove { animation: clkapulse .9s ease-out; }
+.clka-tile { transform-box: fill-box; transform-origin: 50% 50%; }
+.clka-fire { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame 1s ease-in-out infinite alternate; }
+@keyframes clkapulse { 0% { transform: scale(1.06); filter: drop-shadow(0 0 16px rgba(244, 197, 66, .8)); } 100% { transform: scale(1); } }
+@media (max-width: 480px) {
+  .clka-stovebox { grid-template-columns: 110px minmax(0, 1fr); gap: 8px; }
+  .clka-stove { width: 110px; height: 150px; }
+}
+
+/* ---- музей ---- */
+.clka-museum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.clka-find {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; text-align: center;
+  border-radius: 10px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(0, 0, 0, .25), var(--panel)); white-space: normal;
+  min-width: 0;
+}
+.clka-find span { line-height: 1.15; font-size: .72em; color: var(--muted); }
+.clka-find.have { border-color: rgba(217, 136, 74, .6); background: radial-gradient(circle at 50% 35%, rgba(244, 197, 66, .16), var(--panel) 70%); }
+.clka-find.have span { color: inherit; }
+.clka-fsvg { width: 44px; height: 44px; }
+.clka-find:not(.have) .clka-fsvg { filter: brightness(0) opacity(.25); }
+.clka-q { position: absolute; top: 14px; left: 0; right: 0; font-style: normal; font-weight: 700; color: var(--muted); font-size: 1.1em; }
+.clka-shards { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* ---- знахідка над сценою ---- */
+.clka-found {
+  position: absolute; left: 50%; top: 14%; transform: translateX(-50%); z-index: 6; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 14px;
+  background: rgba(30, 18, 10, .88); border: 1px solid #d9884a; color: #f4efe3; text-align: center; white-space: nowrap;
+  box-shadow: 0 0 24px rgba(244, 197, 66, .35); animation: clkafound 4s ease-out forwards;
+}
+.clka-found b { color: #f4c542; font-size: 1.05em; }
+.clka-found span { font-size: .8em; }
+.clka-found.dup { border-color: var(--line); box-shadow: none; }
+.clka-foundsvg { width: 48px; height: 48px; }
+@keyframes clkafound {
+  0% { opacity: 0; transform: translate(-50%, 30px) scale(.6); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  20% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -18px); }
+}
+
+/* ---- піч у хаті ---- */
+.clka-hstove { filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .4)); }
+
+@media (max-width: 480px) {
+  .clka-head { padding: 8px 10px; }
+  .clka-rings { gap: 6px 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clka-cell.new, .clka-cell.new::after, .clka-fire, .clka-stovesec.pulse .clka-stove { animation: none; }
+  .clka-found { animation: none; opacity: 1; }
+  .clka-ring .fg { transition: none; }
+}
