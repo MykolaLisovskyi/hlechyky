@@ -189,9 +189,9 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
         }
         else if (e.Shards > 0)
         {
-            if (e.Reason == "clicker")
+            if (e.Reason == "clicker" || e.Reason.StartsWith("clicker:", StringComparison.Ordinal))
                 economy.GrantSequenced(e.Nick, e.Shards, "clicker", n => $"clicker:{nickKey}:{day}:{n}",
-                    "clicker", o.ClickerDailyCap, e.Shards);
+                    "clicker", ClickerCap(e.Reason, o), e.Shards);
             else if (e.Reason.StartsWith("ad:", StringComparison.Ordinal))
                 economy.Grant(e.Nick, e.Shards, e.Reason, $"ad:{e.RoomId}:{e.Reason[3..]}:{nickKey}");
             // Очки партії, які гра сама перевела в черепки («Скільки?»): без денної стелі, і соло теж. Після
@@ -204,5 +204,20 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
                     $"award:{e.RoomId}:{e.Reason}:{nickKey}", "award", o.AwardDailyCap, e.Shards);
         }
         achievements.OnAward(e);
+    }
+
+    /// <summary>
+    /// Денна стеля обміну в гончарному колі. Клейма майстра піднімають її, і гра каже власне число в причині
+    /// («clicker:34»); вірити йому можна лише в межах від <see cref="EconomyOptions.ClickerDailyCap"/> до
+    /// <see cref="EconomyOptions.ClickerDailyCapMax"/> — усе, що поза ними, ріжемо.
+    /// </summary>
+    static int ClickerCap(string reason, EconomyOptions o)
+    {
+        var floor = o.ClickerDailyCap;
+        if (floor <= 0) return floor;                 // обмін вимкнено — клейма його не вмикають
+        var ceiling = Math.Max(floor, o.ClickerDailyCapMax);
+        return reason.Length > 8 && int.TryParse(reason.AsSpan(8), out var asked)
+            ? Math.Clamp(asked, floor, ceiling)
+            : floor;
     }
 }

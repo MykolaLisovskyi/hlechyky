@@ -300,7 +300,7 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 | Участь (програв, але дограв) | `PlayReward=1` | та сама | та сама |
 | Соло/щоденне | зі spec гри (`Award`), типово `DailyReward=5` | раз на день на головоломку | `daily:<game>:<day>:<nick>` |
 | Ачівка | зі спеціфікації каталогу (5–100) | раз назавжди | `ach:<key>:<nick>` |
-| Клікер | обмін 100 глеків → 1 черепок | `ClickerDailyCap=20`/день | `clicker:<nick>:<day>:<n>` |
+| Клікер | обмін 100 глеків → 1 черепок | `ClickerDailyCap=20`/день (+1 за 10 клейм майстра, до `ClickerDailyCapMax=40`) | `clicker:<nick>:<day>:<n>` |
 | Ставки | нуль-сумові, поза стелями | — | `stake*:<room>:<round>:<nick>` |
 | Реклама | переможець 25, учасник 3, голос 1 | — | `ad:<contest>:<role>:<nick>` |
 

@@ -176,6 +176,8 @@ public sealed class EconomyOptions
     public int DailyReward { get; set; } = 5;
     /// <summary>Скільки черепків на день можна виміняти в гончарному колі.</summary>
     public int ClickerDailyCap { get; set; } = 20;
+    /// <summary>Вище цього клейма майстра стелю обміну не піднімуть, хоч скільки їх набери.</summary>
+    public int ClickerDailyCapMax { get; set; } = 40;
     /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
     public int AwardDailyCap { get; set; } = 30;
 

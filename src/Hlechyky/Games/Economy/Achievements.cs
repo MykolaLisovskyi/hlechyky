@@ -28,6 +28,12 @@ public static class AchievementCatalog
         new("ad-winner",    "Голос села",      "Виграв конкурс реклами", "📢", 25),
         new("potter-1k",    "Гончар",          "Тисяча глеків у гончарному колі", "🏺", 10),
         new("potter-100k",  "Майстер-гончар",  "Сто тисяч глеків", "🏆", 30),
+        new("potter-1m",    "Мільйон глеків",  "Мільйон глеків за весь час", "🧺", 15),
+        new("potter-1b",    "Глечаний магнат", "Мільярд глеків за весь час", "💎", 40),
+        new("potter-1t",    "Цар-гончар",      "Трильйон глеків за весь час", "👑", 60),
+        new("potter-fire",  "Перший обпал",    "Обпалив майстерню за клейма майстра", "🔥", 20),
+        new("potter-golden","Ловець розписних","Впіймав 50 розписних глеків", "🎨", 25),
+        new("potter-museum","Музей у хаті",    "Зібрав усі розписи глеків", "🖼", 50),
         new("high-roller",  "Ставка",          "Виграв партію зі ставкою 25", "💰", 15),
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
@@ -150,6 +156,9 @@ public sealed class Achievements
         {
             if (e.Score >= 1_000) Unlock(e.Nick, "potter-1k");
             if (e.Score >= 100_000) Unlock(e.Nick, "potter-100k");
+            if (e.Score >= 1_000_000) Unlock(e.Nick, "potter-1m");
+            if (e.Score >= 1_000_000_000) Unlock(e.Nick, "potter-1b");
+            if (e.Score >= 1_000_000_000_000) Unlock(e.Nick, "potter-1t");
         }
         if (e.GameId == "duel" && e.Score is > 0 and < 200) Unlock(e.Nick, "duel-fast");
     }
