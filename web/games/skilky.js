@@ -5,8 +5,9 @@
   Вид (подія 'room', свій для кожного місця — гра Hidden):
     { round, of, phase: 'between'|'ask'|'reveal'|'done', question, unit, endsAt,
       answered: bool[], my: number|null,
-      reveal: null | { answer, rows: [{ seat, value, diff, points }] },
+      reveal: null | { answer, years, rows: [{ seat, value, diff, points, bonus }] },
       scores: number[], result: null | { winners, scores } }
+  points — уже разом із бонусом найближчому (bonus), тож «за точність» = points − bonus.
   Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
     { round, of, phase, endsAt, answered, scores }
   Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
@@ -17,6 +18,10 @@
     + '<circle cx="7.9" cy="13" r="1.3" fill="var(--clay)"/></svg>';
 
   const MS = { between: 3000, ask: 30000, reveal: 6000 };
+
+  /// Шкала очок словами — та сама, що в Skilky.Accuracy на сервері. Міняєш там — міняй і тут.
+  const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 3, до 25 % — 2, до двох разів — 1. '
+    + 'Роки: точно — 5, ±3 — 3, ±10 — 2, ±50 — 1. Найближчому ще +2';
 
   /// Число для ока: ціле — з пробілами між тисячами, дробове — без хвоста нулів.
   function num(v) {
@@ -82,6 +87,27 @@
     if (box.innerHTML !== html) box.innerHTML = html;
   }
 
+  /// «Рази» після числа: дробове — «2,5 раза», ціле — «3 рази», «5 разів».
+  function times(k) {
+    const r = Math.round(k * 10) / 10;
+    if (r !== Math.round(r)) return num(r) + ' раза';
+    const n = Math.round(r) % 100;
+    const word = n % 10 >= 2 && n % 10 <= 4 && (n < 12 || n > 14) ? 'рази' : 'разів';
+    return num(Math.round(r)) + ' ' + word;
+  }
+
+  /// Як сильно повз — тими ж мірками, якими сервер дає очки: роки в роках, решта у відсотках, а
+  /// далеко за межами — у разах (там відсотки вже нічого не кажуть: «на 900 % більше»).
+  function missText(r, x) {
+    if (Math.abs(x.diff) < 1e-9) return 'точно';
+    if (r.years || !(r.answer > 0) || !(x.value > 0)) return 'різниця ' + num(x.diff);
+    const more = x.value > r.answer;
+    const ratio = more ? x.value / r.answer : r.answer / x.value;
+    if (ratio >= 2) return 'у ' + times(ratio) + (more ? ' більше' : ' менше');
+    const pct = x.diff / r.answer * 100;
+    return 'на ' + num(pct < 10 ? Math.round(pct * 10) / 10 : Math.round(pct)) + ' %' + (more ? ' більше' : ' менше');
+  }
+
   function revealHtml(ctx, v) {
     const r = v.reveal;
     if (!r) return '';
@@ -89,12 +115,17 @@
     const head = '<div class="skans"><span class="muted small">Правильна відповідь</span>'
       + '<b>' + num(r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(v.unit) + '</i>' : '') + '</div>';
     if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>';
-    return head + '<div class="skrows">' + rows.map((x) =>
-      '<div class="skrow' + (x.points ? ' p' + x.points : '') + '">'
-      + '<span class="skn">' + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
-      + '<span class="skv">' + num(x.value) + '</span>'
-      + '<span class="skd muted small">різниця ' + num(x.diff) + '</span>'
-      + '<span class="skp">' + (x.points ? '+' + x.points : '') + '</span></div>').join('') + '</div>';
+    return head + '<div class="skrows">' + rows.map((x) => {
+      const bonus = x.bonus || 0;
+      const exact = x.points - bonus;
+      return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '">'
+        + '<span class="skn">' + (bonus ? '🏆 ' : '') + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
+        + '<span class="skv">' + num(x.value) + '</span>'
+        + '<span class="skd muted small">' + missText(r, x) + '</span>'
+        + '<span class="skp"' + (bonus ? ' title="' + exact + ' за точність і ' + bonus + ' найближчому"' : '') + '>'
+        + (x.points ? '+' + x.points : '0')
+        + (bonus ? '<small>' + exact + '+' + bonus + '</small>' : '') + '</span></div>';
+    }).join('') + '</div>';
   }
 
   function answer(root, ctx) {
@@ -131,6 +162,10 @@
       : (v.question || '');
     if (q.textContent !== qText) q.textContent = qText;
     q.classList.toggle('wait', phase === 'between');
+
+    // Шкала очок — поки чекаємо: у лобі й у паузі перед запитанням. Під час відповіді вона лише заважає.
+    const rules = root.querySelector('.skrules');
+    rules.hidden = !(phase === 'between' && !v.result);
 
     // Нове запитання — чисте поле: чуже число з минулого раунду там висіти не має.
     const ask = root.querySelector('.skask');
@@ -171,6 +206,7 @@
         + '<div class="skmain">'
         + '<div class="sktop"><span class="skno muted small"></span></div>'
         + '<div class="skq"></div>'
+        + '<div class="skrules muted small" hidden>' + RULES + '</div>'
         + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
         + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
         + '<button type="button" class="primary skgo">Відповісти</button></div>'

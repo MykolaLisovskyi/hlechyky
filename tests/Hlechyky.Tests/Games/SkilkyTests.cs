@@ -37,12 +37,35 @@ public class SkilkyTests
         for (var i = 0; i < MaxTicks && h.Room.Status == RoomStatus.Playing && Phase(h) != phase; i++) h.Tick(1);
     }
 
-    /// <summary>Правильна відповідь на запитання, яке зараз на столі: беремо з того самого банку.</summary>
-    static double Correct(RoomHarness h)
+    /// <summary>Максимум за одне запитання: в яблучко й найближчий.</summary>
+    const int Perfect = Skilky.Bullseye + Skilky.BestBonus;
+
+    /// <summary>Запитання, яке зараз на столі: беремо з того самого банку.</summary>
+    static SkilkyQuestion Question(RoomHarness h)
     {
         var text = h.View(null).GetProperty("question").GetString();
-        return SkilkyBank.All.First(q => q.Q == text).A!.Value;
+        return SkilkyBank.All.First(q => q.Q == text);
     }
+
+    /// <summary>Правильна відповідь на запитання, яке зараз на столі.</summary>
+    static double Correct(RoomHarness h) => Question(h).A!.Value;
+
+    /// <summary>
+    /// Стіл, на якому перше запитання підходить тесту (роки чи звичайне число): перебираємо сіди, доки таке
+    /// не випаде. Повертає стіл уже у фазі відповіді.
+    /// </summary>
+    static RoomHarness Asking(int players, Func<SkilkyQuestion, bool> fits)
+    {
+        for (var seed = 1; seed <= 500; seed++)
+        {
+            var h = Table(players, seed);
+            Until(h, Skilky.PhaseAsk);
+            if (fits(Question(h))) return h;
+        }
+        throw new InvalidOperationException("жоден сід не дав потрібного запитання");
+    }
+
+    static bool Years(SkilkyQuestion q) => q.Unit == "рік";
 
     /// <summary>Дочекатись запитання і роздати числа: зсув задається від правильної відповіді.</summary>
     static double Answer(RoomHarness h, params (int Seat, double Offset)[] offsets)
@@ -309,30 +332,130 @@ public class SkilkyTests
 
     // ---------- очки ----------
 
-    [Fact]
-    public void The_three_closest_take_three_two_and_one_and_the_rest_take_nothing()
+    [Theory]
+    [InlineData(100, 5)]
+    [InlineData(102, 5)]
+    [InlineData(98, 5)]
+    [InlineData(102.5, 3)]
+    [InlineData(110, 3)]
+    [InlineData(90, 3)]
+    [InlineData(111, 2)]
+    [InlineData(125, 2)]
+    [InlineData(75, 2)]
+    [InlineData(126, 1)]
+    [InlineData(74, 1)]
+    [InlineData(200, 1)]      // удвічі більше…
+    [InlineData(50, 1)]       // …і вдвічі менше — однаково далеко
+    [InlineData(201, 0)]
+    [InlineData(49, 0)]
+    [InlineData(0, 0)]
+    [InlineData(-100, 0)]
+    public void Accuracy_is_measured_as_a_share_of_the_answer(double guess, int points)
     {
-        var h = Table(4);
-        Answer(h, (0, 0), (1, 1), (2, -2), (3, 1000));
-        h.Tick(1);
+        Assert.Equal(points, Skilky.Accuracy(guess, 100, years: false));
+    }
 
-        var rows = h.View(0).GetProperty("reveal").GetProperty("rows").EnumerateArray().ToList();
-        Assert.Equal(new[] { 0, 1, 2, 3 }, rows.Select(r => r.GetProperty("seat").GetInt32()).ToArray());
-        Assert.Equal(new[] { 3, 2, 1, 0 }, rows.Select(r => r.GetProperty("points").GetInt32()).ToArray());
-        Assert.Equal(new[] { 0L, 1L, 2L, 1000L }, rows.Select(r => (long)r.GetProperty("diff").GetDouble()).ToArray());
-        Assert.Equal(new[] { 3L, 2L, 1L, 0L }, Enumerable.Range(0, 4).Select(s => Score(h, s)).ToArray());
+    [Theory]
+    [InlineData(1991, 5)]
+    [InlineData(1994, 3)]
+    [InlineData(1988, 3)]
+    [InlineData(2001, 2)]
+    [InlineData(1981, 2)]
+    [InlineData(2041, 1)]
+    [InlineData(1941, 1)]
+    [InlineData(2042, 0)]
+    [InlineData(1992, 3)]     // рік — це або точно, або вже ні
+    public void Years_are_measured_in_years_not_in_percent(double guess, int points)
+    {
+        Assert.Equal(points, Skilky.Accuracy(guess, 1991, years: true));
     }
 
     [Fact]
-    public void Equal_distance_means_equal_points()
+    public void Tier_edges_hold_even_where_double_rounds_past_them()
     {
-        var h = Table(3);
-        Answer(h, (0, -1), (1, 1), (2, 5));
+        // 2,794 проти 2,54 — рівно 10 %, але в double це 0.10000000000000009: без допуску було б 2, а не 3.
+        Assert.Equal(3, Skilky.Accuracy(2.794, 2.54, years: false));
+        Assert.Equal(5, Skilky.Accuracy(36.6 * 1.02, 36.6, years: false));
+    }
+
+    [Fact]
+    public void Everyone_scores_for_accuracy_and_the_closest_takes_a_bonus()
+    {
+        var h = Asking(5, q => !Years(q));
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c * 1.05 });
+        h.Act(1, "answer", new { value = c * 0.8 });
+        h.Act(2, "answer", new { value = c * 1.5 });
+        h.Act(3, "answer", new { value = c * 5 });
+        h.Act(4, "answer", new { value = c * 1.09 });
         h.Tick(1);
 
-        Assert.Equal(3, Score(h, 0));
-        Assert.Equal(3, Score(h, 1));
-        Assert.Equal(2, Score(h, 2));   // наступна відстань — це вже другий ярус, а не третій
+        var rows = h.View(0).GetProperty("reveal").GetProperty("rows").EnumerateArray().ToList();
+        Assert.Equal(new[] { 0, 4, 1, 2, 3 }, rows.Select(r => r.GetProperty("seat").GetInt32()).ToArray());
+        Assert.Equal(new[] { 3 + Skilky.BestBonus, 3, 2, 1, 0 }, rows.Select(r => r.GetProperty("points").GetInt32()).ToArray());
+        Assert.Equal(new[] { Skilky.BestBonus, 0, 0, 0, 0 }, rows.Select(r => r.GetProperty("bonus").GetInt32()).ToArray());
+        Assert.Equal(new[] { 5L, 2L, 1L, 0L, 3L }, Enumerable.Range(0, 5).Select(s => Score(h, s)).ToArray());
+        Assert.False(h.View(0).GetProperty("reveal").GetProperty("years").GetBoolean());
+    }
+
+    [Fact]
+    public void A_year_question_is_scored_in_years()
+    {
+        var h = Asking(3, Years);
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c });
+        h.Act(1, "answer", new { value = c - 8 });
+        h.Act(2, "answer", new { value = c + 60 });
+        h.Tick(1);
+
+        Assert.Equal(Perfect, Score(h, 0));
+        Assert.Equal(2, Score(h, 1));
+        Assert.Equal(0, Score(h, 2));
+        Assert.True(h.View(0).GetProperty("reveal").GetProperty("years").GetBoolean());
+    }
+
+    [Fact]
+    public void In_a_duel_a_wild_guess_earns_nothing_even_against_a_wilder_one()
+    {
+        // Удвох за старими місцями 3/2 той, хто промазав, однаково брав очки. Тепер — ні: мимо обидва —
+        // і бонус найближчому теж не світить, бо хвалити нема за що.
+        var h = Asking(2, q => !Years(q));
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c * 3 });
+        h.Act(1, "answer", new { value = c * 10 });
+        h.Tick(1);
+
+        Assert.Equal(0, Score(h, 0));
+        Assert.Equal(0, Score(h, 1));
+        Assert.Contains(h.Outbox.OfType<DjSays>(), s => s.Text.Contains("Оля"));
+    }
+
+    [Fact]
+    public void In_a_duel_a_close_guess_beats_a_wide_one_by_more_than_a_point()
+    {
+        var h = Asking(2, q => !Years(q));
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c });
+        h.Act(1, "answer", new { value = c * 1.6 });
+        h.Tick(1);
+
+        Assert.Equal(Perfect, Score(h, 0));
+        Assert.Equal(1, Score(h, 1));
+    }
+
+    [Fact]
+    public void Equal_distance_means_an_equal_bonus()
+    {
+        var h = Asking(3, q => !Years(q));
+        var c = Correct(h);
+        h.Act(0, "answer", new { value = c * 0.95 });
+        h.Act(1, "answer", new { value = c * 1.05 });
+        h.Act(2, "answer", new { value = c * 1.2 });
+        h.Tick(1);
+
+        Assert.Equal(3 + Skilky.BestBonus, Score(h, 0));
+        Assert.Equal(3 + Skilky.BestBonus, Score(h, 1));
+        Assert.Equal(2, Score(h, 2));
     }
 
     [Fact]
@@ -360,10 +483,10 @@ public class SkilkyTests
         h.Act(2, "answer", new { value = correct + 5 });
         h.Tick(1);
 
-        // На екрані в обох однакова різниця — отже, й очки мають бути однакові.
-        Assert.Equal(3, Score(h, 0));
-        Assert.Equal(3, Score(h, 1));
-        Assert.Equal(2, Score(h, 2));   // наступна відстань — це вже другий ярус
+        // На екрані в обох однакова різниця — отже, найближчі обидва і бонус беруть обидва.
+        Assert.Equal(Score(h, 0), Score(h, 1));
+        Assert.Equal(Skilky.Accuracy(correct - off, correct, Years(Question(h))) + Skilky.BestBonus, Score(h, 0));
+        Assert.True(Score(h, 2) <= Score(h, 0) - Skilky.BestBonus);   // далі за них — і без бонусу
     }
 
     [Fact]
@@ -392,19 +515,21 @@ public class SkilkyTests
         Assert.Equal(Skilky.PhaseDone, Phase(h));
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.False(h.Room.Result.Draw);
-        Assert.Equal(15, Score(h, 0));
-        Assert.Equal(10, Score(h, 1));
-        Assert.Equal(5, Score(h, 2));
+        Assert.Equal(Skilky.Questions * Perfect, Score(h, 0));
+        Assert.True(Score(h, 1) < Score(h, 0));
+        Assert.True(Score(h, 2) <= Score(h, 1));   // далі від правди — не більше очок
         Assert.Contains("Скільки?:", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Single(h.Finished);
-        Assert.Equal(15, h.Finished[0].Result.Scores![0]);
+        Assert.Equal(Skilky.Questions * Perfect, h.Finished[0].Result.Scores![0]);
     }
 
     [Fact]
     public void An_even_match_ends_with_two_winners()
     {
         var h = Table(2);
-        PlayAll(h, (0, -1), (1, 1));   // однакова відстань у кожному раунді
+        // Однакова відстань у кожному раунді. Пів одиниці, а не одиниця: найменша відповідь у банку 1,852, і
+        // «на одиницю менше» там уже за межею «удвічі», а «на одиницю більше» — ще ні.
+        PlayAll(h, (0, -0.5), (1, 0.5));
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0, 1], h.Room.Result!.Winners);
@@ -440,7 +565,7 @@ public class SkilkyTests
     {
         var h = Table(2);
         PlayAll(h, (0, 0), (1, 50));
-        Assert.Equal(15, Score(h, 0));
+        Assert.Equal(Skilky.Questions * Perfect, Score(h, 0));
 
         Assert.True(h.Rematch("Оля").Ok);
         Assert.Equal("Оля", h.Room.Seats[1]);          // місця обернулись, як і всюди в каркасі

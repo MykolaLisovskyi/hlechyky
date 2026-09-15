@@ -28,6 +28,7 @@
   min-height: 2.6em; display: grid; place-items: center; padding: 0 2px;
 }
 .skq.wait { color: var(--muted); font-weight: 400; font-size: 1em; }
+.skrules { text-align: center; line-height: 1.4; max-width: 34em; margin: 0 auto; }
 
 .skask { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .skin {
@@ -50,12 +51,18 @@
   display: flex; align-items: center; gap: 8px; padding: 5px 9px;
   background: var(--panel); border-radius: 8px; font-size: .92em;
 }
-.skrow.p3, .skrow.p2, .skrow.p1 { background: var(--skrow); }
-.skrow.p3 { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.skrow.on { background: var(--skrow); }
+.skrow.best { box-shadow: 0 0 0 1px var(--accent2) inset; }
 .skn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skv { font-variant-numeric: tabular-nums; font-weight: 600; }
 .skd { flex: none; }
-.skp { flex: none; min-width: 2.2em; text-align: right; color: var(--accent); font-weight: 600; }
+.skp {
+  flex: none; min-width: 2.2em; text-align: right; color: var(--accent); font-weight: 600;
+  font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;
+}
+.skrow:not(.on) .skp { color: var(--muted); font-weight: 400; }
+/* «3+2» під сумою: скільки за точність і скільки бонусом найближчому. */
+.skp small { font-size: .72em; color: var(--muted); font-weight: 400; }
 
 /* ---- хто вже відповів ---- */
 .skwho { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
