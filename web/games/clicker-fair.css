@@ -1,1 +1,165 @@
-/* Частина «fair» Гончарного кола — див. docs/games/specs/clicker-v7.md. Поки порожньо. */
+/* Ярмарок і люди Гончарного кола: плашка погоди, пригода, гості, замовлення, шана сіл, хроніка. */
+
+/* ---- плашка над сценою ---- */
+.clkf-plaque { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; width: 100%; max-width: 360px; }
+.clkf-plaque:empty { display: none; }
+.clkf-buffs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; width: 100%; max-width: 360px; }
+.clkf-chip {
+  display: inline-flex; align-items: center; gap: 3px; font-size: .74em; padding: 1px 8px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text); white-space: nowrap; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
+.clkf-chip.season { color: var(--muted); }
+.clkf-chip.weather.sun { background: rgba(244, 197, 66, .12); border-color: rgba(244, 197, 66, .35); }
+.clkf-chip.weather.rain { background: rgba(111, 143, 224, .14); border-color: rgba(111, 143, 224, .4); }
+.clkf-chip.weather.frost { background: rgba(190, 225, 255, .12); border-color: rgba(190, 225, 255, .4); }
+.clkf-chip.holiday { background: #5a3d0a; border-color: var(--accent2); color: var(--accent); font-weight: 600; animation: clkfglow 1.8s ease-in-out infinite alternate; }
+.clkf-chip.weekend { background: rgba(123, 211, 137, .12); border-color: rgba(123, 211, 137, .4); }
+.clkf-chip.buff.good { background: #2e3c66; color: #cfe0ff; border-color: #6f8fe0; }
+.clkf-chip.buff.bad { background: #4a2612; color: #ffb27a; border-color: #8a4a2a; }
+.clkf-chip i { font-style: normal; }
+@keyframes clkfglow { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+
+/* ---- пригода з вибором ---- */
+.clkf-event {
+  width: 100%; max-width: 360px; padding: 8px 10px; border-radius: 14px; position: relative;
+  background: linear-gradient(160deg, #3b2a17 0%, #2a2014 100%); border: 1px solid var(--accent2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .35), inset 0 0 22px rgba(244, 197, 66, .08);
+  animation: clkfdrop .45s cubic-bezier(.2, 1.4, .4, 1);
+}
+.clkf-ev-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.clkf-ev-head > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.clkf-ev-emoji { font-size: 1.9em; line-height: 1; animation: clkfbob 2.4s ease-in-out infinite; }
+.clkf-ev-left { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.clkf-ev-left i { font-style: normal; }
+.clkf-ev-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
+.clkf-ev-btn { display: flex; flex-direction: column; gap: 2px; align-items: center; text-align: center; padding: 6px 8px; white-space: normal; }
+.clkf-ev-sure { font-size: .74em; font-weight: 400; opacity: .9; font-style: italic; }
+.clkf-ev-hint { margin-top: 4px; text-align: center; }
+.clkf-ev-result { font-size: .88em; text-align: center; color: var(--accent); }
+.clkf-event.ping { animation: clkfping .9s ease-out; }
+@keyframes clkfping { 0% { box-shadow: 0 0 0 0 rgba(244, 197, 66, .7); } 100% { box-shadow: 0 0 0 16px rgba(244, 197, 66, 0); } }
+.clkf-bell {
+  position: absolute; left: 50%; top: 23%; transform: translateX(-50%); z-index: 7; padding: 2px 10px; border-radius: 999px;
+  font-size: .8em; font-weight: 700; color: #2a1a0c; background: var(--accent); border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+  animation: clkfring 1.2s ease-in-out infinite; white-space: nowrap;
+}
+.clkf-bell:hover { background: #ffe28a; color: #2a1a0c; }
+@keyframes clkfring { 0%, 70%, 100% { transform: translateX(-50%) rotate(0); } 75% { transform: translateX(-50%) rotate(-8deg); } 85% { transform: translateX(-50%) rotate(8deg); } }
+@keyframes clkfdrop { from { transform: translateY(-10px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes clkfbob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-3px) rotate(4deg); } }
+
+/* ---- гість біля вікна чи дверей ---- */
+.clkf-guest {
+  position: absolute; z-index: 6; width: 70px; height: 70px; padding: 0; border: none; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 236, 190, .28) 0%, rgba(255, 236, 190, 0) 70%);
+  cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.clkf-guest:hover { background: radial-gradient(circle, rgba(255, 236, 190, .45) 0%, rgba(255, 236, 190, 0) 72%); }
+.clkf-guest.run { animation: clkfarrive .5s cubic-bezier(.2, 1.5, .4, 1); }
+.clkf-fig { position: absolute; left: 11px; top: 3px; width: 48px; height: 64px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .5)); animation: clkfbob 1.6s ease-in-out infinite; transform-origin: 50% 100%; }
+.clkf-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.clkf-ring circle { fill: none; stroke: #ffe9b0; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 0; opacity: .85; }
+.clkf-guest.run .clkf-ring circle { animation: clkring var(--clkf-left, 20s) linear forwards; }
+.clkf-gname {
+  position: absolute; left: 50%; bottom: -12px; transform: translateX(-50%); font-size: 10.5px; font-weight: 700; white-space: nowrap;
+  color: #2a1a0c; background: #ffe9b0; border-radius: 999px; padding: 0 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+}
+.clkf-wave { transform-box: fill-box; transform-origin: 0 0; animation: clkfwave 1s ease-in-out infinite alternate; }
+.clkf-flap { transform-box: fill-box; transform-origin: 20% 90%; animation: clkfflap .28s ease-in-out infinite alternate; }
+.clkf-coin { animation: clkfshine 1.1s ease-in-out infinite alternate; }
+.clkf-feather { transform-box: fill-box; transform-origin: 0 100%; animation: clkfwave 1.3s ease-in-out infinite alternate; }
+.clkf-strum { animation: clkfshine .35s linear infinite alternate; }
+.clkf-note { animation: clkfnote 1.6s ease-out infinite; }
+.clkf-note.n2 { animation-delay: .8s; }
+.clkf-ball { animation: clkfball 1.4s ease-in-out infinite alternate; }
+@keyframes clkfarrive { from { transform: translateY(14px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes clkfwave { from { transform: rotate(-10deg); } to { transform: rotate(12deg); } }
+@keyframes clkfflap { from { transform: rotate(0); } to { transform: rotate(-22deg); } }
+@keyframes clkfshine { from { opacity: .55; } to { opacity: 1; } }
+@keyframes clkfnote { from { transform: translateY(4px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-10px); opacity: 0; } }
+@keyframes clkfball { from { fill: #9fd3ff; filter: drop-shadow(0 0 1px #9fd3ff); } to { fill: #d8b9ff; filter: drop-shadow(0 0 5px #d8b9ff); } }
+
+/* ---- комора: замовлення ---- */
+.clkf-store { position: relative; }
+.clkf-store, .clkf-merch { display: flex; flex-direction: column; gap: 7px; width: 100%; margin-bottom: 10px; }
+.clkf-merch { margin: 12px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); }
+.clkf-merchants { display: flex; flex-direction: column; gap: 8px; }
+.clkf-title { align-self: stretch; }
+.clkf-orders { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 7px; }
+.clkf-order {
+  display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; padding: 8px; border-radius: 12px; position: relative;
+  background: linear-gradient(135deg, var(--panel) 0%, var(--panel2) 100%); border: 1px solid var(--line);
+  transition: border-color .3s, box-shadow .3s;
+}
+.clkf-order.ready { border-color: rgba(123, 211, 137, .6); box-shadow: inset 0 0 18px rgba(123, 211, 137, .08); }
+.clkf-order.lord { border-color: var(--accent2); background: linear-gradient(135deg, #3b2a17 0%, var(--panel2) 100%); }
+.clkf-order.lord::after {
+  content: '×4'; position: absolute; top: -7px; right: 8px; font-size: .72em; font-weight: 700; color: #2a1a0c;
+  background: var(--accent); border-radius: 999px; padding: 0 6px;
+}
+.clkf-order.sour { animation: clkfshake .45s ease-in-out 1; }
+.clkf-oart { position: relative; display: flex; align-items: center; justify-content: center; align-self: start; height: 64px; margin-top: 4px; }
+.clkf-oware { width: 56px; height: 58px; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .4)); }
+.clkf-on {
+  position: absolute; right: -2px; bottom: 0; font-size: .8em; font-weight: 700; color: #2a1a0c; background: var(--accent2);
+  border-radius: 999px; padding: 0 5px; font-variant-numeric: tabular-nums;
+}
+.clkf-obody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.clkf-ohead { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.clkf-ohead b { white-space: nowrap; }
+.clkf-sour { margin-left: auto; }
+.clkf-oreq { font-size: .88em; }
+.clkf-oreq2 { color: var(--accent2); }
+.clkf-obar { position: relative; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .25); overflow: hidden; }
+.clkf-obar i { display: block; height: 100%; background: linear-gradient(90deg, var(--clay), #d99a5b); border-radius: 7px; transition: width .4s; }
+.clkf-order.ready .clkf-obar i { background: linear-gradient(90deg, #4c9a3f, #7bd389); }
+.clkf-obar span { position: absolute; inset: 0; text-align: center; font-size: 10.5px; line-height: 14px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+.clkf-ometa { display: flex; flex-wrap: wrap; gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.clkf-otime { margin-left: auto; }
+.clkf-otime i, .clkf-next i, .clk-teaser i { font-style: normal; }
+.clkf-obtns { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.clkf-obtns button { padding: 2px 7px; flex: 1 1 auto; white-space: nowrap; }
+.clkf-ohint { font-size: .74em; }
+.clkf-next { text-align: right; }
+@keyframes clkfshake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px) rotate(-1deg); } 75% { transform: translateX(4px) rotate(1deg); } }
+
+/* Реакція купця на торг: емодзі й репліка. */
+.clkf-react {
+  position: absolute; left: 0; right: 0; top: 26px; z-index: 4; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); background-color: var(--bg2);
+  display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 12px; font-size: .9em; font-style: italic;
+  background: #1f3a26; border: 1px solid rgba(123, 211, 137, .5); animation: clkfdrop .35s ease-out;
+}
+.clkf-react.no { background: #3a1c18; border-color: rgba(215, 55, 43, .45); }
+.clkf-remoji { font-size: 1.7em; font-style: normal; animation: clkfbob 1s ease-in-out infinite; }
+
+/* ---- шана сіл ---- */
+.clkf-reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 5px; }
+.clkf-rep { padding: 5px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.clkf-rep.l5 { border-color: var(--accent2); box-shadow: inset 0 0 16px rgba(244, 197, 66, .12); }
+.clkf-rtop { display: flex; justify-content: space-between; gap: 4px; align-items: baseline; }
+.clkf-stars { color: var(--accent); letter-spacing: -1px; font-size: .85em; white-space: nowrap; }
+.clkf-stars i { color: var(--line); font-style: normal; }
+.clkf-rbar { height: 5px; border-radius: 3px; background: rgba(0, 0, 0, .25); overflow: hidden; }
+.clkf-rbar i { display: block; height: 100%; background: var(--accent2); }
+.clkf-perk { font-size: .68em; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---- хроніка ---- */
+.clkf-chron {
+  width: 100%; max-width: 360px; padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
+  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+}
+.clkf-chron:empty { display: none; }
+.clkf-chron.in { animation: clkffade .7s ease-out; }
+@keyframes clkffade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@container (max-width: 420px) {
+  .clkf-orders { grid-template-columns: minmax(0, 1fr); }
+  .clkf-chron { white-space: normal; border-radius: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clkf-chip.holiday, .clkf-event, .clkf-ev-emoji, .clkf-guest.run, .clkf-fig, .clkf-wave, .clkf-flap, .clkf-coin, .clkf-feather,
+  .clkf-strum, .clkf-note, .clkf-ball, .clkf-order.sour, .clkf-react, .clkf-remoji, .clkf-chron.in, .clkf-bell, .clkf-event.ping { animation: none; }
+  .clkf-guest.run .clkf-ring circle { animation: clkring var(--clkf-left, 20s) linear forwards; }
+}
