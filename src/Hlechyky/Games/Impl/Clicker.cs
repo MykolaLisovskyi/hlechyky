@@ -302,7 +302,9 @@ public sealed partial class Clicker : Game
     double AllMult => Math.Pow(1.25, Level("clay"))
         * (1 + StyleBonus * _styles.Count)
         * (1 + (Has("seal") ? SealStampBonus : StampBonus) * _stamps)
-        * (1 + DecorBonus * _decor.Count);
+        * (1 + DecorBonus * _decor.Count)
+        // Пакети сьомого оновлення: альбом, кахлі, репутація сіл, цех (docs/games/specs/clicker-v7.md).
+        * KilnAllMult * AlbumAllMult * FairAllMult * GuildAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult;
@@ -445,12 +447,19 @@ public sealed partial class Clicker : Game
         _grabbed = 0;
         ScheduleFall(_lastSync);
         ResetHouse(_lastSync);
+        ResetCraft();
+        ResetKiln(_lastSync);
+        ResetAlbum(_lastSync);
+        ResetFair(_lastSync);
+        ResetGuild(_lastSync);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         // Пасив дораховуємо перед кожною дією: і клік, і покупка мусять бачити однакове число глеків.
         Sync();
+        // Каталоги їдуть у вид лише до першої дії (Look знову попросить, якщо клієнтові їх бракує).
+        _catalogWanted = false;
         var result = action switch
         {
             "spin" => Spin(payload),
@@ -460,7 +469,7 @@ public sealed partial class Clicker : Game
             "catch" => Catch(),
             "grab" => Grab(),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
-            "look" => ActResult.Done,
+            "look" => Look(payload),
             "fire" => Fire(),
             "secret" => BuySecret(payload),
             "paint" => Paint(payload),
@@ -471,7 +480,12 @@ public sealed partial class Clicker : Game
             "tool" => BuyTool(payload),
             "adorn" => Adorn(payload),
             "take" => Take(payload),
-            _ => ActResult.Fail("Тут так не ходять"),
+            // Ремесло: що ліпити на колі й продаж виробів на базарі (ClickerCraft.cs).
+            "form" => Form(payload),
+            "bazaar" => Bazaar(payload),
+            // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
+            _ => ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
+                ?? ActResult.Fail("Тут так не ходять"),
         };
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
         if (result.Ok && WorthScoring())
@@ -509,10 +523,11 @@ public sealed partial class Clicker : Game
         var now = Ctx.Clock.UtcNow;
         var from = _lastSync;
         _lastSync = now;
+        var gap = now > from ? now - from : TimeSpan.Zero;
+        var paid = gap > OfflineNow ? OfflineNow : gap;
+        AwayBegin(gap);
         if (now > from)
         {
-            var paid = now - from;
-            if (paid > OfflineNow) paid = OfflineNow;
             // Ярмарок завжди починається з дії (а дія спершу синхронізує), тож він не може початись раніше
             // за from: досить обрізати його кінцем проміжку.
             var fair = _fairUntil > from ? (_fairUntil < now ? _fairUntil : now) - from : TimeSpan.Zero;
@@ -532,6 +547,21 @@ public sealed partial class Clicker : Game
             ScheduleFall(now);
         }
         SyncOrders(now);
+        // Ремесло й пакети — після пасиву й купців: підмайстри ліплять за той самий оплачений проміжок.
+        SyncCraft(now, paid);
+        SyncKiln(now, paid);
+        SyncAlbum(now, paid);
+        SyncFair(now, paid);
+        SyncGuild(now, paid);
+        AwayEnd(now, gap);
+    }
+
+    /// <summary>Клієнт питає свіжий вид (глек утік, купець повернувся) або каталоги наново (<c>{ catalog: true }</c>).</summary>
+    ActResult Look(JsonElement payload)
+    {
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("catalog", out var c) && c.ValueKind == JsonValueKind.True)
+            _catalogWanted = true;
+        return ActResult.Done;
     }
 
     /// <summary>Нарахувати пасив разом із недоліпленим залишком.</summary>
@@ -615,6 +645,8 @@ public sealed partial class Clicker : Game
         var taken = Math.Min(hands.Count, Allowance());
         _tokens -= taken;
         Add(ClickGain(taken));
+        // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
+        if (taken > 0) FormBy(taken, now);
         _guard.Spend(taken);
         // Під ярмарком і натхненням не перебиваємо: бонус тікає секундами, а перевірка почекає до його кінця.
         if (_guard.Due && !FairOn && !InspireOn) _guard.Check();
@@ -846,6 +878,11 @@ public sealed partial class Clicker : Game
             foreach (var key in new[] { "wheel", "apprentice", "kiln" }) _levels[key] = KinLevels;
         if (!Has("memory")) _marks.Clear();
         FireHouse(Ctx.Clock.UtcNow);
+        FireCraft();
+        FireKiln(Ctx.Clock.UtcNow);
+        FireAlbum(Ctx.Clock.UtcNow);
+        FireFair(Ctx.Clock.UtcNow);
+        FireGuild(Ctx.Clock.UtcNow);
 
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
         var bonus = (Has("seal") ? SealStampBonus : StampBonus) * _stamps * 100;
@@ -999,6 +1036,15 @@ public sealed partial class Clicker : Game
             grabbed = _grabbed,
             // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
             house = HouseView(Ctx.Clock.UtcNow),
+            // Сьоме оновлення: ремесло й пакети (docs/games/specs/clicker-v7.md). Каталоги — лише коли просили.
+            craft = CraftView(Ctx.Clock.UtcNow),
+            kiln = ViewKiln(Ctx.Clock.UtcNow),
+            album = ViewAlbum(Ctx.Clock.UtcNow),
+            // «fair» у виді вже зайняте ярмарком розписного глека — пакет ярмарку й людей їде як «market».
+            market = ViewFair(Ctx.Clock.UtcNow),
+            guild = ViewGuild(Ctx.Clock.UtcNow),
+            away = AwayView(),
+            catalog = CatalogView(),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна) і/або пауза.
             guard = _guard.View(Ctx.Clock.UtcNow),
         };
@@ -1041,7 +1087,8 @@ public sealed partial class Clicker : Game
         int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
         ClickerGuard.Row? Guard = null,
         FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
-        HouseRow? House = null);
+        HouseRow? House = null,
+        CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1050,7 +1097,8 @@ public sealed partial class Clicker : Game
             _marks.Order(StringComparer.Ordinal).ToList(), _golden, _fairUntil, _inspireUntil, _caught,
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
-            _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse()),
+            _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
+            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild()),
         Wire);
 
     public override void Load(string json)
@@ -1111,6 +1159,14 @@ public sealed partial class Clicker : Game
             ScheduleFall(Ctx.Clock.UtcNow);
         // Хата — після розписів (замовлення на розпис мусять бачити колекцію) і після рівнів (дошка рахується від пасиву).
         LoadHouse(s.House);
+        // Ремесло й пакети — наприкінці: їм потрібні рівні, розписи й глина.
+        LoadCraft(s.Craft);
+        LoadKiln(s.Kiln);
+        LoadAlbum(s.Album);
+        LoadFair(s.Fair);
+        LoadGuild(s.Guild);
+        // Після Load каталогів у виді нема (вид до збереження й після мусить збігатись): клієнт без них сам попросить look { catalog: true }.
+        _catalogWanted = false;
     }
 
     static void Fill(HashSet<string> set, List<string>? from, Func<string, bool> known)

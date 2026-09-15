@@ -1,0 +1,62 @@
+/* Ремесло Гончарного кола: виріб на колі, сирці на полиці, рядок ліплення, вибір виробу, комора. */
+
+.clkw.wet > path:first-of-type { filter: brightness(.78) saturate(1.1); }
+.clkw.raw:not(.wet) > path:first-of-type { filter: brightness(1.12) saturate(.75); }
+.clkw-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame 1.1s ease-in-out infinite alternate; }
+
+/* ---- полиця над колом: сирці ---- */
+.clk-shelf-jugs { gap: 1px; justify-content: center; }
+.clkw-rack { display: inline-flex; }
+.clkw-rack svg { width: 26px; height: 28px; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
+.clkw-rack:not(.dry) svg { opacity: .88; }
+.clkw-rack.dry svg { animation: clkwdry .5s ease-out; }
+.clkw-more { font-size: 11px; color: var(--muted); align-self: center; padding: 0 2px; }
+.clkw-empty { font-size: 10px; color: var(--muted); opacity: .7; padding-bottom: 2px; }
+@keyframes clkwdry { from { transform: scale(1.15); } to { transform: scale(1); } }
+
+/* ---- рядок ремесла під сценою ---- */
+.clk-craft { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 360px; }
+.clk-craft-pick { display: flex; align-items: center; gap: 4px; padding: 4px 8px; white-space: nowrap; flex: none; }
+.clk-craft-pick .clkw-ico { width: 22px; height: 24px; }
+.clk-craft-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.clk-craft-bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.clk-craft-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); border-radius: 4px; transition: width .12s linear; }
+.clk-craft.full .clk-craft-bar i { background: var(--accent2); animation: clkwpulse 1.2s ease-in-out infinite alternate; }
+.clk-craft-line { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+@keyframes clkwpulse { from { opacity: .55; } to { opacity: 1; } }
+
+/* ---- вибір виробу ---- */
+.clkw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin-top: 8px; }
+.clkw-card {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; text-align: center;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+}
+.clkw-card.on { border-color: var(--accent2); }
+.clkw-card.locked { opacity: .55; }
+.clkw-card.locked svg { filter: grayscale(1) brightness(.5); }
+.clkw-big { width: 64px; height: 66px; }
+
+/* ---- комора ---- */
+.clkw-store { display: flex; flex-direction: column; gap: 8px; }
+.clkw-sellall { align-self: flex-start; }
+.clkw-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.clkw-item {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
+}
+.clkw-item.q3 { border-color: rgba(244, 197, 66, .55); box-shadow: inset 0 0 18px rgba(244, 197, 66, .08); }
+.clkw-mid { width: 44px; height: 46px; }
+.clkw-mini { width: 30px; height: 32px; }
+.clkw-itxt { display: flex; flex-direction: column; min-width: 0; }
+.clkw-itxt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkw-n { color: var(--muted); font-weight: 500; }
+.clkw-q { color: var(--accent2); }
+.clkw-btns { display: flex; flex-direction: column; gap: 3px; }
+.clkw-btns button { padding: 2px 8px; }
+.clkw-rackrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.clkw-rackitem { display: flex; flex-direction: column; align-items: center; min-width: 40px; }
+.clkw-rackitem.dry .small { color: var(--accent2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .clkw-rack.dry svg, .clk-craft.full .clk-craft-bar i, .clkw-flame { animation: none; }
+}

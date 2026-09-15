@@ -47,6 +47,52 @@
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
+  // ---------- частини (сьоме оновлення, docs/games/specs/clicker-v7.md §3) ----------
+
+  /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
+  /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
+  /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild'];
+  const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
+
+  /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
+  function callPart(p, hook, ...args) {
+    if (typeof p[hook] !== 'function') return;
+    try { p[hook](...args); } catch (e) { console.error('[clicker:' + p.id + '] ' + hook, e); }
+  }
+
+  function mountPart(st, p) {
+    if (st.parts.has(p.id)) return;
+    st.parts.add(p.id);
+    callPart(p, 'mount', st, H.api);
+    // Частина догнала вже відкриту картку: віддати їй останній вид, щоб не чекала наступної дії.
+    if (st.lastView) callPart(p, 'update', st, st.lastView, H.api);
+  }
+
+  H.part = (p) => {
+    if (!p || !p.id || H.parts.some((x) => x.id === p.id)) return;
+    H.parts.push(p);
+    H.parts.sort((a, b) => (a.order || 50) - (b.order || 50));
+    for (const st of H.mounted) if (st.el) mountPart(st, p);
+  };
+
+  if (!H.loaded) {
+    H.loaded = true;
+    for (const id of PART_IDS) {
+      if (!document.querySelector('link[data-clk-part="' + id + '"]')) {
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/games/clicker-' + id + '.css';
+        l.dataset.clkPart = id;
+        document.head.appendChild(l);
+      }
+      const sc = document.createElement('script');
+      sc.src = '/games/clicker-' + id + '.js';
+      sc.onerror = () => console.warn('[clicker] частина ' + id + ' не завантажилась');
+      document.head.appendChild(sc);
+    }
+  }
+
   // ---------- числа й слова ----------
 
   const num = (n) => Math.round(n).toLocaleString('uk-UA');
@@ -59,6 +105,8 @@
   const shards = (n) => plural(n, 'черепок', 'черепки', 'черепків');
   const stampsWord = (n) => plural(n, 'клеймо', 'клейма', 'клейм');
   const potsWord = (n) => (n % 1 ? 'глека' : plural(n, 'глек', 'глеки', 'глеків'));
+  /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
+  const potsShort = (n) => short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n));
 
   const BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн'];
   /// «1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число, як на сервері.
@@ -221,6 +269,8 @@
         downs: new Map(), keyDown: 0, lastDown: 0, onKeyUp: null,
         guard: null, eye: null, taps: [], eyeBusy: false, eyeKey: '', eyeOpen: false, eyeAt: 0, eyeArm: 0,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
+        // Частини (clicker-<id>.js): які вже змонтовані, підписи їхніх вкладок, останній вид для запізнілих.
+        parts: new Set(), tabText: {}, lastView: null, catalog: null, catalogAsked: false, front: null, back: null, ov: null,
       };
     }
     return root._clk;
@@ -275,6 +325,7 @@
 
   /// Кличеться на кожен кадр: і число, і кнопки мусять оживати самі, поки коло крутиться без кліків.
   function paint(st) {
+    const now0 = Date.now();
     // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
     // і кнопки прилавка (уже без них).
     const sure = firm(st);
@@ -336,6 +387,7 @@
     paintWheel(st);
     paintGolden(st);
     paintFall(st);
+    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'frame', st, H.api, now0);
 
     const now = Date.now();
     if (now - st.slowAt >= SLOW_MS) {
@@ -404,6 +456,7 @@
       st.ctx.act('look');
     }
     paintEye(st);
+    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'slow', st, H.api, sn);
   }
 
   /// Відліки в хаті й на дошці: глина відлежується, купець повертається, дошка оновлюється.
@@ -847,9 +900,10 @@
     order(st, 'fire');
   }
 
-  function setTab(st, tab) {
+  function setTab(st, tab, remember = true) {
+    if (!st.panes[tab]) tab = 'shop';
     st.tab = tab;
-    storeSet('clk.tab', tab);
+    if (remember) storeSet('clk.tab', tab);
     for (const b of st.tabs.querySelectorAll('[data-tab]')) b.classList.toggle('active', b.dataset.tab === tab);
     for (const [k, p] of Object.entries(st.panes)) p.hidden = k !== tab;
     st.slowAt = 0;
@@ -1003,13 +1057,15 @@
   /// розпис, замісив іншу глину чи добудував гончарню (полиця повніша).
   function wheelJug(st) {
     const shelf = Math.min(9, 3 + Math.floor(((st.ups.workshop && st.ups.workshop.level) || 0) / 4));
-    const sig = st.wear + '|' + st.clayBody + '|' + shelf;
+    const sig = st.wear + '|' + st.clayBody + '|' + shelf + '|' + (st.craftWheel ? 1 : 0) + (st.craftShelf ? 1 : 0);
     if (st.jugBox._wear === sig) return;
     st.jugBox._wear = sig;
     const w = st.wear || '';
     const body = st.clayBody;
-    st.jugBox.innerHTML = jug(w, 'wheel', body);
+    // Коло й полицю малює ремесло (clicker-craft.js), щойно воно завантажилось: виріб на колі й сирці на полиці.
+    if (!st.craftWheel) st.jugBox.innerHTML = jug(w, 'wheel', body);
     st.fallJug.innerHTML = jugSvg(w, 'clk-fall-jug', 'fall', body);
+    if (st.craftShelf) return;
     // На полиці — глечики: у розписі, що на колі, і прості (кольору глини); що більша гончарня, то повніша полиця.
     let s = '';
     for (let i = 0; i < shelf; i++) s += jugSvg(i % 2 ? '' : w, '', 'shelf-' + i, body);
@@ -1224,6 +1280,89 @@
       .catch(() => { /* без таблиці просто не буде рядка про суперника */ });
   }
 
+  // ---------- api для частин ----------
+
+  H.api = {
+    short, num, dec, big, span, plural, potsWord, potsShort, shards, mmss, jug, jugSvg, STYLE, swap, fleeting, serverNow, visible,
+    storeGet, storeSet,
+    guardOn: (st) => guardOn(st),
+    esc: (st, x) => ((st.ctx && st.ctx.esc) || ((y) => String(y)))(x),
+    order: (st, action, payload) => order(st, action, payload),
+    /// Дія з відповіддю (Promise): для мінігор, яким треба знати результат. Накопичені кліки летять першими.
+    act: (st, action, payload) => { if (!st.ctx || !st.mine) return Promise.resolve(null); flush(st); return st.ctx.act(action, payload); },
+    popAt: (st, text, cls, x, y) => popAt(st, text, cls, x, y),
+    sparks: (st, host, n, gold, x, y) => sparks(st, host || st.fx, n, gold, x, y),
+    toast: (st, text, kind) => { if (st.ctx && st.ctx.toast) st.ctx.toast(text, kind || 'ok'); },
+    /// Звук: без живої хати (clicker-scene.js) — тиша; сцена підміняє цю функцію.
+    sfx: () => {},
+    /// Силует виробу: малює ремесло (clicker-craft.js); доти — глечик.
+    wareSvg: (ware, o) => jugSvg((o && o.style) || '', (o && o.cls) || '', (o && o.slot) || 'w-' + ware, o && o.clay),
+    /// Вкладка частини: кнопка стає за порядком order серед наявних, панель — у праву колонку. Повертає панель.
+    tab(st, key, label, order) {
+      if (st.panes[key]) return st.panes[key];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ghost';
+      b.dataset.tab = key;
+      b.dataset.order = String(order || 50);
+      b.textContent = label;
+      const after = [...st.tabs.querySelectorAll('[data-tab]')].find((x) => +(x.dataset.order || 50) > (order || 50));
+      st.tabs.insertBefore(b, after || null);
+      b.onclick = () => setTab(st, key);
+      const pane = document.createElement('div');
+      pane.className = 'clk-pane';
+      pane.dataset.pane = key;
+      pane.hidden = true;
+      st.el.querySelector('.clk-side').appendChild(pane);
+      st.panes[key] = pane;
+      st.tabText[key] = label;
+      // Гравець лишив цю вкладку відкритою минулого разу — повернути, щойно вона з'явилась.
+      if (storeGet('clk.tab', 'shop') === key) setTab(st, key);
+      return pane;
+    },
+    tabLabel(st, key, text) {
+      st.tabText[key] = text;
+      const b = st.tabs.querySelector('[data-tab="' + key + '"]');
+      if (b && b.textContent !== text) b.textContent = text;
+    },
+    hideTab(st, key) {
+      const b = st.tabs.querySelector('[data-tab="' + key + '"]');
+      if (b) b.hidden = true;
+      if (st.tab === key) setTab(st, 'shop', false);
+    },
+    showTab: (st, key) => setTab(st, key),
+    pane: (st, key) => st.panes[key] || null,
+    /// Свій шар частини: back — <g> у SVG під колом (viewBox 360×396), front — <div> над сценою.
+    layer(st, name, id) {
+      const host = name === 'back' ? st.back : st.front;
+      let el = host.querySelector('[data-part="' + id + '"]');
+      if (!el) {
+        el = name === 'back' ? document.createElementNS('http://www.w3.org/2000/svg', 'g') : document.createElement('div');
+        el.setAttribute('data-part', id);
+        host.appendChild(el);
+      }
+      return el;
+    },
+    /// Модальна панель поверх картки. Одна за раз: нова закриває попередню (з її onClose).
+    overlay(st, html, opts) {
+      if (!st.ov.el.hidden) H.api.closeOverlay(st);
+      st.ov.body.innerHTML = html;
+      st.ov.el.className = 'clk-overlay' + (opts && opts.cls ? ' ' + opts.cls : '');
+      st.ov.onClose = (opts && opts.onClose) || null;
+      st.ov.el.hidden = false;
+      return st.ov.body;
+    },
+    closeOverlay(st) {
+      if (!st.ov || st.ov.el.hidden) return;
+      st.ov.el.hidden = true;
+      const f = st.ov.onClose;
+      st.ov.onClose = null;
+      st.ov.body.innerHTML = '';
+      if (f) try { f(); } catch (e) { console.error(e); }
+    },
+    overlayOpen: (st) => !!st.ov && !st.ov.el.hidden,
+  };
+
   // ---------- модуль ----------
 
   HGames.register({
@@ -1247,6 +1386,8 @@
         + '<div class="clk-stage">'
         // Хата, що росте від покупок: шар під полицею й колом (viewBox 360×396, тягнеться за сценою).
         + '<svg class="clk-house" viewBox="0 0 360 396" preserveAspectRatio="none" aria-hidden="true"></svg>'
+        // Шари для частин (api.layer): back — SVG під колом у тих самих координатах, що й хата; front — DOM над сценою.
+        + '<svg class="clk-layer-back" viewBox="0 0 360 396" preserveAspectRatio="none" aria-hidden="true"></svg>'
         + '<div class="clk-shelf"><div class="clk-shelf-jugs"></div></div>'
         + '<div class="clk-wheelbox">'
         + '<svg class="clk-heat" viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="47"/>'
@@ -1267,6 +1408,7 @@
         + jugSvg('golden', 'clk-gold-jug', 'gold') + '</button>'
         + '<button type="button" class="clk-fall" hidden aria-label="Глек падає з полиці — лови!" title="Лови!"><span class="clk-fall-box"></span></button>'
         + '<div class="clk-fx"></div>'
+        + '<div class="clk-layer-front"></div>'
         + '</div>'
         // Око майстра стає на місце сцени: відлік паузи або полиця з глечиками.
         + '<div class="clk-eye" hidden><div class="clk-eye-head"><b>👁 Око майстра</b><span class="clk-eye-tries small"></span></div>'
@@ -1285,11 +1427,11 @@
         // Праворуч (або нижче): вкладки з верстатами, розписами й обпалом.
         + '<div class="clk-side">'
         + '<div class="clk-tabs" role="tablist">'
-        + '<button type="button" class="ghost" data-tab="shop">Майстерня</button>'
-        + '<button type="button" class="ghost" data-tab="house">Хата</button>'
-        + '<button type="button" class="ghost" data-tab="orders">Купці</button>'
-        + '<button type="button" class="ghost" data-tab="styles">Розписи</button>'
-        + '<button type="button" class="ghost" data-tab="fire">Обпал</button></div>'
+        + '<button type="button" class="ghost" data-tab="shop" data-order="10">Майстерня</button>'
+        + '<button type="button" class="ghost" data-tab="house" data-order="20">Хата</button>'
+        + '<button type="button" class="ghost" data-tab="orders" data-order="45">Купці</button>'
+        + '<button type="button" class="ghost" data-tab="styles" data-order="70">Розписи</button>'
+        + '<button type="button" class="ghost" data-tab="fire" data-order="90">Обпал</button></div>'
         + '<div class="clk-pane" data-pane="shop">'
         + '<div class="clk-modes"><span class="muted small">купувати</span>'
         + '<button type="button" class="ghost" data-mode="1">×1</button>'
@@ -1304,7 +1446,11 @@
         + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
         + '</div>'
-        + '</div></div>';
+        + '</div>'
+        // Модальна панель частин (мінігри, дарунки, хата друга): одна за раз, поверх усієї картки.
+        + '<div class="clk-overlay" hidden><div class="clk-ov-box" role="dialog"><button type="button" class="ghost clk-ov-x" aria-label="Закрити">✕</button>'
+        + '<div class="clk-ov-body"></div></div></div>'
+        + '</div>';
       const q = (s) => root.querySelector(s);
       st.el = q('.clk');
       st.count = q('.clk-count');
@@ -1384,10 +1530,17 @@
       st.fire._btn.onclick = () => fire(st);
       for (const b of st.tabs.querySelectorAll('[data-tab]')) b.onclick = () => setTab(st, b.dataset.tab);
       for (const b of st.modes.querySelectorAll('[data-mode]')) b.onclick = () => setMode(st, b.dataset.mode);
-      if (!st.panes[st.tab]) st.tab = 'shop';
-      setTab(st, st.tab);
+      // Вкладка частини (горно, альбом…) з'явиться, коли частина завантажиться: доти — майстерня, а пам'ять не чіпаємо.
+      setTab(st, st.panes[st.tab] ? st.tab : 'shop', false);
       setMode(st, ['1', '10', 'max'].includes(st.mode) ? st.mode : '1');
       st.timer = setInterval(() => flush(st), BATCH_MS);
+      st.front = q('.clk-layer-front');
+      st.back = q('.clk-layer-back');
+      st.ov = { el: q('.clk-overlay'), body: q('.clk-ov-body'), x: q('.clk-ov-x'), onClose: null };
+      st.ov.x.onclick = () => H.api.closeOverlay(st);
+      st.ov.el.addEventListener('pointerdown', (e) => { if (e.target === st.ov.el) H.api.closeOverlay(st); });
+      H.mounted.add(st);
+      for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
     },
 
@@ -1465,6 +1618,10 @@
         } : null;
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
         if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
+        // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
+        if (v.catalog) st.catalog = v.catalog;
+        else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
+        st.lastView = v;
       }
       const one = 'Продати ' + num(st.rateOf) + ' → 🏺1';
       if (st.one.textContent !== one) st.one.textContent = one;
@@ -1479,8 +1636,8 @@
         styles: 'Розписи ' + owned + '/' + (st.styleList.length || 8), fire: 'Обпал' + (st.stamps ? ' · 🔖' + st.stamps : ''),
       };
       for (const b of st.tabs.querySelectorAll('[data-tab]')) {
-        const t = tabs[b.dataset.tab];
-        if (b.textContent !== t) b.textContent = t;
+        const t = tabs[b.dataset.tab] || st.tabText[b.dataset.tab];
+        if (t && b.textContent !== t) b.textContent = t;
       }
       wheelJug(st);
       paintSign(st);
@@ -1490,6 +1647,7 @@
       ordersPane(st, ctx);
       styles(st, ctx);
       firePane(st, ctx);
+      if (v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
       st.slowAt = 0;
       paint(st);
     },
@@ -1521,6 +1679,9 @@
       clearTimeout(st.eyeArm);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
+      for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
+      H.mounted.delete(st);
+      if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.remove('clk-wide');
       st.raf = 0;
