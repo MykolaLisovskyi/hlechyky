@@ -6,6 +6,9 @@
   --mf-mafia: #e57373;      /* мафія — тривожний, той самий, що й --danger */
   --mf-sheriff: #7bd389;    /* комісар */
   --mf-doctor: #6fb6e0;     /* лікар — єдиний холодний колір у селі */
+  --mf-don: #c85b5b;        /* дон — темніша мафія: своя, але старша */
+  --mf-maniac: #d9a441;     /* маньяк — третя сила, тому й колір нічий */
+  --mf-kuma: #c08ad4;       /* кума */
   --mf-dead: rgba(157, 179, 165, .5);
 }
 
@@ -19,6 +22,9 @@
 .mf-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mf-me { background: var(--bg2); white-space: nowrap; }
 .mf-me.mf-out { opacity: .55; text-decoration: line-through; }
+/* Правила столу: один рядок, який можна прочитати й не читати. */
+.mf-rules { width: 100%; line-height: 1.35; }
+.mf-rules:empty { display: none; }
 
 /* ---- село ---- */
 .mf-players { display: flex; flex-direction: column; gap: 4px; width: 100%; }
@@ -37,10 +43,15 @@
   background: var(--accent); color: var(--accent-ink); font-weight: 600;
 }
 .mf-r-mafia { color: var(--mf-mafia); }
+.mf-r-don { color: var(--mf-don); }
 .mf-r-sheriff { color: var(--mf-sheriff); }
 .mf-r-doctor { color: var(--mf-doctor); }
+.mf-r-maniac { color: var(--mf-maniac); }
+.mf-r-kuma { color: var(--mf-kuma); }
 .mf-r-civil { color: var(--muted); }
-.mf-me.mf-r-mafia, .mf-me.mf-r-sheriff, .mf-me.mf-r-doctor, .mf-me.mf-r-civil { color: var(--text); }
+/* У чіпі своєї ролі колір лишається тільки на рамці: текст має читатись на будь-якій темі. */
+.mf-me.mf-r-mafia, .mf-me.mf-r-don, .mf-me.mf-r-sheriff, .mf-me.mf-r-doctor,
+.mf-me.mf-r-maniac, .mf-me.mf-r-kuma, .mf-me.mf-r-civil { color: var(--text); }
 .mf-do { flex: none; padding: 6px 10px; font-size: .85em; }
 .mf-do.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 

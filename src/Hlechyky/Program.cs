@@ -1,6 +1,7 @@
 ﻿using Hlechyky;
 using Hlechyky.Games;
 using Hlechyky.Games.Economy;
+using Hlechyky.Mcp;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -55,6 +56,7 @@ builder.Services.AddHostedService(sp => new DeployWatch(
 builder.Services.AddHlechykyGames();
 builder.Services.AddHlechykyEconomy();
 builder.Services.AddHlechykyWords();
+builder.Services.AddHlechykyMcp();   // аі-агенти за столом: POST /mcp
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
@@ -73,5 +75,6 @@ app.UseStaticFiles(new StaticFileOptions
 app.MapHlechyky();
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
+app.MapHlechykyMcp();
 app.MapHub<RadioHub>("/hub");
 app.Run();

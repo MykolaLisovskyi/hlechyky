@@ -201,6 +201,7 @@ CONTRIBUTING.md           як підняти свою копію і відда�
 Caddyfile                 https-фронт: домен, куди що проксувати
 tools/caddy/              caddy.exe (https://caddyserver.com/api/download?os=windows&arch=amd64)
 src/Hlechyky/             сервер (.NET 10, ASP.NET Core minimal API + SignalR + SQLite; DjBrain.cs — чат-бот)
+src/Hlechyky/Mcp/         MCP-сервер для аі-агентів: POST /mcp, агент сідає за стіл нарівні з людьми (docs/games/MCP.md)
 web/                      фронт без збірки: index.html, app.js, static/ (style.css, glek.svg, icon.svg)
 liquidsoap/               radio.liq, docker-compose.yml, .env (пароль Icecast, ключ callback'а; шаблон .env.example),
                           docker-compose.dev.yml (Icecast + liquidsoap для копії без D:\radio)
