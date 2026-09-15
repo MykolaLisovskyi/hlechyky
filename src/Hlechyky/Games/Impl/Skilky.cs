@@ -10,7 +10,12 @@ namespace Hlechyky.Games.Impl;
 /// ще й бонус. Виграє не той, хто знає, а той, хто краще відчуває порядок величин.
 /// <para>
 /// Очки за точність, а не за місце: при місцях 3/2/1 удвох той, хто промазав у десять разів, однаково
-/// брав +2, і кожне питання важило одне очко різниці. Шкала — <see cref="Accuracy"/>.
+/// брав +2, і кожне питання важило одне очко різниці. Шкала — <see cref="Accuracy"/>; найближчий завжди бере
+/// ще <see cref="BestBonus"/>, а за однакової відстані швидший на секунду — ще <see cref="SpeedBonus"/>.
+/// </para>
+/// <para>
+/// Запитання не повторюються без потреби: <see cref="SkilkySeen"/> пам'ятає, хто яке вже бачив, і в партію
+/// йдуть ті, яких ніхто за столом не бачив або бачив найдавніше.
 /// </para>
 /// <para>
 /// Партія живе не від ходу до ходу, а від тика (раз на секунду): фази міняє час, а не гравці, і саме тому
@@ -38,19 +43,27 @@ public sealed class Skilky : Game
 
     /// <summary>Очки за влучання «в яблучко» — найвищий ярус шкали точності.</summary>
     public const int Bullseye = 5;
-    /// <summary>Бонус найближчому за столом — лише якщо він і сам хоч щось набрав за точність.</summary>
-    public const int BestBonus = 2;
+    /// <summary>Промах на одиницю на цілій відповіді — «майже»: щонайменше стільки, хоч у відсотках це й 11 %.</summary>
+    public const int OffByOne = 4;
+    /// <summary>Найближчому за столом — завжди, навіть коли за точність він нічого не взяв: тоді це його єдине очко.</summary>
+    public const int BestBonus = 1;
+    /// <summary>За однакової відстані швидшому хоча б на <see cref="SpeedGap"/>.</summary>
+    public const int SpeedBonus = 1;
+    public static readonly TimeSpan SpeedGap = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Шкала точності для звичайних чисел: промах у частках від правильної відповіді → очки. Далі за 25 %
-    /// ще є +1 «до двох разів» (<see cref="Accuracy"/>): удвічі більше й удвічі менше — однаково далеко.
+    /// Шкала точності для звичайних чисел: промах у частках від правильної відповіді → очки. Далі за 50 %
+    /// ще є 1 «до двох разів» (<see cref="Accuracy"/>): удвічі більше й удвічі менше — однаково далеко.
     /// </summary>
-    static readonly (double Off, int Points)[] Tiers = [(0.02, Bullseye), (0.10, 3), (0.25, 2)];
+    static readonly (double Off, int Points)[] Tiers = [(0.02, Bullseye), (0.10, 4), (0.25, 3), (0.50, 2)];
     /// <summary>Шкала для років: там відсотки брешуть (1900 проти 1990 — «лише 4,5 %»), тож міряємо роками.</summary>
-    static readonly (double Off, int Points)[] YearTiers = [(0, Bullseye), (3, 3), (10, 2), (50, 1)];
+    static readonly (double Off, int Points)[] YearTiers = [(0, Bullseye), (2, 4), (5, 3), (15, 2), (50, 1)];
 
-    /// <summary>Рядок таблиці розкриття: чиє число, наскільки повз і скільки за це дали (разом із бонусом).</summary>
-    sealed record Row(int Seat, double Value, double Diff, int Points, int Bonus);
+    /// <summary>Рядок таблиці розкриття: чиє число, наскільки повз і скільки за що дали.</summary>
+    sealed record Row(int Seat, double Value, double Diff, int Accuracy, int Bonus = 0, int Fast = 0)
+    {
+        public int Points => Accuracy + Bonus + Fast;
+    }
 
     public override GameInfo Info { get; } = new(
         "skilky", "Скільки?", "«Скільки?»", GameGroup.Party, 2, MaxSeats,
@@ -60,6 +73,8 @@ public sealed class Skilky : Game
     /// <summary>Запитання цієї партії разом із уже порахованою правильною відповіддю.</summary>
     readonly List<(SkilkyQuestion Q, double A)> _asked = [];
     readonly double?[] _answers = new double?[MaxSeats];
+    /// <summary>Коли прийшло останнє число місця: за однакової відстані швидший бере <see cref="SpeedBonus"/>.</summary>
+    readonly DateTimeOffset[] _answeredAt = new DateTimeOffset[MaxSeats];
     readonly long[] _scores = new long[MaxSeats];
 
     int _at;
@@ -74,6 +89,8 @@ public sealed class Skilky : Game
 
     /// <summary>Статистика радіо для динамічних запитань. Береться в <see cref="Start"/>, як велить каркас.</summary>
     SkilkyStats? _stats;
+    /// <summary>Хто які запитання вже бачив. Без бази — мовчить, і запитання просто тасуються.</summary>
+    SkilkySeen? _seen;
 
     /// <summary>Місця називаємо числами: на столі їх до дванадцяти, і «гравець одинадцятий» у чіп не влізе.</summary>
     public override string SeatName(int seat) => (seat + 1).ToString(CultureInfo.InvariantCulture);
@@ -86,10 +103,13 @@ public sealed class Skilky : Game
     {
         // Сервіси беремо тут, а не в конструкторі: гру створює реєстр без параметрів (INTEGRATION-NOTES §1).
         // Db може не бути взагалі (тести з порожнім провайдером) — тоді динамічні запитання просто не грають.
-        _stats ??= new SkilkyStats(Ctx.Services.GetService<Db>(), Ctx.Clock);
+        var db = Ctx.Services.GetService<Db>();
+        _stats ??= new SkilkyStats(db, Ctx.Clock);
+        _seen ??= new SkilkySeen(db);
 
         Array.Clear(_scores);
         Array.Clear(_answers);
+        Array.Clear(_answeredAt);
         _asked.Clear();
         _asked.AddRange(Pick());
         _at = 0;
@@ -109,8 +129,9 @@ public sealed class Skilky : Game
     }
 
     /// <summary>
-    /// П'ять різних запитань на партію. Динамічне беремо лише тоді, коли база вже щось назбирала: питати
-    /// «скільки треків зіграло», коли відповідь нуль, — не загадка, а знущання.
+    /// П'ять різних запитань на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені найдавніше.
+    /// Динамічне беремо лише тоді, коли база вже щось назбирала: питати «скільки треків зіграло», коли
+    /// відповідь нуль, — не загадка, а знущання.
     /// </summary>
     List<(SkilkyQuestion Q, double A)> Pick()
     {
@@ -124,20 +145,25 @@ public sealed class Skilky : Game
             }
             else if (q.A is { } a) pool.Add((q, a));
         }
-        // Часткове тасування Фішера — Єйтса: витягуємо рівно стільки, скільки треба, і жодного двічі.
-        var take = Math.Min(Questions, pool.Count);
-        for (var i = 0; i < take; i++)
+        // Повне тасування Фішера — Єйтса: серед однаково свіжих (зокрема всіх небачених) порядок випадковий.
+        for (var i = pool.Count - 1; i > 0; i--)
         {
-            var j = i + Ctx.Rng.Next(pool.Count - i);
+            var j = Ctx.Rng.Next(i + 1);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
-        return [.. pool.Take(take)];
+        var last = _seen!.LastSeen(Nicks());
+        return SkilkySeen.Freshest(pool, x => x.Q.Key, last, Questions);
     }
+
+    /// <summary>Ключі ніків за столом — так їх пам'ятає <see cref="SkilkySeen"/>.</summary>
+    List<string> Nicks() => [.. Enumerable.Range(0, MaxSeats)
+        .Where(Ctx.Seated).Select(s => Ctx.NickOf(s)).OfType<string>().Select(SkilkySeen.NickKey).Distinct()];
 
     /// <summary>Нове запитання: чистий стіл і коротке «готуйсь».</summary>
     void Open(DateTimeOffset now)
     {
         Array.Clear(_answers);
+        Array.Clear(_answeredAt);
         _reveal = null;
         _touched = false;
         _phase = PhaseBetween;
@@ -155,10 +181,12 @@ public sealed class Skilky : Game
         if (Math.Abs(value) > 1e15) return ActResult.Fail("Це вже занадто велике число");
 
         _answers[seat] = value;
+        // Час саме останнього числа: хто передумав, той і відповів пізніше.
+        _answeredAt[seat] = Ctx.Clock.UtcNow;
         _touched = true;
         // Реалтайм-кімната не розсилає види з Act (Rooms.Act, counts == false), тож підтвердження
         // гравцеві — оцей рядок; галочки в усіх інших приїдуть найближчим тиком.
-        return ActResult.Accept($"Записав: {Num(value)}");
+        return ActResult.Accept($"Записав: {(Current is { } q && IsYears(q) && value == Math.Round(value) ? Math.Round(value).ToString(CultureInfo.InvariantCulture) : Num(value))}");
     }
 
     /// <summary>Число приймаємо і як <c>{value: 2061}</c>, і як голе число, і як рядок — клієнтам так простіше.</summary>
@@ -202,6 +230,9 @@ public sealed class Skilky : Game
             case PhaseBetween:
                 _phase = PhaseAsk;
                 _endsAt = now.AddSeconds(AskSeconds);
+                // «Бачив» — з тієї секунди, коли запитання з'явилось на екрані. Ті, до яких недограна партія
+                // так і не дійшла, лишаються свіжими.
+                _seen!.Mark(Nicks(), _asked[_at].Q, now);
                 break;
             case PhaseAsk:
                 Reveal(now);
@@ -228,26 +259,37 @@ public sealed class Skilky : Game
 
     /// <summary>
     /// Розкриття: правильна відповідь, усі числа за відстанню, кожному — очки за точність
-    /// (<see cref="Accuracy"/>), а найближчому ще <see cref="BestBonus"/>. Рівна відстань — рівний бонус:
-    /// двоє однаково близьких беруть його обидва.
+    /// (<see cref="Accuracy"/>). Найближчим — ще <see cref="BestBonus"/> (двоє однаково близьких беруть обидва,
+    /// і навіть коли всі далеко: тоді найближчий хоч одне очко таки має). У кожній групі однакової відстані
+    /// той, хто відповів раніше за решту хоча б на <see cref="SpeedGap"/>, бере ще <see cref="SpeedBonus"/>.
     /// </summary>
     void Reveal(DateTimeOffset now)
     {
         var (question, target) = _asked[_at];
         var years = IsYears(question);
-        var rows = new List<Row>();
+        var sorted = new List<Row>();
         for (var s = 0; s < MaxSeats; s++)
-            if (Ctx.Seated(s) && _answers[s] is { } v)
-                rows.Add(new Row(s, v, Math.Abs(v - target), Accuracy(v, target, years), 0));
-        rows = [.. rows.OrderBy(r => r.Diff).ThenBy(r => r.Seat)];
+            if (Ctx.Seated(s) && _answers[s] is { } raw)
+            {
+                var v = InUnits(raw, target, question.Unit);
+                sorted.Add(new Row(s, v, Math.Abs(v - target), Accuracy(v, target, years)));
+            }
+        sorted = [.. sorted.OrderBy(r => r.Diff).ThenBy(r => r.Seat)];
 
-        // Хто найближчий, вирішуємо з допуском, а не точною рівністю double: 36.4 і 36.8 промахнулись повз
-        // 36.6 однаково, але в бітах це 0.20000000000000284 і 0.19999999999999574. Гравці побачили б однакову
-        // різницю й бонус лише в одного. А промах удесятеро бонусу не бере, навіть якщо інші ще далі:
-        // інакше вдвох той, хто хоч якось ближче, знову мав би очки задарма.
-        var closest = rows.Count > 0 ? rows[0].Diff : 0;
-        rows = [.. rows.Select(r => SameDiff(r.Diff, closest) && r.Points > 0
-            ? r with { Points = r.Points + BestBonus, Bonus = BestBonus } : r)];
+        // Групи однакової відстані рахуємо з допуском, а не точною рівністю double: 36.4 і 36.8 промахнулись
+        // повз 36.6 однаково, але в бітах це 0.20000000000000284 і 0.19999999999999574. Гравці побачили б
+        // однакову різницю й бонус лише в одного. Усередині групи першим стоїть швидший.
+        var rows = new List<Row>(sorted.Count);
+        for (var i = 0; i < sorted.Count;)
+        {
+            var j = i + 1;
+            while (j < sorted.Count && SameDiff(sorted[j].Diff, sorted[i].Diff)) j++;
+            var group = sorted.GetRange(i, j - i).OrderBy(r => _answeredAt[r.Seat]).ThenBy(r => r.Seat).ToList();
+            var faster = group.Count > 1 && _answeredAt[group[1].Seat] - _answeredAt[group[0].Seat] >= SpeedGap;
+            for (var k = 0; k < group.Count; k++)
+                rows.Add(group[k] with { Bonus = i == 0 ? BestBonus : 0, Fast = faster && k == 0 ? SpeedBonus : 0 });
+            i = j;
+        }
         foreach (var r in rows) _scores[r.Seat] += r.Points;
 
         _answer = target;
@@ -261,28 +303,59 @@ public sealed class Skilky : Game
     /// <summary>Запитання про рік міряємо в роках, решту — у частках від відповіді.</summary>
     static bool IsYears(SkilkyQuestion q) => q.Unit == "рік";
 
+    /// <summary>Множник, закладений в одиницю: «млн км» означає, що відповідь у мільйонах кілометрів.</summary>
+    static double Multiplier(string? unit)
+    {
+        var u = unit?.TrimStart() ?? "";
+        return u.StartsWith("тис", StringComparison.Ordinal) ? 1e3
+            : u.StartsWith("млрд", StringComparison.Ordinal) ? 1e9
+            : u.StartsWith("млн", StringComparison.Ordinal) ? 1e6
+            : u.StartsWith("трлн", StringComparison.Ordinal) ? 1e12
+            : 1;
+    }
+
+    /// <summary>
+    /// Число в одиницях запитання. Там, де відповідь у мільярдах років, людина цілком може написати повне
+    /// 13 800 000 000 — і отримала б нуль за «помилку в мільярд разів». Тож якщо число не менше за множник,
+    /// беремо те прочитання (як є чи поділене), яке ближче до правди за порядком величин: 1200 «тис. км²»
+    /// лишається 1200, а 357 000 стає 357.
+    /// </summary>
+    public static double InUnits(double guess, double target, string? unit)
+    {
+        var m = Multiplier(unit);
+        if (m == 1 || target <= 0 || guess < m) return guess;
+        var scaled = guess / m;
+        return Math.Abs(Math.Log(scaled / target)) < Math.Abs(Math.Log(guess / target)) ? scaled : guess;
+    }
+
     /// <summary>
     /// Очки за точність одного числа, без огляду на суперників — тому шкала однаково чесна вдвох і
-    /// вдванадцятьох. Звичайні числа: промах до 2 % — <see cref="Bullseye"/>, до 10 % — 3, до 25 % — 2,
-    /// від половини до подвоєної відповіді — 1, далі — 0. Роки: точно — 5, ±3 — 3, ±10 — 2, ±50 — 1.
+    /// вдванадцятьох. Звичайні числа: промах до 2 % — <see cref="Bullseye"/>, до 10 % — 4, до 25 % — 3,
+    /// до 50 % — 2, до двох разів — 1, далі — 0; на цілій відповіді промах на одиницю — щонайменше
+    /// <see cref="OffByOne"/>. Роки: точно — 5, ±2 — 4, ±5 — 3, ±15 — 2, ±50 — 1.
     /// Межі включні й із допуском: 2,794 проти 2,54 — рівно 10 %, хоч у double це 0.10000000000000009.
     /// </summary>
     public static int Accuracy(double guess, double target, bool years)
     {
         const double eps = 1e-9;
+        var diff = Math.Abs(guess - target);
         if (years)
         {
-            var d = Math.Abs(guess - target);
-            foreach (var (off, points) in YearTiers) if (d <= off + eps) return points;
+            foreach (var (off, p) in YearTiers) if (diff <= off + eps) return p;
             return 0;
         }
         // У банку відповіді лише додатні (динамічні з нулем у партію не беремо), тож ділити є на що. Нуль і
         // від'ємне число проти додатної відповіді — не порядок величин, а мимо.
         if (target <= 0) return SameDiff(guess, target) ? Bullseye : 0;
         if (guess <= 0) return 0;
-        var miss = Math.Abs(guess - target) / target;
-        foreach (var (off, points) in Tiers) if (miss <= off + eps) return points;
-        return guess >= target / 2 * (1 - eps) && guess <= target * 2 * (1 + eps) ? 1 : 0;
+        var miss = diff / target;
+        var points = 0;
+        foreach (var (off, p) in Tiers) if (miss <= off + eps) { points = p; break; }
+        if (points == 0 && guess >= target / 2 * (1 - eps) && guess <= target * 2 * (1 + eps)) points = 1;
+        // На малих цілих відсотки кусаються: 8 замість 9 — це вже 11 %, а для людини — «майже». На дробових
+        // відповідях (1,852 милі) одиниця — це пів відповіді, тож там правило не діє.
+        if (Math.Abs(target - Math.Round(target)) < eps && diff <= 1 + eps) points = Math.Max(points, OffByOne);
+        return points;
     }
 
     /// <summary>
@@ -351,7 +424,11 @@ public sealed class Skilky : Game
             answer = _answer,
             // Клієнтові треба знати, як підписати промах: «на 12 % менше» чи просто «різниця 12» для років.
             years = _years,
-            rows = _reveal.Select(r => new { seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points, bonus = r.Bonus }).ToArray(),
+            rows = _reveal.Select(r => new
+            {
+                seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points,
+                accuracy = r.Accuracy, bonus = r.Bonus, fast = r.Fast,
+            }).ToArray(),
         },
         scores = (long[])_scores.Clone(),
         result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
@@ -413,12 +490,12 @@ public sealed class Skilky : Game
         "В яблучко, і не збоку, а в саму серцевину — {0}.",
     ];
 
-    /// <summary>Найближчий і той нічого не взяв за точність: хвалити нема за що.</summary>
+    /// <summary>Найближчий і той нічого не взяв за точність: хвалити нема за що, хіба одним очком за першість.</summary>
     static readonly string[] Wide =
     [
-        "Ех, ніхто навіть близько. Найближче — {0}, і той повз на {1}.",
-        "Мимо всі. Найменший промах — {0}: {1} убік. Очок за таке не дають.",
-        "Порядок величин сьогодні не з нами: найближче — {0}, різниця {1}.",
+        "Ех, ніхто навіть близько. Найближче — {0}, і той повз на {1}. Одне очко — за сміливість.",
+        "Мимо всі. Найменший промах — {0}: {1} убік. Тримай одне очко втіхи.",
+        "Порядок величин сьогодні не з нами: найближче — {0}, різниця {1}. Очко за першість, і все.",
     ];
 
     static readonly string[] Silence =
@@ -432,7 +509,7 @@ public sealed class Skilky : Game
     {
         if (rows.Count == 0) return Silence[Ctx.Rng.Next(Silence.Length)];
         var best = rows[0];
-        var bank = best.Points == 0 ? Wide : SameDiff(best.Diff, 0) ? Exact : Flavors;
+        var bank = best.Accuracy == 0 ? Wide : SameDiff(best.Diff, 0) ? Exact : Flavors;
         return string.Format(CultureInfo.InvariantCulture, bank[Ctx.Rng.Next(bank.Length)],
             Ctx.NickOf(best.Seat) ?? SeatName(best.Seat), Num(best.Diff));
     }

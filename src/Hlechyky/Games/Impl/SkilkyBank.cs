@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Hlechyky.Games.Impl;
@@ -20,6 +22,15 @@ public sealed class SkilkyQuestion
     public string? Src { get; init; }
 
     public bool IsDynamic => !string.IsNullOrWhiteSpace(Dyn);
+
+    string? _key;
+
+    /// <summary>
+    /// Стабільний короткий ключ запитання для пам'яті «хто вже бачив» (<see cref="SkilkySeen"/>): 16 hex-знаків
+    /// SHA-256 від тексту. Від тексту, а не від номера в файлі: банк дописується й сортується, а переписане
+    /// запитання й так варто вважати новим.
+    /// </summary>
+    public string Key => _key ??= Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Q.Trim())))[..16];
 }
 
 /// <summary>

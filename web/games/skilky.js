@@ -5,9 +5,9 @@
   Вид (подія 'room', свій для кожного місця — гра Hidden):
     { round, of, phase: 'between'|'ask'|'reveal'|'done', question, unit, endsAt,
       answered: bool[], my: number|null,
-      reveal: null | { answer, years, rows: [{ seat, value, diff, points, bonus }] },
+      reveal: null | { answer, years, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
       scores: number[], result: null | { winners, scores } }
-  points — уже разом із бонусом найближчому (bonus), тож «за точність» = points − bonus.
+  points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані).
   Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
     { round, of, phase, endsAt, answered, scores }
   Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
@@ -20,8 +20,9 @@
   const MS = { between: 3000, ask: 30000, reveal: 6000 };
 
   /// Шкала очок словами — та сама, що в Skilky.Accuracy на сервері. Міняєш там — міняй і тут.
-  const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 3, до 25 % — 2, до двох разів — 1. '
-    + 'Роки: точно — 5, ±3 — 3, ±10 — 2, ±50 — 1. Найближчому ще +2';
+  const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 4 (промах на одиницю — теж 4), до 25 % — 3, до 50 % — 2, '
+    + 'до двох разів — 1. Роки: точно — 5, ±2 — 4, ±5 — 3, ±15 — 2, ±50 — 1. '
+    + 'Найближчому +1, навіть коли всі мимо. Однаково близько — швидшому ще +1';
 
   /// Число для ока: ціле — з пробілами між тисячами, дробове — без хвоста нулів.
   function num(v) {
@@ -29,6 +30,11 @@
     if (Math.abs(v - Math.round(v)) < 1e-9) return Math.round(v).toLocaleString('uk-UA');
     // Дробове теж українською: людина набирала «2,5», і крапка поруч із «1 000 000» ріже око.
     return v.toLocaleString('uk-UA', { maximumFractionDigits: 3 });
+  }
+
+  /// Рік пишемо як рік — «1986», а не «1 986»: розділювач тисяч у році ріже око.
+  function yearOr(years, v) {
+    return years && v != null && Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : num(v);
   }
 
   function state(root) {
@@ -113,18 +119,25 @@
     if (!r) return '';
     const rows = r.rows || [];
     const head = '<div class="skans"><span class="muted small">Правильна відповідь</span>'
-      + '<b>' + num(r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(v.unit) + '</i>' : '') + '</div>';
+      + '<b>' + yearOr(r.years, r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(v.unit) + '</i>' : '') + '</div>';
     if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>';
     return head + '<div class="skrows">' + rows.map((x) => {
       const bonus = x.bonus || 0;
-      const exact = x.points - bonus;
+      const fast = x.fast || 0;
+      const acc = x.accuracy != null ? x.accuracy : x.points - bonus - fast;
+      // Розклад суми показуємо лише тоді, коли є бонуси: «+5» без «5» під ним, але «+6» із «5+1».
+      const parts = [acc].concat(bonus ? [bonus] : [], fast ? [fast] : []);
+      const why = [acc ? acc + ' за точність' : '', bonus ? bonus + ' найближчому' : '', fast ? fast + ' за швидкість' : '']
+        .filter(Boolean).join(', ');
       return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '">'
-        + '<span class="skn">' + (bonus ? '🏆 ' : '') + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
-        + '<span class="skv">' + num(x.value) + '</span>'
+        + '<span class="skn">' + (bonus ? '🏆 ' : '') + (fast ? '⚡ ' : '')
+        + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
+        + '<span class="skv">' + yearOr(r.years, x.value) + '</span>'
         + '<span class="skd muted small">' + missText(r, x) + '</span>'
-        + '<span class="skp"' + (bonus ? ' title="' + exact + ' за точність і ' + bonus + ' найближчому"' : '') + '>'
+        + '<span class="skp"' + (why ? ' title="' + why + '"' : '') + '>'
         + (x.points ? '+' + x.points : '0')
-        + (bonus ? '<small>' + exact + '+' + bonus + '</small>' : '') + '</span></div>';
+        + (parts.length > 1 ? '<small>' + parts.join('+') + '</small>' : '')
+        + '</span></div>';
     }).join('') + '</div>';
   }
 
@@ -180,7 +193,7 @@
     unit.hidden = !unitText || !canAsk;
 
     const my = root.querySelector('.skmy');
-    const myText = v.my != null && phase === 'ask' ? 'Твоє число: ' + num(v.my) + '. Можна змінити, поки є час'
+    const myText = v.my != null && phase === 'ask' ? 'Твоє число: ' + yearOr(v.unit === 'рік', v.my) + '. Можна змінити, поки є час'
       : !ctx.mine && ctx.playing && phase === 'ask' ? 'Дивишся збоку'
       : '';
     if (my.textContent !== myText) my.textContent = myText;
