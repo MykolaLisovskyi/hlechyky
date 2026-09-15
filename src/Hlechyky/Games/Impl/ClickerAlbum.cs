@@ -148,6 +148,23 @@ public sealed partial class Clicker
         if (after > before && after == MasteryAt.Length) Ctx.Award(0, 0, "ach:potter-mastery");
     }
 
+    /// <summary>
+    /// Дарунок друга (цех) відкриває клітинку альбому, але не зірку й не майстерність: виріб обпалив не ти. Інакше двоє
+    /// друзів дарували б дзвінкі вироби один одному замість горна.
+    /// </summary>
+    void AlbumOnGift(ItemInfo item)
+    {
+        var row = AlbumWareIndex(item.Ware);
+        var col = AlbumStyleIndex(item.Style);
+        if (row < 0 || col < 0) return;
+        var bit = 1 << col;
+        if ((_albumCells[row] & bit) != 0) return;
+        _albumCells[row] |= bit;
+        AwayNote($"📒 Альбом: нова клітинка з дарунка — {WareOf(item.Ware)!.Name.ToLowerInvariant()}, {StyleWord(item.Style)}");
+        if (_albumCells[row] == FullRowMask) Ctx.Award(0, 0, "ach:potter-album-row");
+        if (AlbumOpenCount(_albumCells) == AlbumSize) Ctx.Award(0, 0, "ach:potter-album-all");
+    }
+
     /// <summary>Виліплено виріб: копнули глини — може, щось трипільське. Повний музей більше не шукає.</summary>
     void AlbumOnFormed(string ware)
     {

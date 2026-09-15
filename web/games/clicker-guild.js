@@ -309,6 +309,24 @@
     return '<svg class="clkg-house" viewBox="0 0 360 300" role="img" aria-label="Хата гончаря ' + esc(h.nick) + '">' + s + '</svg>';
   }
 
+  /// Під справжньою хатою (api.houseSvg живої хати) — лише полиці: найкращі вироби, дарунки й табличка з рангом.
+  function friendShelvesSvg(st, api, h) {
+    const esc = (x) => api.esc(st, x);
+    const ware = (w, style, q, x, y, s, slot) => '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')">'
+      + api.wareSvg(w, { style, quality: q, slot, wrap: false }) + '</g>';
+    let s = '<rect width="360" height="112" rx="10" fill="#2a1d14"/>';
+    s += '<path d="M16 70h150" stroke="#6b4423" stroke-width="5"/>';
+    (h.best || []).forEach((b, i) => { s += ware(b.ware, b.style, b.q, 20 + i * 48, 70 - 86 * 0.5, 0.5, 'fsb-' + i); });
+    s += '<text x="90" y="86" font-size="9" fill="#b8a38a" text-anchor="middle">' + ((h.best || []).length ? 'найкраще в коморі' : 'комора порожня') + '</text>';
+    s += '<path d="M190 70h156" stroke="#6b4423" stroke-width="5"/>';
+    (h.gifts || []).slice(0, 6).forEach((g, i) => { s += ware(g.ware, g.style, g.q, 192 + i * 26, 70 - 86 * 0.3, 0.3, 'fsg-' + i); });
+    s += '<text x="268" y="86" font-size="9" fill="#b8a38a" text-anchor="middle">полиця дарунків' + ((h.gifts || []).length ? ' · ' + h.gifts.length : '') + '</text>';
+    const title = (h.rank >= 3 ? 'Цехмістр ' : '') + h.nick;
+    s += '<rect x="96" y="92" width="168" height="18" rx="4" fill="#6b4423"/><text x="180" y="105" font-size="11" fill="#f4efe3" text-anchor="middle">'
+      + RANK_ICON[h.rank] + ' ' + esc(title) + '</text>';
+    return '<svg class="clkg-house clkg-shelves" viewBox="0 0 360 112" role="img" aria-label="Полиці гончаря ' + esc(h.nick) + '">' + s + '</svg>';
+  }
+
   function openHouse(st, api, nick) {
     const body = api.overlay(st, '<div class="clk-sub">🏠 Хата: ' + api.esc(st, nick) + '</div><div class="muted small">Відчиняємо двері…</div>', { cls: 'clkg-ov' });
     fetch('/api/games/clicker/house?nick=' + encodeURIComponent(nick), { headers: headers(st) })
@@ -319,7 +337,7 @@
         const esc = (x) => api.esc(st, x);
         const stat = (label, val) => '<span class="clkg-stat"><b>' + val + '</b><i>' + label + '</i></span>';
         body.innerHTML = '<div class="clk-sub">🏠 Хата: ' + esc(d.nick) + ' <span class="muted small">· ' + esc(rankName(st, d.rank)) + '</span></div>'
-          + friendHouseSvg(st, api, d)
+          + (api.houseSvg ? '<div class="clkg-fhouse">' + api.houseSvg(st, d) + '</div>' + friendShelvesSvg(st, api, d) : friendHouseSvg(st, api, d))
           + '<div class="clkg-stats">'
           + stat('глеків за весь час', api.potsShort(d.total))
           + stat('виліплено', api.short(d.formed))

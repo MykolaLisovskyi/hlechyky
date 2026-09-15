@@ -175,10 +175,11 @@ public sealed partial class Clicker
         {
             if (ValidGift(raw) is not { } g) continue;
             // На полицю, а не в комору: дарунок — пам'ять, а не товар. Інакше двоє друзів ганяли б вироби туди-сюди
-            // й продавали. Клітинку альбому дарунок мав би відкривати — це гачок AlbumOnGift, його додає інтегратор.
+            // й продавали. Зате дарунок відкриває клітинку альбому (без зірки й майстерності — див. AlbumOnGift).
             _giftShelf.Insert(0, g with { At = now });
             _giftsGot++;
-            AwayNote($"🎁 {g.From} подарував(ла) тобі: {ItemWords(new ItemInfo(g.Ware, g.Style, g.Quality))}");
+            AlbumOnGift(new ItemInfo(g.Ware, g.Style, g.Quality));
+            AwayNote($"🎁 Дарунок від {g.From}: {ItemWords(new ItemInfo(g.Ware, g.Style, g.Quality))}");
         }
         if (_giftShelf.Count > ClickerGuildService.ShelfSize)
             _giftShelf.RemoveRange(ClickerGuildService.ShelfSize, _giftShelf.Count - ClickerGuildService.ShelfSize);

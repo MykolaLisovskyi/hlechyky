@@ -409,9 +409,9 @@ public class ClickerGuildTests
 
         string save;
         lock (h.Room.Sync) save = h.Room.Game.Save()!;
-        // Альбом пише інший пакет — його поле підкладаємо прямо в JSON збереження.
+        // Альбом у збереженні — «виріб → список розписів» (ClickerAlbum.SaveAlbum): три клітинки на два вироби.
         var withAlbum = JsonNode.Parse(save)!.AsObject();
-        withAlbum["album"] = new JsonObject { ["cells"] = new JsonArray("pot|", "jug|kosiv") };
+        withAlbum["album"] = new JsonObject { ["cells"] = new JsonObject { ["pot"] = new JsonArray("", "kosiv"), ["jug"] = new JsonArray("kosiv") } };
         save = withAlbum.ToJsonString();
         var snap = Views.Json(ClickerGuildService.HouseSnapshot("Оля", save));
         var text = snap.GetRawText();
@@ -427,7 +427,7 @@ public class ClickerGuildTests
         Assert.Equal(2, snap.GetProperty("styles").GetArrayLength());
         Assert.Equal(2, snap.GetProperty("rank").GetInt32());
         Assert.Equal(42, snap.GetProperty("fired").GetInt64());
-        Assert.Equal(2, snap.GetProperty("album").GetInt32());
+        Assert.Equal(3, snap.GetProperty("album").GetInt32());
         Assert.Equal(JsonValueKind.Null, snap.GetProperty("tiles").ValueKind);
         Assert.Equal("Петро", snap.GetProperty("gifts")[0].GetProperty("from").GetString());
         Assert.Equal("kumanets", snap.GetProperty("best")[0].GetProperty("ware").GetString());

@@ -506,8 +506,8 @@ public sealed class ClickerGuildService
             tools = Known(house?["tools"], k => Clicker.Tools.Any(t => t.Key == k)),
             styles = Known(root["styles"], k => Clicker.Styles.Any(s => s.Key == k)),
             wear = Clicker.Styles.Any(s => s.Key == Str(root["wear"])) ? Str(root["wear"]) : "",
-            // Альбом і кахлі пише інший пакет: беремо лише кількість, якщо таке поле взагалі є.
-            album = CountOf(album?["cells"]),
+            // Альбом у збереженні — «виріб → список розписів»: клітинок стільки, скільки розписів у всіх списках.
+            album = album?["cells"] is JsonObject cells ? cells.Sum(kv => kv.Value is JsonArray a ? a.Count : 0) : (int?)null,
             tiles = CountOf(album?["stove"]),
             rank = Math.Clamp(Int(guild?["rank"]), 0, Clicker.GuildRanks.Length - 1),
             gifts,

@@ -936,6 +936,9 @@
     fire: 'kiln', stoke: 'kiln', light: 'kiln', roar: 'kiln', firing: 'kiln', wood: 'crackle', heat: 'crackle',
     coin: 'coins', sell: 'coins', bazaar: 'coins', trade: 'coins', market: 'coins', pay: 'coins',
     paint: 'swish', brush: 'swish', trace: 'swish', drop: 'pop',
+    // Назви, які кличуть горно, альбом, ярмарок і цех (їхні звіти інтеграторові).
+    'rank-up': 'rare', brag: 'pop', deal: 'coins', refuse: 'fail', event: 'catch', 'rep-up': 'done',
+    find: 'rare', stove: 'done', glue: 'pop', 'kiln-light': 'kiln', 'kiln-roar': 'kiln', ding: 'rare',
   };
 
   // ---------- відчуття: пружина, руки, трус, спалах ----------
@@ -1231,6 +1234,15 @@
       api.toolIcon = (key) => (TOOL_ART[key] ? '<svg viewBox="-16 -2 32 50" aria-hidden="true">' + TOOL_ART[key] + '</svg>' : '');
       api.decorIcon = (key) => (DECOR_ICON[key] ? svg32(DECOR_ICON[key]) : '');
       api.scene = SCENE;
+      /// Хата друга (цех): той самий малюнок із публічного знімка — драбина, знаряддя, прикраси; небо й пора — наші.
+      api.houseSvg = (st2, h) => {
+        const ups = {};
+        for (const l of (h && h.ladder) || []) ups[l.key] = { level: l.level };
+        const owned = (keys) => (keys || []).map((key) => ({ key, owned: true }));
+        const fake = { upgrades: ups, house: { tools: owned(h && h.tools), decor: owned(h && h.decor) }, secrets: [] };
+        const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
+        return '<svg class="clks-friend" viewBox="0 0 360 450" aria-hidden="true">' + houseSvg(envOf(st2 || st, fake, sky)) + '</svg>';
+      };
       // Руки гончаря — у SVG кола, над виробом (не обертаються з кругом).
       const wsvg = st.wheel && st.wheel.querySelector('svg');
       if (wsvg && !wsvg.querySelector('.clks-hands')) {

@@ -350,8 +350,8 @@
     if (g._sig === sig) return;
     g._sig = sig;
     if (!a.stove.length) { g.innerHTML = ''; return; }
-    // Угорі ліворуч, між рушником з іконою й вікном: піч 48×66 у координатах сцени 360×396.
-    g.innerHTML = '<g class="clka-hstove" transform="translate(78 50) scale(.22)"><title>Кахляна піч · ' + a.stove.length + ' з 12</title>'
+    // Жива хата (360×450): праворуч, під іконою (y 188…230) і над горном (y від 272) — піч ~35×48.
+    g.innerHTML = '<g class="clka-hstove" transform="translate(300 226) scale(.16)"><title>Кахляна піч · ' + a.stove.length + ' з 12</title>'
       + stoveSvg(api, a.stove, 'house', '').replace('<svg class="" viewBox="0 0 220 300" aria-hidden="true">', '').replace(/<\/svg>$/, '') + '</g>';
   }
 

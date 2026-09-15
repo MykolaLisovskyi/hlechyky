@@ -522,10 +522,11 @@ public sealed partial class Clicker
             if (roll < g.Weight) { kind = g.Key; break; }
             roll -= g.Weight;
         }
-        // Біля вікна (праворуч угорі) чи біля дверей (ліворуч посередині) — у відсотках сцени, як розписний глек.
+        // Біля вікна хати чи біля хвіртки в тину — лівий верхній кут фігурки у відсотках сцени (жива хата, 360×450):
+        // вікно x 226…280 / y 190…236, хвіртка x 96…120 / y 100…128; фігурка ~70 px, тож кут — трохи лівіше й вище.
         var window = Ctx.Rng.Next(2) == 0;
-        var x = window ? Ctx.Rng.Next(62, 73) : Ctx.Rng.Next(2, 11);
-        var y = window ? Ctx.Rng.Next(8, 21) : Ctx.Rng.Next(38, 55);
+        var x = window ? Ctx.Rng.Next(58, 65) : Ctx.Rng.Next(20, 26);
+        var y = window ? Ctx.Rng.Next(35, 41) : Ctx.Rng.Next(11, 17);
         _mktGuest = new FairGuestRow(kind, at, at + FairGuestShown, x, y);
     }
 
