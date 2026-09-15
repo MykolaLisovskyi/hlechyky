@@ -68,6 +68,12 @@
       + '<path d="M50 14c-10 0-17 6-17 14M50 14c10 0 17 6 17 14" stroke="rgba(0,0,0,.25)" stroke-width="3" fill="none"/>',
   };
 
+  /// Світлотінь заготовки на колі (одна на сторінку: id сталий).
+  const SHADE = '<defs><linearGradient id="clkw-shade" x1="0" y1="0" x2="1" y2="0">'
+    + '<stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset=".3" stop-color="#fff" stop-opacity=".2"/>'
+    + '<stop offset=".45" stop-color="#fff" stop-opacity=".05"/><stop offset=".8" stop-color="#000" stop-opacity=".12"/>'
+    + '<stop offset="1" stop-color="#000" stop-opacity=".5"/></linearGradient></defs>';
+
   /// Гладкий силует з профілю: права сторона знизу вгору, ліва — дзеркально, вінця — плоскі.
   function profilePath(pts) {
     const r = pts.map(([y, w]) => [50 + w, y]);
@@ -131,7 +137,8 @@
       const k = (p - 0.42) / 0.28;
       const h = 22 + (H * 0.92 - 22) * k;
       const w = 15 + (avg - 15) * k;
-      return { pts: resample(() => w, h), open: true };
+      // Стінки під пальцями не стоять рівно: трохи пузата посередині й звужена до вінець — не відро, а заготовка.
+      return { pts: resample((t) => w * (1 + 0.1 * Math.sin(Math.PI * t) - 0.12 * t * t), h), open: true };
     }
     const k = Math.min(1, (p - 0.7) / 0.3);
     const h = H * 0.92 + H * 0.08 * k;
@@ -172,7 +179,8 @@
     }
     const rule = evenodd ? ' fill-rule="evenodd" clip-rule="evenodd"' : '';
     const wet = o.raw && !o.dry;
-    let g = '<g class="clkw' + (o.raw ? ' raw' : '') + (wet ? ' wet' : '') + '" style="--clkw-body:' + body + '">'
+    let g = '<g class="clkw' + (o.raw ? ' raw' : '') + (wet ? ' wet' : '') + (forming ? ' forming' : '') + '" style="--clkw-body:' + body + '">'
+      + (forming ? SHADE : '')
       + '<clipPath id="' + id + '"><path d="' + shape + '"' + rule + '/></clipPath>'
       + '<path d="' + shape + '" fill="' + body + '"' + rule + '/>';
     if (!forming && !o.raw && style) {
@@ -185,9 +193,11 @@
       const f = formingProfile(ware, Math.max(0, o.progress));
       const top = f.pts[f.pts.length - 1];
       if (f.open) g += '<ellipse cx="50" cy="' + top[0].toFixed(1) + '" rx="' + Math.max(1, top[1] - 2.5).toFixed(1) + '" ry="2.4" fill="rgba(0,0,0,.35)"/>';
-      // Мокра глина блищить борознами від пальців.
-      g += '<g clip-path="url(#' + id + ')" stroke="rgba(255,255,255,.14)" stroke-width="1" fill="none">'
-        + '<path d="M20 80h60M20 72h60M20 64h60M20 56h60M20 48h60M20 40h60"/></g>';
+      // Об'єм: тінь по краях і мокрий відблиск ліворуч від центру — інакше заготовка читається плоским прямокутником.
+      g += '<g clip-path="url(#' + id + ')"><rect x="10" y="10" width="80" height="80" fill="url(#clkw-shade)"/>'
+        // Борозни від пальців — тонкі дуги, що біжать довкола (коло крутиться), а не рівні смуги.
+        + '<g stroke="rgba(255,255,255,.1)" stroke-width=".7" fill="none">'
+        + '<path d="M22 81q28 3 56-1M22 74q28 3 56-1M22 67q28 3 56-1M22 60q28 3 56-1M22 53q28 3 56-1M22 46q28 3 56-1M22 39q28 3 56-1"/></g></g>';
     } else if (DETAIL[ware]) {
       g += DETAIL[ware];
     }

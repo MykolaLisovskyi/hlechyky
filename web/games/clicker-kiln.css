@@ -75,6 +75,10 @@
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border-radius: 10px; text-align: left;
   border: 1px solid var(--line); background: var(--panel);
 }
+/* Довгі умови відкриття («з косівським розписом у колекції…») переносяться, а не вилазять за картку. */
+.clkk-tech { min-width: 0; }
+.clkk-tech > * { max-width: 100%; white-space: normal; overflow-wrap: break-word; }
+.clkk-tech > b { font-size: .95em; hyphens: auto; }
 .clkk-tech.on { border-color: var(--accent2); }
 .clkk-tech.locked { opacity: .55; }
 .clkk-ticon { font-size: 18px; line-height: 1; }

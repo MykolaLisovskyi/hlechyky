@@ -1,6 +1,8 @@
 /* Ремесло Гончарного кола: виріб на колі, сирці на полиці, рядок ліплення, вибір виробу, комора. */
 
 .clkw.wet > path:first-of-type { filter: brightness(.78) saturate(1.1); }
+/* На колі мокра глина не темнішає: чорна глина інакше зливалась би з кругом, об'єм дає світлотінь. */
+.clkw.wet.forming > path:first-of-type { filter: saturate(1.1) brightness(1.08); }
 .clkw.raw:not(.wet) > path:first-of-type { filter: brightness(1.12) saturate(.75); }
 .clkw-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame 1.1s ease-in-out infinite alternate; }
 
