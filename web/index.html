@@ -8,13 +8,14 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/games/core.css">
 </head>
-<body class="view-main">
+<body class="route-efir">
 <header>
   <div class="brand"><img src="/static/icon.svg" alt=""><span id="siteName">Глечики</span></div>
-  <div class="vswitch">
-    <button id="vsMain" class="on">📻 Ефір</button>
-    <button id="vsGames">🎮 Ігри</button>
-  </div>
+  <nav class="vswitch" id="mainNav" aria-label="Розділи">
+    <button data-route="efir" class="on" title="Що зараз грає, черга, закинути пісню"><span class="ico">📻</span><span class="lbl">Ефір</span></button>
+    <button data-route="lib" title="Що вже було, улюблене, плейлисти, статистика"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
+    <button data-route="games" title="Столи, ігри, профіль"><span class="ico">🎮</span><span class="lbl">Ігри</span><span id="navGames" class="count" hidden></span></button>
+  </nav>
   <div class="player">
     <button id="playBtn" class="primary" title="Слухати ефір прямо тут">▶ Врубити</button>
     <input id="volume" type="range" min="0" max="100" step="1" value="90" title="Гучність">
@@ -22,72 +23,81 @@
   </div>
   <div class="spacer"></div>
   <div class="who">
+    <span id="hdrWallet" class="chip wallet" title="Черепки">🏺 <b>—</b></span>
     <span id="liqStatus" class="chip ok" title="Стан ефіру">ефір</span>
     <span id="nickBtn" class="nick" title="Змінити нік">…</span>
+    <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
 </header>
 
 <main>
   <div class="col" id="colMain">
-    <section class="panel now-panel">
-      <h2>В ефірі</h2>
-      <div id="banner" class="banner" hidden></div>
-      <div id="now" class="now"></div>
-      <div id="flyLayer"></div>
-    </section>
+    <div class="view" id="viewEfir">
+      <section class="panel now-panel">
+        <h2>В ефірі</h2>
+        <div id="banner" class="banner" hidden></div>
+        <div id="now" class="now"></div>
+        <div id="flyLayer"></div>
+      </section>
 
-    <section class="panel">
-      <h2>Закинути пісню</h2>
-      <div class="add">
-        <div class="row">
-          <input id="q" type="search" placeholder="Назва, виконавець або посилання (YouTube, YT Music, Spotify…)" autocomplete="off">
-          <button id="addBtn" class="primary">Закинути</button>
-          <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
+      <section class="panel">
+        <h2>Закинути пісню</h2>
+        <div class="add">
+          <div class="row">
+            <input id="q" type="search" placeholder="Назва, виконавець або посилання (YouTube, YT Music, Spotify…)" autocomplete="off">
+            <button id="addBtn" class="primary">Закинути</button>
+            <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
+          </div>
+          <div id="results" class="results"></div>
+          <div id="rec" class="rec" hidden></div>
+          <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
         </div>
-        <div id="results" class="results"></div>
-        <div id="rec" class="rec" hidden></div>
-        <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
-      </div>
-    </section>
+      </section>
 
-    <section class="panel">
-      <h2>Черга <span id="queueCount" class="count"></span></h2>
-      <ul id="queue" class="queue"></ul>
-    </section>
+      <section class="panel">
+        <h2>Черга <span id="queueCount" class="count"></span></h2>
+        <ul id="queue" class="queue"></ul>
+      </section>
 
-    <section class="panel dj-panel">
-      <div class="dj-head">
-        <img src="/static/glek.svg" alt="">
-        <div>
-          <h2><span id="djName">Дядько Глек</span> радить</h2>
-          <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+      <section class="panel dj-panel">
+        <div class="dj-head">
+          <img src="/static/glek.svg" alt="">
+          <div>
+            <h2><span id="djName">Дядько Глек</span> радить</h2>
+            <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+          </div>
         </div>
-      </div>
-      <div id="sugCards" class="sug-cards"></div>
-    </section>
+        <div id="sugCards" class="sug-cards"></div>
+      </section>
+    </div>
 
-    <section class="panel">
-      <div class="tabs" id="libTabs">
-        <button data-tab="history" class="on">Що вже було</button>
-        <button data-tab="likes">❤ Улюблене</button>
-        <button data-tab="playlists">Плейлисти</button>
-        <button data-tab="rating">Рейтинг</button>
-        <button data-tab="top">Хто скільки</button>
-        <button data-tab="bans">🚫 Бан</button>
-        <button data-tab="ads" id="adsTab" hidden>📣 Реклама</button>
-      </div>
-      <div id="lib"></div>
-    </section>
+    <div class="view" id="viewLib">
+      <section class="panel">
+        <div class="tabs" id="libTabs">
+          <button data-tab="history" class="on">🕘 Що вже було</button>
+          <button data-tab="likes">❤ Улюблене</button>
+          <button data-tab="playlists">📂 Плейлисти</button>
+          <button data-tab="rating">📈 Рейтинг</button>
+          <button data-tab="top">🏅 Хто скільки</button>
+          <button data-tab="bans">🚫 Бан</button>
+          <button data-tab="ads" id="adsTab" hidden>📣 Реклама</button>
+        </div>
+        <div id="lib"></div>
+      </section>
+    </div>
+
+    <div class="view" id="viewGames">
+      <section class="panel" id="colGames">
+        <div id="games" class="games"></div>
+      </section>
+    </div>
   </div>
 
-  <section class="panel" id="colGames">
-    <div id="games" class="games"></div>
-  </section>
-
-  <section class="panel chat" id="colChat">
+  <aside class="panel chat" id="colChat">
     <div class="tabs" id="chatTabs">
       <button data-tab="chat" class="on">Балачки <span id="chatBadge" class="chip badge" hidden>0</span></button>
       <button data-tab="log">Журнал</button>
+      <button id="chatClose" class="icon chat-close" type="button" title="Згорнути балачки — клавіша ]" aria-label="Згорнути балачки">✕</button>
     </div>
     <div id="online" class="online"></div>
     <div id="messages" class="messages"></div>
@@ -100,13 +110,14 @@
       <input id="chatInput" type="text" placeholder="Отут тяпати… або / для команд" maxlength="500" autocomplete="off">
       <button class="primary" type="submit" title="Відправити">→</button>
     </form>
-  </section>
+  </aside>
 </main>
 
-<nav class="mtabs">
-  <button id="mtabMain" class="on"><span class="ico">📻</span>Ефір</button>
-  <button id="mtabGames"><span class="ico">🎮</span>Ігри</button>
-  <button id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
+<nav class="mtabs" aria-label="Розділи">
+  <button data-route="efir" class="on"><span class="ico">📻</span>Ефір</button>
+  <button data-route="lib"><span class="ico">🎵</span>Бібліотека</button>
+  <button data-route="games"><span class="ico">🎮</span>Ігри</button>
+  <button data-route="chat" id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
 </nav>
 
 <div id="toasts" class="toasts"></div>

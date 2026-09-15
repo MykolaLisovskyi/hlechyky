@@ -42,6 +42,9 @@
   let chatTab = 'chat';
   let libTab = 'history';
   let queueDur = [];
+  let route = 'efir';                                        // efir | lib | games | chat (телефон)
+  let chatOpen = localStorage.getItem('chatOpen') !== '0';   // балачки типово відкриті
+  let baseTitle = 'Глечики';
 
   const dj = () => state?.djName || 'Дядько Глек';
   const djGen = () => state?.djNameGen || 'Дядька Глека';
@@ -277,7 +280,8 @@
       box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => conn && conn.invoke('React', b.dataset.e).catch(() => {}));
     }
     const playingTrack = n.track && (n.source === 'user' || n.source === 'autodj');
-    document.title = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
+    baseTitle = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
+    paintTitle();
     if (playState !== 'idle') updateMediaSession();
   }
 
@@ -549,7 +553,7 @@
     renderSuggestions();
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
-      if (libTab === 'history' || libTab === 'bans' || libTab === 'ads') loadLib();
+      if (route === 'lib' && (libTab === 'history' || libTab === 'bans' || libTab === 'ads')) loadLib();
     }
   }
 
@@ -659,11 +663,21 @@
 
   // ---------- chat + log ----------
   const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
-  function chatVisible() { return chatTab === 'chat' && (!isMobile() || document.body.classList.contains('view-chat')) && !document.hidden; }
+  // Повідомлення справді видно, коли відкрита вкладка «Балачки», сама панель не згорнута
+  // (на телефоні — коли стоїмо на вкладці балачок) і вкладка браузера на передньому плані.
+  function chatVisible() {
+    if (chatTab !== 'chat' || document.hidden) return false;
+    return isMobile() ? route === 'chat' : chatOpen;
+  }
   function setUnread(n) {
     unread = n;
-    for (const id of ['chatBadge', 'mChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    for (const id of ['chatBadge', 'mChatBadge', 'hdrChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    paintTitle();
   }
+  /// Заголовок вкладки: трек плюс «(3)», поки непрочитане нікуди не поділось.
+  function paintTitle() { document.title = (unread ? `(${unread}) ` : '') + baseTitle; }
+  /// Кличуть на ім'я — навіть коли балачки згорнуті, це має долетіти.
+  const mentionsMe = (text) => !!me.nick && me.nick.length > 1 && String(text || '').toLowerCase().includes(me.nick.toLowerCase());
   function addMessage(m, scroll = true, live = false) {
     const isLog = m.kind === 'system';
     const box = isLog ? $('log') : $('messages');
@@ -706,7 +720,10 @@
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();
     if (scroll) box.scrollTop = box.scrollHeight;
-    if (!isLog && scroll && !mine && !chatVisible()) setUnread(unread + 1);
+    if (!isLog && scroll && !mine && !chatVisible()) {
+      setUnread(unread + 1);
+      if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
+    }
   }
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
@@ -728,25 +745,59 @@
   }
   $('chatTabs').querySelectorAll('button').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
-  // Ефір / Ігри / Балачки. На широкому екрані Ігри займають місце Ефіру, а балачки лишаються
-  // збоку, щоб було з ким перемовитись; на телефоні видно рівно одну колонку.
-  function setView(v) {
-    for (const name of ['main', 'games', 'chat']) document.body.classList.toggle('view-' + name, v === name);
-    $('mtabMain').classList.toggle('on', v === 'main');
-    $('mtabGames').classList.toggle('on', v === 'games');
-    $('mtabChat').classList.toggle('on', v === 'chat');
-    $('vsMain').classList.toggle('on', v !== 'games');
-    $('vsGames').classList.toggle('on', v === 'games');
-    if (v === 'games') HGames.show(); else HGames.hide();
-    if (v === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
+  // ---------- маршрути ----------
+  // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #chat (вкладка балачок на телефоні).
+  // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
+  const ROUTES = ['efir', 'lib', 'games', 'chat'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'rating', 'top', 'bans', 'ads'];
+  let libShown = null;    // яку вкладку бібліотеки вже намалювали: щоб не смикати API на кожен маршрут
+
+  function parseHash() {
+    const raw = String(location.hash || '').replace(/^#/, '');
+    const i = raw.indexOf('/');
+    return i < 0 ? { head: raw, tail: '' } : { head: raw.slice(0, i), tail: raw.slice(i + 1) };
+  }
+  const hashFor = (r) => (r === 'lib' ? '#lib/' + libTab : '#' + r);
+  function go(hash) {
+    if (location.hash === hash) applyRoute(); else location.hash = hash;
+  }
+
+  function applyRoute() {
+    const { head, tail } = parseHash();
+    let r = ROUTES.includes(head) ? head : 'efir';
+    // На широкому екрані балачки — панель збоку, а не розділ: #chat лише розгортає її.
+    if (r === 'chat' && !isMobile()) {
+      setChatOpen(true);
+      history.replaceState(null, '', hashFor('efir'));
+      r = 'efir';
+    }
+    if (r === 'lib') libTab = LIB_TABS.includes(decodeURIComponent(tail)) ? decodeURIComponent(tail) : 'history';
+    route = r;
+    for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
+    document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
+      b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
+    $('libTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === libTab));
+    if (r === 'games') HGames.show(); else HGames.hide();
+    if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
+    if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
-  $('mtabMain').onclick = () => setView('main');
-  $('mtabGames').onclick = () => setView('games');
-  $('mtabChat').onclick = () => setView('chat');
-  $('vsMain').onclick = () => setView('main');
-  $('vsGames').onclick = () => setView('games');
+  window.addEventListener('hashchange', applyRoute);
+  document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.onclick = () => go(hashFor(b.dataset.route)));
   document.addEventListener('visibilitychange', () => { if (chatVisible()) setUnread(0); });
+
+  // ---------- балачки: згорнути / розгорнути ----------
+  function setChatOpen(on) {
+    chatOpen = on;
+    try { localStorage.setItem('chatOpen', on ? '1' : '0'); } catch { /* приватне вікно */ }
+    document.body.classList.toggle('chat-collapsed', !on);
+    if (on) { const box = chatTab === 'chat' ? $('messages') : $('log'); box.scrollTop = box.scrollHeight; }
+    if (chatVisible()) setUnread(0);
+  }
+  const toggleChat = () => (isMobile() ? go(route === 'chat' ? hashFor('efir') : '#chat') : setChatOpen(!chatOpen));
+  $('chatToggle').onclick = toggleChat;
+  $('chatClose').onclick = () => setChatOpen(false);
+  setChatOpen(chatOpen);
 
   // ---------- search / add ----------
   const q = $('q'), results = $('results');
@@ -791,8 +842,17 @@
   document.addEventListener('click', (e) => { if (!e.target.closest('.add')) results.innerHTML = ''; });
   q.addEventListener('focus', () => { if (lastResults.length && q.value.trim() === lastQuery) showResults(lastResults); });
   $('addBtn').onclick = (e) => busy(e.currentTarget, 'закидаю…', addFromInput);
+  // Каркас ігор слухає document раніше за нас (core.js підключений вище за app.js), тож клавішу,
+  // яку вже з'їла гра, він позначає preventDefault — і ми в неї не лізимо.
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) { e.preventDefault(); q.focus(); }
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable)) return;
+    if (e.key === '/') { e.preventDefault(); go(hashFor('efir')); q.focus(); return; }
+    if (e.key === ']') { e.preventDefault(); toggleChat(); return; }
+    if (e.key === '1') { e.preventDefault(); go(hashFor('efir')); }
+    else if (e.key === '2') { e.preventDefault(); go(hashFor('lib')); }
+    else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
   });
 
   async function addPick(r) {
@@ -1066,11 +1126,7 @@
   }
 
   // ---------- library: history / likes / playlists / stats ----------
-  $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => {
-    libTab = b.dataset.tab;
-    $('libTabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-    loadLib();
-  });
+  $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
   const trackRow = (t, right, extra) => `<li>
       ${cover(t)}
       <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
@@ -1361,12 +1417,21 @@
     });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
     conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
-    conn.start().then(() => { if (listening) conn.invoke('SetListening', true).catch(() => {}); loadLib(); }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    conn.start().then(() => { if (listening) conn.invoke('SetListening', true).catch(() => {}); if (route === 'lib') { libShown = libTab; loadLib(); } }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- boot ----------
   setPlayUi();
   HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
-  api('GET', '/api/me').then((m) => { me.role = m.role; me.banPrice = m.banPrice || 0; $('adsTab').hidden = me.role !== 'admin'; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
+  applyRoute();
+  api('GET', '/api/me').then((m) => {
+    me.role = m.role;
+    me.banPrice = m.banPrice || 0;
+    $('adsTab').hidden = me.role !== 'admin';
+    $('nickBtn').classList.toggle('admin', me.role === 'admin');
+    // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');
+    if (state) render();
+  }).catch(() => {});
   if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
 })();

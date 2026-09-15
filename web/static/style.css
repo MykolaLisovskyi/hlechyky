@@ -16,6 +16,9 @@
   --radius: 14px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --tabs-h: 0px;
+  /* Ширина балачок і проміжок до них. Згорнули панель — обидва стають нулем, і зміст займає все. */
+  --rail: 360px;
+  --rail-gap: 18px;
 }
 
 * { box-sizing: border-box; }
@@ -74,11 +77,19 @@ header .brand img { width: 32px; height: 32px; }
 header .player { display: flex; align-items: center; gap: 10px; }
 header .player input[type=range] { width: 150px; accent-color: var(--accent); }
 header .spacer { flex: 1; }
-header .vswitch { display: flex; gap: 4px; }
-header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }
+header .vswitch { display: flex; gap: 2px; background: var(--bg2); border-radius: 11px; padding: 2px; flex: none; }
+header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; border-radius: 9px; }
 header .vswitch button:hover { background: var(--panel2); color: var(--text); }
-header .vswitch button.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
-header .who { display: flex; align-items: center; gap: 8px; }
+header .vswitch button.on { background: var(--panel2); color: var(--text); }
+header .vswitch .ico { font-size: 1.05em; line-height: 1; }
+header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
+header .who { display: flex; align-items: center; gap: 8px; flex: none; }
+header .chip.wallet { background: var(--panel2); color: var(--accent); font-size: .9em; padding: 4px 10px; }
+header .chip.wallet b { font-variant-numeric: tabular-nums; }
+/* Кнопка балачок: бейдж непрочитаного сидить у ній же, тож ширина не стрибає на порожньому бейджі. */
+header .chat-toggle { position: relative; font-size: 1.05em; padding: 6px 9px; }
+body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); }
+header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 header .nick { cursor: pointer; padding: 5px 10px; border-radius: 999px; background: var(--panel2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header .nick:hover { background: var(--panel3); }
 header .nick.admin::after { content: " · адмін"; color: var(--accent); }
@@ -88,11 +99,17 @@ header .nick.admin::after { content: " · адмін"; color: var(--accent); }
 @keyframes blink { 50% { opacity: .25; } }
 
 /* ---- layout ---- */
-main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 18px; padding: 18px; max-width: 1400px; margin: 0 auto; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--rail-gap); padding: 18px; max-width: 1500px; margin: 0 auto; align-items: start; }
+body.chat-collapsed { --rail: 0px; --rail-gap: 0px; }
+body.chat-collapsed #colChat { display: none; }
+/* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
+.view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
+body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames { display: flex; }
 section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
 h2 { font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 h2 .count { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+#colMain { min-width: 0; }
 
 /* ---- now playing ---- */
 .now { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
@@ -218,8 +235,10 @@ button.vplay { padding: 3px 8px; }
 .bar { height: 6px; background: var(--accent2); border-radius: 999px; grid-column: 1 / -1; opacity: .7; }
 
 /* ---- chat ---- */
-.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; }
-.chat .tabs { margin-bottom: 8px; }
+.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; min-width: 0; }
+.chat .tabs { margin-bottom: 8px; align-items: center; }
+.chat .chat-close { margin-left: auto; background: transparent; border-color: transparent; color: var(--muted); padding: 4px 7px; }
+.chat .chat-close:hover { background: var(--panel2); color: var(--text); }
 .messages { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 .msg { line-height: 1.35; overflow-wrap: anywhere; }
 .msg .n { font-weight: 700; color: var(--accent); margin-right: 6px; }
@@ -286,10 +305,8 @@ button.vplay { padding: 3px 8px; }
 #listeners.on { color: var(--accent); }
 
 /* ---- ігри ---- */
-/* Тут лишається тільки місце під вкладку: усе, що всередині неї, — у web/games/core.css. */
-#colGames { display: none; }
-body.view-games #colGames { display: block; }
-body.view-games #colMain { display: none; }
+/* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
+#colGames { min-width: 0; }
 
 /* ---- mobile tabs ---- */
 .mtabs { display: none; }
@@ -298,15 +315,17 @@ body.view-games #colMain { display: none; }
   header { gap: 8px; padding: 8px 12px; }
   header .brand span { display: none; }
   header .player input[type=range] { display: none; }
-  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + 12px); gap: 12px; }
+  /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
+  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   section.panel { padding: 12px; }
   .chat { height: calc(100vh - 60px - var(--tabs-h) - 24px); position: static; min-height: 0; }
-  body.view-main #colChat, body.view-main #colGames { display: none; }
-  body.view-chat #colMain, body.view-chat #colGames { display: none; }
-  body.view-games #colChat { display: none; }
-  header .vswitch { display: none; }
+  #colChat { display: none; }
+  body.route-chat #colChat { display: flex; }
+  body.route-chat #colMain { display: none; }
+  .chat .chat-close { display: none; }
+  header .vswitch, header .chat-toggle { display: none; }
   .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabs-h); z-index: 6; background: rgba(15, 31, 24, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-  .mtabs button { flex: 1; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .95em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 0; }
+  .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .82em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 2px; }
   .mtabs button .ico { font-size: 1.25em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
   .toasts { bottom: calc(var(--tabs-h) + 12px); }
