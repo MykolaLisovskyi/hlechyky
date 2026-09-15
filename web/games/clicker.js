@@ -65,8 +65,21 @@
     if (st.parts.has(p.id)) return;
     st.parts.add(p.id);
     callPart(p, 'mount', st, H.api);
-    // Частина догнала вже відкриту картку: віддати їй останній вид, щоб не чекала наступної дії.
-    if (st.lastView) callPart(p, 'update', st, st.lastView, H.api);
+    // Частина догнала вже відкриту картку: віддати їй останній вид і перемалювати картку — ремесло й хата дають
+    // іншим частинам силуети й значки, і без цього гравець без дій так і дивився б на заглушки.
+    if (st.lastView) { callPart(p, 'update', st, st.lastView, H.api); refreshCard(st); }
+  }
+
+  /// Перемалювати картку з останнім видом: скинути підписи swap() і прогнати update ядра й частин. Раз на пачку запізнілих.
+  function refreshCard(st) {
+    if (st.refreshT) return;
+    st.refreshT = setTimeout(() => {
+      st.refreshT = 0;
+      if (!st.el || !st.ctx || !st.lastView || !st.root) return;
+      for (const el of st.el.querySelectorAll('*')) if (el._sig !== undefined) el._sig = null;
+      if (st.jugBox) st.jugBox._wear = null;
+      MOD.update(st.root, st.ctx);
+    }, 60);
   }
 
   H.part = (p) => {
@@ -87,6 +100,7 @@
         document.head.appendChild(l);
       }
       const sc = document.createElement('script');
+      sc.async = false;                // виконуються в порядку PART_IDS: ремесло й хата раніше за тих, хто малює їхнім api
       sc.src = '/games/clicker-' + id + '.js';
       sc.onerror = () => console.warn('[clicker] частина ' + id + ' не завантажилась');
       document.head.appendChild(sc);
@@ -521,6 +535,7 @@
       st.eyeBusy = false;
       // Озброїти кнопку своїм таймером, а не лише циклом малювання: у схованій вкладці rAF не крутиться.
       clearTimeout(st.eyeArm);
+      clearTimeout(st.refreshT);
       st.eyeArm = setTimeout(() => paintEye(st), EYE_ARM_MS + 30);
     }
     const open = st.eyeOpen && !locked;
@@ -1215,6 +1230,15 @@
 
   // ---------- api для частин ----------
 
+  /// Новий вузол вмісту вікна щоразу: відповідь сервера, що запізнилась (хата друга, мінігра), перевіряє
+  /// body.isConnected — і більше не перепише чуже вікно, відкрите за цей час.
+  function freshBody(st) {
+    const nb = document.createElement('div');
+    nb.className = 'clk-ov-body';
+    st.ov.body.replaceWith(nb);
+    st.ov.body = nb;
+  }
+
   H.api = {
     short, num, dec, big, span, plural, potsWord, potsShort, shards, mmss, jug, jugSvg, STYLE, swap, fleeting, serverNow, visible,
     storeGet, storeSet,
@@ -1280,10 +1304,16 @@
     /// Модальна панель поверх картки. Одна за раз: нова закриває попередню (з її onClose).
     overlay(st, html, opts) {
       if (!st.ov.el.hidden) H.api.closeOverlay(st);
+      freshBody(st);
       st.ov.body.innerHTML = html;
       st.ov.el.className = 'clk-overlay' + (opts && opts.cls ? ' ' + opts.cls : '');
       st.ov.onClose = (opts && opts.onClose) || null;
       st.ov.el.hidden = false;
+      // Картка буває вища за екран: вікно стає там, куди гравець зараз дивиться, а не вгорі картки.
+      const r = st.el.getBoundingClientRect();
+      const box = st.ov.el.firstElementChild;
+      box.style.marginTop = Math.max(0, Math.min(-r.top + 12, r.height - 160)) + 'px';
+      box.style.maxHeight = Math.max(240, window.innerHeight - 24) + 'px';
       return st.ov.body;
     },
     closeOverlay(st) {
@@ -1291,7 +1321,7 @@
       st.ov.el.hidden = true;
       const f = st.ov.onClose;
       st.ov.onClose = null;
-      st.ov.body.innerHTML = '';
+      freshBody(st);
       if (f) try { f(); } catch (e) { console.error(e); }
     },
     overlayOpen: (st) => !!st.ov && !st.ov.el.hidden,
@@ -1299,7 +1329,7 @@
 
   // ---------- модуль ----------
 
-  HGames.register({
+  const MOD = {
     id: 'clicker',
     icon: ICON,
     seatNames: ['гончар'],
@@ -1473,7 +1503,10 @@
       st.back = q('.clk-layer-back');
       st.ov = { el: q('.clk-overlay'), body: q('.clk-ov-body'), x: q('.clk-ov-x'), onClose: null };
       st.ov.x.onclick = () => H.api.closeOverlay(st);
-      st.ov.el.addEventListener('pointerdown', (e) => { if (e.target === st.ov.el) H.api.closeOverlay(st); });
+      // Закриваємо на click, а не на pointerdown: інакше на телефоні вікно зникало від дотику, а click того ж тапу
+      // натискав кнопку, що була під затемненням (продати виріб, відкрити іншу клітинку).
+      st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el) H.api.closeOverlay(st); });
+      st.root = root;
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
@@ -1553,6 +1586,8 @@
         } : null;
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
         if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
+        // Під вікном частини Око майстра було б невидиме, а кліки — не зараховані: майстер важливіший за вікно.
+        if (st.guard && H.api.overlayOpen(st)) H.api.closeOverlay(st);
         // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
         if (v.catalog) st.catalog = v.catalog;
         else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
@@ -1592,7 +1627,8 @@
       // Фокус на іншій кнопці картки — пробіл належить їй: на верстаті чи прилавку ми б крутили коло замість
       // покупки й продажу. Сама кнопка кола — наша: її власний click ми кліком не рахуємо.
       const on = document.activeElement;
-      if (on && on.tagName === 'BUTTON' && on !== st.wheel && st.el && st.el.contains(on)) return false;
+      if (on && on !== st.wheel && st.el && st.el.contains(on) && on.closest('button,summary,a,input,select,textarea,[tabindex]')) return false;
+      if (H.api.overlayOpen(st)) return false;
       // Затиснутий пробіл сипле keydown з repeat — це не клацання, а автоповтор клавіатури.
       if (!e.isTrusted || e.repeat || guardOn(st)) return true;
       if (!st.keyDown) st.keyDown = e.timeStamp;
@@ -1622,5 +1658,6 @@
       st.el = null;
       root._clk = null;
     },
-  });
+  };
+  HGames.register(MOD);
 })();

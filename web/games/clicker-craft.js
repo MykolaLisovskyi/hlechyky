@@ -380,7 +380,13 @@
         let armed = 0;
         all.onclick = () => {
           // Усе одним натиском — питаємо двічі: дзвінкі й розписні теж поїдуть.
-          if (!armed || Date.now() > armed) { armed = Date.now() + 3000; all.textContent = 'Точно все? Ще раз'; return; }
+          if (!armed || Date.now() > armed) {
+            armed = Date.now() + 3000;
+            const was = all.textContent;
+            all.textContent = 'Точно все? Ще раз';
+            setTimeout(() => { if (Date.now() >= armed && all.isConnected) all.textContent = was; }, 3050);
+            return;
+          }
           api.order(st, 'bazaar', { all: true });
         };
       }
@@ -440,7 +446,9 @@
       }
       st.craftRackLen = st.craft.rack.length;
       const count = st.craft.items.reduce((s, it) => s + it.n, 0);
-      api.tabLabel(st, 'store', count ? 'Комора · ' + count : 'Комора');
+      // Купці в дорозі тепер живуть у коморі (вкладку «Купці» сховав ярмарок) — їхній 🐴 теж тут.
+      const riding = (st.taken && st.taken.length) || 0;
+      api.tabLabel(st, 'store', 'Комора' + (count ? ' · ' + count : '') + (riding ? ' · 🐴' + riding : ''));
       st.shelfJugs._craft = null;
       paintBar(st, api);
       paintStore(st, api);

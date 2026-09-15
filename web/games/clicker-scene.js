@@ -773,7 +773,7 @@
 
     /// Один звук за назвою. Невідома назва — тихе «тук»: пакети можуть кликати свої назви, гра від цього не падає.
     play(name, o) {
-      if (!this.on) return;
+      if (!this.on || document.hidden) return;
       const ctx = this.ensure();
       if (!ctx || ctx.state !== 'running' && ctx.state !== 'suspended') return;
       if (this.voices > MAX_VOICES && name === 'clay') return;
@@ -921,6 +921,13 @@
       h.lp.frequency.setTargetAtTime(150 + 520 * level, now, 0.25);
     },
   };
+
+  // Вкладку браузера сховали — гул стихає, контекст засинає; повернулись — прокинеться на першому звуці (Snd.ensure).
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden || !Snd.ctx) return;
+    Snd.humTo(0);
+    if (Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
+  });
 
   /// Для перевірки з консолі: чи ввімкнено звук, у якому стані AudioContext, скільки голосів звучить.
   window.HClicker.soundState = () => ({ on: Snd.on, vol: Snd.vol, ctx: Snd.ctx ? Snd.ctx.state : null, voices: Snd.voices, hum: Snd.humLevel });
@@ -1234,6 +1241,11 @@
       api.toolIcon = (key) => (TOOL_ART[key] ? '<svg viewBox="-16 -2 32 50" aria-hidden="true">' + TOOL_ART[key] + '</svg>' : '');
       api.decorIcon = (key) => (DECOR_ICON[key] ? svg32(DECOR_ICON[key]) : '');
       api.scene = SCENE;
+      // Сцена поза екраном (прокрутили до майстерні чи чату) — CSS-анімації хати на паузі: це основна робота картки без дій.
+      if (window.IntersectionObserver && st.stage) {
+        st.scn.io = new IntersectionObserver((es) => { for (const e of es) st.stage.classList.toggle('clks-off', !e.isIntersecting); });
+        st.scn.io.observe(st.stage);
+      }
       /// Хата друга (цех): той самий малюнок із публічного знімка — драбина, знаряддя, прикраси; небо й пора — наші.
       api.houseSvg = (st2, h) => {
         const ups = {};
@@ -1241,7 +1253,11 @@
         const owned = (keys) => (keys || []).map((key) => ({ key, owned: true }));
         const fake = { upgrades: ups, house: { tools: owned(h && h.tools), decor: owned(h && h.decor) }, secrets: [] };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
-        return '<svg class="clks-friend" viewBox="0 0 360 450" aria-hidden="true">' + houseSvg(envOf(st2 || st, fake, sky)) + '</svg>';
+        // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.
+        const vars = [...((st.stage && st.stage.style) || [])].filter((k) => k.startsWith('--clks-'))
+          .map((k) => k + ':' + st.stage.style.getPropertyValue(k)).join(';');
+        const art = houseSvg(envOf(st2 || st, fake, sky)).replace(/(id="|url\(#|href="#)clks-/g, '$1clksf-');
+        return '<svg class="clks-friend" viewBox="0 0 360 450" aria-hidden="true" style="' + vars + '">' + art + '</svg>';
       };
       // Руки гончаря — у SVG кола, над виробом (не обертаються з кругом).
       const wsvg = st.wheel && st.wheel.querySelector('svg');
@@ -1309,7 +1325,10 @@
     unmount(st, api) {
       if (!st.scn) return;
       clearInterval(st.scn.watch);
+      if (st.scn.io) st.scn.io.disconnect();
       Snd.humTo(0);
+      // Остання картка закрилась — звук засинає зовсім (осцилятори гулу не крутяться вхолосту).
+      if (HClicker.mounted.size <= 1 && Snd.ctx && Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
       if (st.scn.sound) { st.scn.sound.closeAt(); if (st.el) st.el.removeEventListener('pointerdown', st.scn.sound.wake, { capture: true }); }
       st.scn = null;
     },

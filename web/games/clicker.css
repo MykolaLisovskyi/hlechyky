@@ -436,7 +436,7 @@
   padding: 12px; background: rgba(6, 12, 9, .72); border-radius: 14px; overflow-y: auto;
 }
 .clk-ov-box {
-  position: relative; width: 100%; max-width: 640px; background: var(--bg2); border: 1px solid var(--line);
+  position: relative; width: 100%; max-width: 640px; overflow-y: auto; align-self: flex-start; background: var(--bg2); border: 1px solid var(--line);
   border-radius: 14px; padding: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
 }
 .clk-ov-x { position: absolute; top: 6px; right: 6px; padding: 2px 9px; }

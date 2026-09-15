@@ -797,11 +797,21 @@
     if (!Number.isFinite(at)) return;
     if (st.kSeen == null) st.kSeen = +api.storeGet('clk.kiln.seen', '0') || 0;
     if (at <= st.kSeen) return;
-    st.kSeen = at;
-    api.storeSet('clk.kiln.seen', String(at));
+    const seen = () => { st.kSeen = at; api.storeSet('clk.kiln.seen', String(at)); };
     // Давнє відкриття (підмайстер без нас годину тому) — лише в «Останньому горні», без події.
-    if (api.serverNow(st) - at > 10 * 60 * 1000) return;
-    if (api.overlayOpen(st) && st.kPaint) return;
+    if (api.serverNow(st) - at > 10 * 60 * 1000) { seen(); return; }
+    // Підмайстер чи автогорно відкрили, поки гравець клацає коло: велике вікно посеред клацання з'їло б кліки. Тост —
+    // і все; подія — лише для власного обпалу або коли гравець сам дивиться на горно.
+    if (l.helper && st.tab !== 'kiln') {
+      seen();
+      const whole = l.items.filter((it) => it[1] > 0).length;
+      api.toast(st, '🔥 Підмайстри відкрили горно: ' + whole + ' ' + api.plural(whole, 'виріб', 'вироби', 'виробів') + ' у коморі', 'ok');
+      api.sparks(st, st.fx, 8, true, 88, 70);
+      return;
+    }
+    // Вікно розпису відкрите чи майстер питає — покажемо, щойно звільниться (seen ще не записано).
+    if (api.guardOn(st) || api.overlayOpen(st)) return;
+    seen();
     reveal(st, api, l, false);
   }
 

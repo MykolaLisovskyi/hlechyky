@@ -5,7 +5,7 @@
 */
 
 /* Типові значення змінних неба — на випадок, якщо скрипт ще не встиг їх поставити (день). */
-.clk-stage {
+.clk-stage, .clks-friend {
   --clks-sky1: #3d82c4; --clks-sky2: #a8d3ee; --clks-far: #6f9463; --clks-near: #88a743; --clks-river: #5b9ad0;
   --clks-road: #a2835a; --clks-wall: #6d513a; --clks-wall2: #50392a; --clks-floor: #45321f; --clks-thatch: #b89150;
   --clks-lamp: .1; --clks-stars: 0; --clks-sunop: 1; --clks-moonop: 0; --clks-sunx: 180px; --clks-suny: 30px;
@@ -201,8 +201,11 @@
 
 /* Без руху: хата стоїть (віз і чайка — на місці, дим — застиглий клуб), руки й спалах — без анімації. */
 @media (prefers-reduced-motion: reduce) {
-  .clk-house *, .clks-hands * { animation: none !important; }
+  .clk-house *, .clks-hands *, .clks-friend * { animation: none !important; }
   .clks-sunpos, .clks-moonpos, .clks-hand, .clks-hands { transition: none; }
   .clks-flash { animation-duration: .2s; }
   .clk-sparks .clk-spark:not(.gold) { animation: none; opacity: 0; }
 }
+
+/* Сцена поза екраном — анімації хати на паузі (перемикає IntersectionObserver у clicker-scene.js). */
+.clk-stage.clks-off *, .clk-stage.clks-off *::before, .clk-stage.clks-off *::after { animation-play-state: paused !important; }

@@ -160,3 +160,6 @@
   .clka-found { animation: none; opacity: 1; }
   .clka-ring .fg { transition: none; }
 }
+
+/* Плашка знахідки лише показує: правило шару .clk-layer-front > div > * вмикало б їй торкання, і вона ковтала б тапи по розписному глеку. */
+.clk-layer-front .clka-found { pointer-events: none; }

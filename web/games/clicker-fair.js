@@ -362,6 +362,7 @@
 
   function paintOrders(st, api) {
     const k = st.fair;
+    if (!k) return;                    // картку вже закрили (таймер угоди чи відповідь сервера прийшли пізніше)
     const m = k.m;
     if (!m || !k.ordersEl) return;
     const sn = api.serverNow(st);
