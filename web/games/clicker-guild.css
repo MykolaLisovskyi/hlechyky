@@ -1,1 +1,113 @@
-/* Частина «guild» Гончарного кола — див. docs/games/specs/clicker-v7.md. Поки порожньо. */
+/* Цех Гончарного кола: віз тижня, дарунки, ранг, гончарі й хата друга (clicker-guild.js). */
+
+.clkg { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.clkg-intro { line-height: 1.35; }
+.clkg-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px; min-width: 0;
+  border-radius: 12px; background: var(--panel); border: 1px solid var(--line);
+}
+.clkg-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.clkg-btns button { max-width: 100%; white-space: normal; text-align: left; }
+
+/* ---- віз ---- */
+.clkg-wagon { width: 100%; max-width: 420px; height: auto; align-self: center; }
+.clkg-ware { animation: clkgdrop .45s cubic-bezier(.3, 1.4, .6, 1) both; animation-delay: var(--d, 0ms); }
+.clkg-wagon.roll .clkg-wheel { animation: clkgroll 1.6s ease-out; }
+.clkg-flag { transform-box: fill-box; transform-origin: 0 100%; animation: clkgflag 2.4s ease-in-out infinite alternate; }
+@keyframes clkgdrop { from { transform: translateY(-90px); opacity: 0; } }
+@keyframes clkgroll { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@keyframes clkgflag { from { transform: skewY(-3deg); } to { transform: skewY(3deg); } }
+
+.clkg-line { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.clkg-line b { font-size: 1.3em; color: var(--accent); }
+.clkg-bar { position: relative; height: 12px; margin: 4px 10px 22px 2px; border-radius: 6px; background: rgba(255, 255, 255, .08); }
+.clkg-fill, .clkg-mine { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; transition: width .5s; }
+.clkg-fill { background: linear-gradient(90deg, #8a5a2b, var(--clay), var(--accent2)); }
+.clkg-mine { background: rgba(255, 255, 255, .22); }
+.clkg-mark { position: absolute; top: -3px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.clkg-mark b { font-size: 13px; line-height: 18px; filter: grayscale(1) opacity(.55); }
+.clkg-mark.on b { filter: none; }
+.clkg-mark i { font-style: normal; font-size: 10px; color: var(--muted); }
+.clkg-mark::before { content: ''; position: absolute; top: 3px; width: 2px; height: 12px; background: rgba(0, 0, 0, .35); }
+
+.clkg-subs { display: flex; flex-wrap: wrap; gap: 6px; }
+.clkg-sub {
+  display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px; border-radius: 999px;
+  background: var(--panel2); font-size: .85em;
+}
+.clkg-sub b { color: var(--muted); font-weight: 600; }
+.clkg-sub.done b { color: var(--ok); }
+.clkg-ico { width: 22px; height: 24px; }
+.clkg-givers { display: flex; flex-wrap: wrap; gap: 4px; }
+.clkg-chip { padding: 2px 8px; border-radius: 999px; background: var(--panel2); font-size: .8em; }
+.clkg-chip.me { box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkg-claim { animation: clkgpulse 1.4s ease-in-out infinite alternate; }
+@keyframes clkgpulse { from { box-shadow: 0 0 0 0 rgba(244, 197, 66, .0); } to { box-shadow: 0 0 14px 2px rgba(244, 197, 66, .45); } }
+
+/* ---- дарунки ---- */
+.clkg-shelf {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 4px 2px; border-bottom: 5px solid #6b4423; border-radius: 2px;
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, .15));
+}
+.clkg-gift { display: flex; flex-direction: column; align-items: center; width: 56px; }
+.clkg-gift i { font-style: normal; font-size: 10px; color: var(--muted); max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clkg-gift.q3 svg { filter: drop-shadow(0 0 5px rgba(244, 197, 66, .55)); }
+.clkg-mid { width: 40px; height: 42px; }
+
+/* ---- ранг ---- */
+.clkg-path { display: flex; align-items: center; gap: 2px; overflow-x: auto; padding-bottom: 2px; }
+.clkg-step { display: flex; flex-direction: column; align-items: center; min-width: 58px; opacity: .5; }
+.clkg-step b { font-size: 20px; }
+.clkg-step i { font-style: normal; font-size: 11px; }
+.clkg-step.done { opacity: .85; }
+.clkg-step.on { opacity: 1; }
+.clkg-step.on b { filter: drop-shadow(0 0 6px rgba(244, 197, 66, .7)); }
+.clkg-step.on i { color: var(--accent); font-weight: 600; }
+.clkg-dash { flex: 1 1 10px; min-width: 6px; height: 2px; background: var(--line); }
+.clkg-req { display: grid; grid-template-columns: minmax(0, 1fr) 90px 72px; align-items: center; gap: 6px; font-size: .85em; }
+.clkg-req b { text-align: right; white-space: nowrap; }
+.clkg-req.ok b { color: var(--ok); }
+.clkg-rbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.clkg-rbar i { display: block; height: 100%; background: var(--accent2); }
+.clkg-req.ok .clkg-rbar i { background: var(--ok); }
+.clkg-piece {
+  display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 10px; border: 1px dashed var(--line);
+}
+.clkg-piece > div { display: flex; flex-direction: column; min-width: 0; }
+.clkg-piece:not(.have) .clkg-big { filter: grayscale(.7) brightness(.7); }
+.clkg-piece.have { border-color: var(--accent2); border-style: solid; }
+.clkg-big { width: 54px; height: 56px; flex: none; }
+.clkg-perks { display: flex; flex-direction: column; gap: 3px; }
+.clkg-auto { display: flex; gap: 6px; align-items: flex-start; font-size: .85em; cursor: pointer; }
+.clkg-top { padding: 6px; border-radius: 10px; background: rgba(244, 197, 66, .08); }
+
+/* ---- гончарі ---- */
+.clkg-potter { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+.clkg-potter:first-of-type { border-top: 0; }
+.clkg-pico { font-size: 20px; }
+.clkg-pname { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.clkg-pname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clkg-potter button { white-space: nowrap; }
+
+/* ---- overlay: вибір виробу й хата друга ---- */
+.clkg-pick { margin-top: 8px; }
+.clkg-friends { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.clkg-friends button.active { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkg-house { width: 100%; height: auto; border-radius: 10px; margin: 6px 0; }
+.clkg-fire { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame 1.1s ease-in-out infinite alternate; }
+.clkg-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.clkg-stat { display: flex; flex-direction: column; padding: 4px 6px; border-radius: 8px; background: var(--panel); }
+.clkg-stat b { color: var(--accent); }
+.clkg-stat i { font-style: normal; font-size: 11px; color: var(--muted); }
+
+@media (max-width: 420px) {
+  .clkg-card { padding: 8px; }
+  .clkg-req { grid-template-columns: minmax(0, 1fr) 56px 64px; }
+  .clkg-potter { flex-wrap: wrap; }
+  .clkg-potter button { margin-left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clkg-ware, .clkg-wagon.roll .clkg-wheel, .clkg-flag, .clkg-claim, .clkg-fire { animation: none; }
+  .clkg-fill, .clkg-mine { transition: none; }
+}
