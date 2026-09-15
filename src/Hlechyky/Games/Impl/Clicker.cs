@@ -70,7 +70,7 @@ public sealed record ClickerStyle(string Key, string Name, long Price);
 /// Від автоклікерів і скриптів коло стереже Око майстра (<see cref="ClickerGuard"/>): кліки приходять із почерком,
 /// за робочий почерк і раз на кілька сотень кліків треба торкнутись глечиків на картинці, за три помилки — пауза.
 /// </summary>
-public sealed class Clicker : Game
+public sealed partial class Clicker : Game
 {
     /// <summary>Скільки глеків іде за один черепок.</summary>
     public const int Rate = 100;
@@ -300,7 +300,8 @@ public sealed class Clicker : Game
     /// </summary>
     double AllMult => Math.Pow(1.25, Level("clay"))
         * (1 + StyleBonus * _styles.Count)
-        * (1 + (Has("seal") ? SealStampBonus : StampBonus) * _stamps);
+        * (1 + (Has("seal") ? SealStampBonus : StampBonus) * _stamps)
+        * (1 + DecorBonus * _decor.Count);
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult;
@@ -313,7 +314,8 @@ public sealed class Clicker : Game
             var sum = 0.0;
             foreach (var up in Shop)
                 if (up.Kind == ClickerKind.Idle) sum += Level(up.Key) * up.Rate * Math.Pow(2, MarksOf(up));
-            return sum * AllMult;
+            // Біла глина — для того, хто чекає; відро з водою — трохи до всього пасиву.
+            return sum * AllMult * ClayNow.Passive * (Tool("bucket") ? BucketPassive : 1);
         }
     }
 
@@ -326,7 +328,8 @@ public sealed class Clicker : Game
         get
         {
             var wheel = Shop[0];
-            return (_marks.Contains(MarkKey(wheel, 1)) ? 0.01 : 0) + (_marks.Contains(MarkKey(wheel, 2)) ? 0.02 : 0);
+            return (_marks.Contains(MarkKey(wheel, 1)) ? 0.01 : 0) + (_marks.Contains(MarkKey(wheel, 2)) ? 0.02 : 0)
+                + (Tool("string") ? 0.01 : 0);
         }
     }
 
@@ -340,7 +343,8 @@ public sealed class Clicker : Game
         get
         {
             var wheel = Shop[0];
-            var hands = (1 + Level("wheel")) * (_marks.Contains(MarkKey(wheel, 0)) ? 2 : 1) * AllMult;
+            var hands = (1 + Level("wheel")) * (_marks.Contains(MarkKey(wheel, 0)) ? 2 : 1) * AllMult
+                * ClayNow.Click * (Tool("ribs") ? RibsClick : 1);
             return Math.Max(1, ToLong(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
         }
     }
@@ -354,9 +358,12 @@ public sealed class Clicker : Game
     /// <summary>Стеля розгону: ×1 без маховика (коло не розганяється), +0,5 за кожен його рівень — до ×5.</summary>
     public double MomentumMax => 1 + FlywheelStep * Level("flywheel");
 
-    /// <summary>Розгін на мить <paramref name="now"/>: те, що було, спадає в e разів за <see cref="HeatTau"/> секунд.</summary>
+    /// <summary>За скільки секунд розгін спадає в e разів: <see cref="HeatTau"/>, з лопаткою — удвічі довше.</summary>
+    double Tau => Tool("paddle") ? HeatTau * PaddleTau : HeatTau;
+
+    /// <summary>Розгін на мить <paramref name="now"/>: те, що було, спадає в e разів за <see cref="Tau"/> секунд.</summary>
     double HeatAt(DateTimeOffset now) =>
-        _heatAt == default || !(_heat > 0) ? 0 : _heat * Math.Exp(-Math.Max(0, (now - _heatAt).TotalSeconds) / HeatTau);
+        _heatAt == default || !(_heat > 0) ? 0 : _heat * Math.Exp(-Math.Max(0, (now - _heatAt).TotalSeconds) / Tau);
 
     /// <summary>Множник кліка від розгону: лінійно від ×1 на холодному колі до стелі на <see cref="HeatFull"/> гарячих кліках.</summary>
     public double MomentumOf(double heat) => 1 + (MomentumMax - 1) * Math.Min(1, Math.Max(0, heat) / HeatFull);
@@ -368,11 +375,12 @@ public sealed class Clicker : Game
     long FallGain()
     {
         var raw = PassiveBase * FallSeconds + (double)ClickBase * FallClicks;
-        var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1);
+        var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1)
+            * ClayNow.Loot;
         return Sum(ToLong(raw * mult), FallFloor);
     }
 
-    TimeSpan OfflineNow => Has("night") ? LongOfflineCap : OfflineCap;
+    TimeSpan OfflineNow => (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero);
 
     /// <summary>
     /// Стеля обміну на сьогодні: з налаштувань економіки (без неї — типова) плюс те, що заробили клейма, але
@@ -435,6 +443,7 @@ public sealed class Clicker : Game
         _fallStreak = 0;
         _grabbed = 0;
         ScheduleFall(_lastSync);
+        ResetHouse(_lastSync);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -456,6 +465,11 @@ public sealed class Clicker : Game
             "paint" => Paint(payload),
             "wear" => Wear(payload),
             "answer" => Answer(payload),
+            // Хата: глина на коло, знаряддя на стіну, прикраса в хату, замовлення з дошки купців (ClickerHouse.cs).
+            "knead" => Knead(payload),
+            "tool" => BuyTool(payload),
+            "adorn" => Adorn(payload),
+            "take" => Take(payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
@@ -511,9 +525,12 @@ public sealed class Clicker : Game
         // Grab одразу ставить на полицю наступний.
         if (now > _fall.Until + CatchGrace)
         {
-            _fallStreak = 0;
+            // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
+            if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
+            else _fallStreak = 0;
             ScheduleFall(now);
         }
+        SyncOrders(now);
     }
 
     /// <summary>Нарахувати пасив разом із недоліпленим залишком.</summary>
@@ -549,20 +566,23 @@ public sealed class Clicker : Game
     void ScheduleGolden(DateTimeOffset from)
     {
         var (min, max) = Has("omen") ? (OmenMinSeconds, OmenMaxSeconds) : (GoldenMinSeconds, GoldenMaxSeconds);
-        var at = from + TimeSpan.FromSeconds(min + Ctx.Rng.NextDouble() * (max - min));
+        // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
+        var wait = (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1);
+        var at = from + TimeSpan.FromSeconds(wait);
         var roll = Ctx.Rng.Next(100);
         var kind = roll < 45 ? GoldenKind.Merchant : roll < 85 ? GoldenKind.Fair : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
-        _golden = new GoldenRow(at, at + GoldenShown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
+        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero);
+        _golden = new GoldenRow(at, at + shown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
     }
 
     /// <summary>Коли й де впаде наступний глек з полиці: за хвилину-дві (з котом — частіше), x — у відсотках сцени.</summary>
     void ScheduleFall(DateTimeOffset from)
     {
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
-        var at = from + TimeSpan.FromSeconds(min + Ctx.Rng.NextDouble() * (max - min));
-        _fall = new FallRow(at, at + FallShown, Ctx.Rng.Next(8, 80));
+        var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events);
+        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80));
     }
 
     // ---------- дії ----------
@@ -743,7 +763,7 @@ public sealed class Clicker : Game
                 text = $"✨ Натхнення! Клік ×{InspireMult:0} на {(InspireFor * longer).TotalSeconds:0} с";
                 break;
             default:
-                var gain = Sum(ToLong(Math.Min(_pots * MerchantShare, PassiveBase * MerchantSeconds)), 13);
+                var gain = Sum(ToLong(Math.Min(_pots * MerchantShare, PassiveBase * MerchantSeconds) * ClayNow.Loot), 13);
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{Short(gain)} {Pots(gain)}";
                 break;
@@ -794,6 +814,7 @@ public sealed class Clicker : Game
         var gain = FallGain();
         Add(gain);
         _fallStreak++;
+        _apronUsed = false;
         _grabbed++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
@@ -812,6 +833,8 @@ public sealed class Clicker : Game
         if (gain < 1)
             return ActResult.Fail($"Ще рано: наступне клеймо — на {Short(TotalFor(StampsFor(_total) + 1))} глеків за весь час");
 
+        // Тавро майстра — ще одне клеймо зверху, але лише коли обпал і так щось дає: інакше палили б щохвилини.
+        if (Tool("iron")) gain += IronStamps;
         _stamps += gain;
         _firings++;
         _pots = 0;
@@ -821,6 +844,7 @@ public sealed class Clicker : Game
         if (Has("kin"))
             foreach (var key in new[] { "wheel", "apprentice", "kiln" }) _levels[key] = KinLevels;
         if (!Has("memory")) _marks.Clear();
+        FireHouse(Ctx.Clock.UtcNow);
 
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
         var bonus = (Has("seal") ? SealStampBonus : StampBonus) * _stamps * 100;
@@ -966,12 +990,14 @@ public sealed class Clicker : Game
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,
             heatFull = HeatFull,
-            heatTau = HeatTau,
+            heatTau = Tau,
             momentum = MomentumOf(heat),
             momentumMax = MomentumMax,
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
             fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain() },
             grabbed = _grabbed,
+            // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
+            house = HouseView(Ctx.Clock.UtcNow),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна) і/або пауза.
             guard = _guard.View(Ctx.Clock.UtcNow),
         };
@@ -1013,7 +1039,8 @@ public sealed class Clicker : Game
         DateTimeOffset FairUntil = default, DateTimeOffset InspireUntil = default, int Caught = 0,
         int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
         ClickerGuard.Row? Guard = null,
-        FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default);
+        FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
+        HouseRow? House = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1022,7 +1049,7 @@ public sealed class Clicker : Game
             _marks.Order(StringComparer.Ordinal).ToList(), _golden, _fairUntil, _inspireUntil, _caught,
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
-            _fall, _fallStreak, _grabbed, _heat, _heatAt),
+            _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse()),
         Wire);
 
     public override void Load(string json)
@@ -1081,6 +1108,8 @@ public sealed class Clicker : Game
             _fall = f with { X = Math.Clamp(f.X, 0, 90) };
         else
             ScheduleFall(Ctx.Clock.UtcNow);
+        // Хата — після розписів (замовлення на розпис мусять бачити колекцію) і після рівнів (дошка рахується від пасиву).
+        LoadHouse(s.House);
     }
 
     static void Fill(HashSet<string> set, List<string>? from, Func<string, bool> known)
