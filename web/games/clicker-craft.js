@@ -544,31 +544,52 @@
     const esc = (x) => api.esc(st, x);
     const total = c.items.reduce((s, it) => s + it.n, 0);
     const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
-    const head = '<div class="clk-sub">Комора · ' + total + ' з ' + c.storeCap
-      + '<span class="muted small"> · вироби з горна; що не влізе — одразу на базар</span></div>'
-      + (total ? '<button type="button" class="primary clkw-sellall"' + (st.mine ? '' : ' disabled') + '>🧺 Усе на базар · +' + api.short(sum) + '</button>' : '');
-    const items = total
-      ? '<div class="clkw-items">' + c.items.map((it) => '<div class="clkw-item q' + it.q + '">'
-        + api.wareSvg(it.ware, { style: it.style, quality: it.q, cls: 'clkw-mid', slot: 'st-' + it.key.replace(/\|/g, '-') })
-        + '<div class="clkw-itxt"><b>' + esc(wareName(st, it.ware)) + ' <span class="clkw-n">×' + it.n + '</span></b>'
-        + '<span class="muted small">' + esc(styleName(st, it.style)) + ' · <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span></span>'
-        + '<span class="small">по ' + api.potsShort(it.value) + '</span></div>'
-        + '<div class="clkw-btns"><button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="1"' + (st.mine ? '' : ' disabled') + '>Продати</button>'
-        + (it.n > 1 ? '<button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="' + it.n + '"' + (st.mine ? '' : ' disabled') + '>Усі ' + it.n + '</button>' : '')
-        + '</div></div>').join('') + '</div>'
-      : '<div class="clk-teaser muted small">Комора порожня. Шлях виробу: виліпи на колі → він висохне на сушарні → обпали у вкладці «Горно» → '
-        + 'тут він чекатиме купців, базару, воза цеху чи дарунка другові.</div>';
     const now = api.serverNow(st);
+
+    // Сушарня — між горном і коморою: видно, що вже сохне й скільки лишилось.
     const rack = c.rack.length
-      ? '<div class="clk-sub">Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</div><div class="clkw-rackrow">'
-        + c.rack.map((r, i) => {
+      ? '<section class="clkw-rack-sec"><div class="clk-sub">🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</div><div class="clkw-rackrow">'
+        + c.rack.map((r, i2) => {
           const dry = r.dryAt <= now;
           return '<span class="clkw-rackitem' + (dry ? ' dry' : '') + '">'
-            + wareSvg(api, r.ware, { raw: true, dry, clay: clayBody(st, r.clay), slot: 'strack-' + i, cls: 'clkw-mini' })
+            + wareSvg(api, r.ware, { raw: true, dry, clay: clayBody(st, r.clay), slot: 'strack-' + i2, cls: 'clkw-mini' })
             + '<span class="small">' + (dry ? 'сухий' : '<span class="clk-cd" data-at="' + r.dryAt + '" data-done="сухий"></span>') + '</span></span>';
-        }).join('') + '</div>'
+        }).join('') + '</div></section>'
       : '';
-    if (api.swap(st.storeBody, head + items + rack)) {
+
+    // Комора: рядок на виріб, а розписи й якості — за ▾. Так чотирнадцять глеків читаються одним поглядом.
+    const byWare = new Map();
+    for (const it of c.items) {
+      const g = byWare.get(it.ware) || { ware: it.ware, n: 0, sum: 0, best: 0, rows: [] };
+      g.n += it.n;
+      g.sum += it.value * it.n;
+      g.best = Math.max(g.best, it.q);
+      g.rows.push(it);
+      byWare.set(it.ware, g);
+    }
+    const groups = [...byWare.values()].sort((a, b) => b.sum - a.sum);
+    const head = '<div class="clk-sub">📦 Комора · ' + total + ' ' + api.plural(total, 'виріб', 'вироби', 'виробів')
+      + (total ? ' · разом ~' + api.short(sum) : '') + '</div>'
+      + (total
+        ? '<button type="button" class="primary clkw-sellall"' + (st.mine ? '' : ' disabled') + '>Продати все · +' + api.short(sum) + '</button>'
+          + '<div class="muted small">Що не влізе в ' + c.storeCap + ' — продається саме.</div>'
+        : '');
+    const items = total
+      ? '<div class="clkw-groups">' + groups.map((g) => {
+        const rows = g.rows.slice().sort((a, b) => b.q - a.q || b.value - a.value).map((it) => '<div class="clkw-chiprow q' + it.q + '">'
+          + '<span class="clkw-ctxt">' + esc(styleName(st, it.style)) + ' · <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span>'
+          + ' <span class="clkw-n">×' + it.n + '</span> <span class="muted">по ' + api.potsShort(it.value) + '</span></span>'
+          + '<span class="clkw-btns"><button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="1"' + (st.mine ? '' : ' disabled') + '>Продати</button>'
+          + (it.n > 1 ? '<button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="' + it.n + '"' + (st.mine ? '' : ' disabled') + '>Усі ' + it.n + '</button>' : '')
+          + '</span></div>').join('');
+        return '<details class="clkw-group' + (g.best >= 3 ? ' star' : '') + '"><summary>'
+          + api.wareSvg(g.ware, { style: g.rows[0].style, quality: g.best, cls: 'clkw-mid', slot: 'st-' + g.ware })
+          + '<span class="clkw-gtxt"><b>' + esc(wareName(st, g.ware)) + (g.best >= 3 ? ' <span class="clkw-q">★</span>' : '') + '</b>'
+          + '<span class="muted small">×' + g.n + ' · ~' + api.short(g.sum) + '</span></span></summary>' + rows + '</details>';
+      }).join('') + '</div>'
+      : '<div class="clk-teaser muted small">Комора порожня — сюди лягають вироби з горна.</div>';
+
+    if (api.swap(st.storeBody, rack + head + items)) {
       const all = st.storeBody.querySelector('.clkw-sellall');
       if (all) {
         let armed = 0;

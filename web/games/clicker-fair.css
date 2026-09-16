@@ -106,10 +106,8 @@
   border-radius: 999px; padding: 0 5px; font-variant-numeric: tabular-nums;
 }
 .clkf-obody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.clkf-ohead { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.clkf-ohead b { white-space: nowrap; }
-.clkf-sour { margin-left: auto; }
-.clkf-oreq { font-size: .88em; }
+.clkf-oline { font-size: .88em; line-height: 1.3; }
+.clkf-oline b { white-space: nowrap; }
 .clkf-oreq2 { color: var(--accent2); }
 .clkf-obar { position: relative; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .25); overflow: hidden; }
 .clkf-obar i { display: block; height: 100%; background: linear-gradient(90deg, var(--clay), #d99a5b); border-radius: 7px; transition: width .4s; }
@@ -118,8 +116,16 @@
 .clkf-ometa { display: flex; flex-wrap: wrap; gap: 2px 8px; font-variant-numeric: tabular-nums; }
 .clkf-otime { margin-left: auto; }
 .clkf-otime i, .clkf-next i, .clk-teaser i { font-style: normal; }
-.clkf-obtns { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-.clkf-obtns button { padding: 2px 7px; flex: 1 1 auto; white-space: nowrap; }
+.clkf-obtns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; }
+.clkf-obtns > button { padding: 3px 10px; white-space: nowrap; }
+/* Торг — за ▾: більшість гравців просто здає замовлення. */
+.clkf-bid { flex: 1 1 100%; }
+.clkf-bid > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: .8em; padding: 2px 0; }
+.clkf-bid > summary::-webkit-details-marker { display: none; }
+.clkf-bid > summary::after { content: ' ▾'; }
+.clkf-bid[open] > summary::after { content: ' ▴'; }
+.clkf-bid button { display: block; width: 100%; text-align: left; padding: 3px 8px; margin-top: 3px; white-space: normal; font-size: .82em; }
+.clkf-repbox { display: flex; flex-direction: column; gap: 6px; }
 .clkf-ohint { font-size: .74em; }
 .clkf-next { text-align: right; }
 @keyframes clkfshake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px) rotate(-1deg); } 75% { transform: translateX(4px) rotate(1deg); } }

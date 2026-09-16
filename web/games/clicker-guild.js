@@ -529,6 +529,10 @@
       st.guildBody = document.createElement('div');
       st.guildBody.className = 'clkg';
       st.guildPane.appendChild(st.guildBody);
+      // Шана сіл живе тут (її малює ярмарок, clicker-fair.js): село — це про людей навколо.
+      const rep = document.createElement('div');
+      rep.dataset.slot = 'rep';
+      st.guildPane.appendChild(rep);
       st.guild = null;
       st.guildRank = null;
       st.guildRoster = null;
