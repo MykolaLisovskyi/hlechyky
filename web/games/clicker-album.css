@@ -24,12 +24,6 @@
 .clka-ring.mastery .fg { stroke: var(--accent2); }
 
 /* ---- розписи (вузол ядра всередині альбому) ---- */
-.clka-stylesec > summary { cursor: pointer; font-weight: 600; font-size: .92em; list-style: none; }
-.clka-stylesec > summary::-webkit-details-marker { display: none; }
-.clka-stylesec > summary::before { content: '▸ '; color: var(--muted); }
-.clka-stylesec[open] > summary::before { content: '▾ '; }
-.clka-styles { margin-top: 6px; }
-.clka-stylesin { display: flex; flex-direction: column; gap: 8px; }
 
 /* ---- сітка ---- */
 .clka-scroll {

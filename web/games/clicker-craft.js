@@ -320,8 +320,8 @@
   const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
   const smoothOk = () => !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-  /// Вкладка, де живе цей крок: до v8-P2 горно й комора — дві різні вкладки, після — одна «Ремесло».
-  const tabFor = (st, step) => (st.panes.craft ? 'craft' : step === 'kiln' ? 'kiln' : 'store');
+  /// Горно, комора й замовлення живуть в одній вкладці «Ремесло» — кроки смуги ведуть саме туди.
+  const CRAFT_TAB = 'craft';
 
   /// Розпалити горно одним дотиком: спершу скласти сухі (якщо є куди), потім запалити. Палить підмайстер, поки
   /// гравець сам не обрав «Палю сам» — тоді ведемо його до горна, де вже мінігра.
@@ -331,7 +331,7 @@
     const light = () => {
       if (selfFire(api)) {
         const useStraw = k.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1';
-        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then(() => api.showTab(st, tabFor(st, 'kiln')));
+        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then(() => api.showTab(st, CRAFT_TAB));
       } else {
         api.order(st, 'kiln', { op: 'light', helper: true });
       }
@@ -357,7 +357,7 @@
       const left = Date.parse(k.litAt) + burnMs(st) - sn;
       return k.helper
         ? { icon: '🔥', text: 'Горно палає · ' + api.mmss(left), sub: 'підмайстер відкриє сам' }
-        : { icon: '🔥', text: 'Горно палає — тримай жар', btn: 'До горна', run: () => api.showTab(st, tabFor(st, 'kiln')) };
+        : { icon: '🔥', text: 'Горно палає — тримай жар', btn: 'До горна', run: () => api.showTab(st, CRAFT_TAB) };
     }
     // 2. Є що обпалити — одна кнопка робить усе: складає сухі й розпалює.
     if (k && load > 0 && k.state !== 'cooling') {
@@ -455,8 +455,8 @@
   function stepClick(st, api, step) {
     api.sfx('tap');
     if (step === 'wheel') { openPicker(st, api); return; }
-    api.showTab(st, tabFor(st, step === 'kiln' ? 'kiln' : 'store'));
-    const sel = { rack: '.clkw-rackrow, .clkk-prep', kiln: '.clkk', store: '.clkw-store' }[step];
+    api.showTab(st, CRAFT_TAB);
+    const sel = { rack: '.clkw-rack-sec, .clkk', kiln: '.clkk', store: '.clkw-items, .clkw-store' }[step];
     const el = sel && st.el.querySelector(sel);
     if (el) el.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
   }
@@ -540,8 +540,7 @@
 
   function paintStore(st, api) {
     const c = st.craft;
-    const pane = st.storePane;
-    if (!c || !pane) return;
+    if (!c || !st.storeBody) return;
     const esc = (x) => api.esc(st, x);
     const total = c.items.reduce((s, it) => s + it.n, 0);
     const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
@@ -620,11 +619,17 @@
         nxIco: bar.querySelector('.clk-nxico'), nxText: bar.querySelector('.clk-nxtext'), nxSub: bar.querySelector('.clk-nxsub'),
         nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0 };
       st.craftUi.nxBtn.onclick = (ev) => runNext(st, api, ev);
-      st.storePane = api.tab(st, 'store', 'Комора', 40);
+      // «Ремесло» — одна вкладка на все ремесло: горно зверху, далі сушарня з коморою, знизу замовлення.
+      // Місця (data-slot) наповнюють горно (clicker-kiln.js) і ярмарок (clicker-fair.js), кожен своїм.
+      st.craftPane = api.tab(st, CRAFT_TAB, '🏺 Ремесло', 10);
+      st.craftPane.innerHTML = '<div class="clkc-slot" data-slot="kiln"></div>'
+        + '<div class="clkc-slot" data-slot="store"></div><div class="clkc-slot" data-slot="fair"></div>';
       st.storeBody = document.createElement('div');
       st.storeBody.className = 'clkw-store';
-      st.storePane.appendChild(st.storeBody);
+      api.slot(st, 'store').appendChild(st.storeBody);
       st.storeCds = [];
+      // Ремесла ще нема, поки нема чого ремеслити: новачок бачить лише Майстерню, а смуга веде його сама.
+      api.showWhen(st, CRAFT_TAB, (st2) => !!st2.craft && (st2.craft.rack.length > 0 || st2.craft.fired > 0 || st2.craft.items.length > 0));
     },
 
     update(st, v, api) {
@@ -645,9 +650,7 @@
       }
       st.craftRackLen = st.craft.rack.length;
       const count = st.craft.items.reduce((s, it) => s + it.n, 0);
-      // Купці в дорозі тепер живуть у коморі (вкладку «Купці» сховав ярмарок) — їхній 🐴 теж тут.
-      const riding = (st.taken && st.taken.length) || 0;
-      api.tabLabel(st, 'store', 'Комора' + (count ? ' · ' + count : '') + (riding ? ' · 🐴' + riding : ''));
+      api.tabNote(st, CRAFT_TAB, 'store', count ? '📦' + count : '', 3);
       st.shelfJugs._craft = null;
       paintPath(st, api);
       paintStore(st, api);
@@ -661,7 +664,7 @@
     slow(st, api, now) {
       paintShelf(st, api);
       paintPath(st, api);
-      if (st.tab === 'store') {
+      if (st.tab === CRAFT_TAB) {
         for (const el of st.storeCds) {
           const left = +el.dataset.at - now;
           const t = left > 0 ? api.mmss(left) : el.dataset.done;
@@ -677,7 +680,7 @@
 
     unmount(st) {
       st.craftUi = null;
-      st.storePane = null;
+      st.craftPane = null;
     },
   });
 })();

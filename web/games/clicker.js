@@ -47,6 +47,14 @@
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
+  /// Розділи Майстерні: колишні вкладки, що тепер згортаються всередині неї. `open` — коли розділ варто
+  /// розгорнути самому (доки гравець не вирішив інакше й не лишив по собі clk.sec.<key>).
+  const SECTIONS = [
+    { key: 'house', title: '🏠 Хата', open: (st) => st.tools.some((t) => t.owned) || st.clays.some((c) => !c.owned && c.price > 0 && c.price <= st.shown) },
+    { key: 'styles', title: '🎨 Розписи', open: (st) => st.styleList.some((x) => x.owned) },
+    { key: 'orders', title: '🐴 Вклад купцям', open: (st) => st.taken.length > 0 },
+  ];
+
   // ---------- частини (сьоме оновлення, docs/games/specs/clicker-v7.md §3) ----------
 
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
@@ -931,12 +939,52 @@
   }
 
   function setTab(st, tab, remember = true) {
-    if (!st.panes[tab]) tab = 'shop';
+    if (!st.panes[tab] || isGated(st, tab)) tab = 'shop';
     st.tab = tab;
     if (remember) storeSet('clk.tab', tab);
     for (const b of st.tabs.querySelectorAll('[data-tab]')) b.classList.toggle('active', b.dataset.tab === tab);
     for (const [k, p] of Object.entries(st.panes)) p.hidden = k !== tab;
+    // Подивився — світитись більше не треба.
+    const b = st.tabs.querySelector('[data-tab="' + tab + '"]');
+    if (b && b.classList.contains('fresh')) { b.classList.remove('fresh'); storeSet('clk.seen.' + tab, '1'); }
     st.slowAt = 0;
+  }
+
+  const isGated = (st, key) => {
+    const b = st.tabs && st.tabs.querySelector('[data-tab="' + key + '"]');
+    return !!b && b.hidden;
+  };
+
+  /// Підпис ярлика = базова назва вкладки плюс короткі нотатки частин, за абеткою їхніх ключів.
+  function labelTab(st, key) {
+    const b = st.tabs && st.tabs.querySelector('[data-tab="' + key + '"]');
+    if (!b) return;
+    const notes = st.tabNotes[key] || {};
+    const best = Object.keys(notes).sort().map((k) => notes[k]).filter((n) => n.text)
+      .sort((a, b) => a.prio - b.prio)[0];
+    const text = (st.tabText[key] || key) + (best ? ' · ' + best.text : '');
+    if (b.textContent !== text) b.textContent = text;
+  }
+
+  /// Перебрати гейти: закриті вкладки ховаємо, щойно відкриті — світимо й кажемо про це в стрічці подій.
+  /// Перший прохід (гравець із прогресом) нічого не оголошує: у нього все й так уже відкрите.
+  function gateTabs(st, v) {
+    if (!st.tabs) return;
+    for (const [key, fn] of Object.entries(st.gates)) {
+      const b = st.tabs.querySelector('[data-tab="' + key + '"]');
+      if (!b) continue;
+      let on = true;
+      try { on = !!fn(st, v || {}); } catch (e) { console.error('[clicker] гейт ' + key, e); on = true; }
+      if (b.hidden !== !on) {
+        b.hidden = !on;
+        if (!on) { if (st.tab === key) setTab(st, 'shop', false); continue; }
+        if (storeGet('clk.seen.' + key, '') !== '1') {
+          b.classList.add('fresh');
+          if (st.gateReady) H.api.feed(st, 'відкрилось: ' + (st.tabText[key] || key), 'open');
+        }
+      }
+    }
+    st.gateReady = true;
   }
 
   function setMode(st, mode) {
@@ -1120,6 +1168,29 @@
 
   // ---------- хата: полиця з глиною, знаряддям і прикрасами ----------
 
+  /// Підписи згорнутих розділів Майстерні: скільки там уже є, і чи варто розгорнути самим.
+  function paintSections(st, ownedStyles) {
+    const count = {
+      house: st.tools.filter((t) => t.owned).length + st.clays.filter((c) => c.owned && c.price > 0).length,
+      styles: ownedStyles + '/' + (st.styleList.length || 8),
+      orders: st.taken.length ? '🐴' + st.taken.length : '',
+    };
+    for (const x of SECTIONS) {
+      const sec = st.el.querySelector('.clk-sec[data-sec="' + x.key + '"]');
+      if (!sec) continue;
+      const sum = String(count[x.key] || '');
+      const text = x.title + (sum ? ' · ' + sum : '');
+      const sm = sec.firstElementChild;
+      if (sm.textContent !== text) sm.textContent = text;
+      // Розділ став у пригоді, а гравець його ще не чіпав — розгортаємо раз, самі.
+      if (!sec.open && storeGet('clk.sec.' + x.key, '') === '' && x.open(st)) {
+        sec._auto = true;
+        sec.open = true;
+        sec._auto = false;
+      }
+    }
+  }
+
   function housePane(st, ctx) {
     const esc = ctx.esc;
     const clays = '<div class="clk-sub">Глина на колі<span class="muted small"> · купується раз; замішана відлежується 10 хв</span></div>'
@@ -1279,9 +1350,27 @@
     },
     tabLabel(st, key, text) {
       st.tabText[key] = text;
-      const b = st.tabs.querySelector('[data-tab="' + key + '"]');
-      if (b && b.textContent !== text) b.textContent = text;
+      labelTab(st, key);
     },
+    /// Коротка нотатка на ярлику («🔥0:12», «📜2», «🛒»): кожна частина пише свою, а показуємо лише найважливішу —
+    /// п'ять ярликів мусять улізти в 375 px, тож два-три хвости на одному з них цього не варті.
+    tabNote(st, key, id, text, prio) {
+      const notes = st.tabNotes[key] || (st.tabNotes[key] = {});
+      const was = notes[id];
+      if (was && was.text === (text || '') && was.prio === (prio || 5)) return;
+      notes[id] = { text: text || '', prio: prio || 5 };
+      labelTab(st, key);
+    },
+    /// Гейт вкладки: поки функція каже «ще ні» — ярлика нема. Умова читається з виду, тож гравець із прогресом
+    /// бачить усе своє одразу, а новачок — лише те, що вже може робити.
+    showWhen(st, key, fn) {
+      st.gates[key] = fn;
+      gateTabs(st, st.lastView);
+    },
+    /// Стрічка подій під смугою (її веде ярмарок, clicker-fair.js): ядро лише каже, що відкрилось.
+    feed: () => {},
+    /// Іменоване місце всередині чужої панелі: так горно, комора й замовлення живуть в одному «Ремеслі».
+    slot: (st, name) => (st.el ? st.el.querySelector('[data-slot="' + name + '"]') : null),
     hideTab(st, key) {
       const b = st.tabs.querySelector('[data-tab="' + key + '"]');
       if (b) b.hidden = true;
@@ -1400,18 +1489,20 @@
         + '</div>'
         // Праворуч (або нижче): вкладки з верстатами, розписами й обпалом.
         + '<div class="clk-side">'
+        // П'ять вкладок (v8): Ремесло · Майстерня · Альбом · Село · Клейма. «Ремесло», «Альбом» і «Село»
+        // додають частини, тож тут — лише свої дві; ярлики зайвого гравець не бачить, поки не доросте (gateTabs).
         + '<div class="clk-tabs" role="tablist">'
-        + '<button type="button" class="ghost" data-tab="shop" data-order="10">Майстерня</button>'
-        + '<button type="button" class="ghost" data-tab="house" data-order="20">Хата</button>'
-        + '<button type="button" class="ghost" data-tab="orders" data-order="45">Купці</button>'
-        + '<button type="button" class="ghost" data-tab="styles" data-order="70">Розписи</button>'
-        + '<button type="button" class="ghost" data-tab="fire" data-order="90">Обпал</button></div>'
+        + '<button type="button" class="ghost" data-tab="shop" data-order="20">🔨 Майстерня</button>'
+        + '<button type="button" class="ghost" data-tab="fire" data-order="50">🔥 Клейма</button></div>'
         + '<div class="clk-pane" data-pane="shop">'
         + '<div class="clk-modes"><span class="muted small">купувати</span>'
         + '<button type="button" class="ghost" data-mode="1">×1</button>'
         + '<button type="button" class="ghost" data-mode="10">×10</button>'
         + '<button type="button" class="ghost" data-mode="max">макс</button></div>'
-        + '<div class="clk-markbox"></div><div class="clk-shop"></div></div>'
+        + '<div class="clk-markbox"></div><div class="clk-shop"></div>'
+        // Колишні вкладки «Хата», «Розписи» й «Купці» — згорнуті розділи Майстерні: усе, що купують за глеки, в одному місці.
+        + SECTIONS.map((x) => '<details class="clk-sec" data-sec="' + x.key + '"><summary>' + x.title + '</summary></details>').join('')
+        + '</div>'
         + '<div class="clk-pane" data-pane="house" hidden></div>'
         + '<div class="clk-pane" data-pane="orders" hidden></div>'
         + '<div class="clk-pane" data-pane="styles" hidden></div>'
@@ -1453,10 +1544,25 @@
       st.modes = q('.clk-modes');
       st.marks = q('.clk-markbox');
       st.shop = q('.clk-shop');
-      st.panes = { shop: q('[data-pane="shop"]'), house: q('[data-pane="house"]'), orders: q('[data-pane="orders"]'), styles: q('[data-pane="styles"]'), fire: q('[data-pane="fire"]') };
-      st.styles = st.panes.styles;
-      st.housePane = st.panes.house;
-      st.ordersPane = st.panes.orders;
+      st.panes = { shop: q('[data-pane="shop"]'), fire: q('[data-pane="fire"]') };
+      st.styles = q('[data-pane="styles"]');
+      st.housePane = q('[data-pane="house"]');
+      st.ordersPane = q('[data-pane="orders"]');
+      st.tabNotes = {};
+      st.gates = {};
+      st.gateReady = false;
+      // Хата, розписи й вклад купцям — усередину Майстерні. Елементи ті самі (їх малює той самий код),
+      // але вони більше не вкладки, тож setTab їх не ховає.
+      for (const x of SECTIONS) {
+        const sec = q('.clk-sec[data-sec="' + x.key + '"]');
+        const pane = q('[data-pane="' + x.key + '"]');
+        pane.hidden = false;
+        pane.classList.remove('clk-pane');
+        pane.classList.add('clk-secbody');
+        sec.appendChild(pane);
+        sec.open = storeGet('clk.sec.' + x.key, '') === '1';
+        sec.addEventListener('toggle', () => { if (!sec._auto) storeSet('clk.sec.' + x.key, sec.open ? '1' : '0'); });
+      }
       st.house = q('.clk-house');
       st.fire = q('.clk-firebox');
       st.fire._bar = q('.clk-bar i');
@@ -1505,6 +1611,8 @@
       for (const b of st.tabs.querySelectorAll('[data-tab]')) b.onclick = () => { H.api.sfx('tap'); setTab(st, b.dataset.tab); };
       for (const b of st.modes.querySelectorAll('[data-mode]')) b.onclick = () => setMode(st, b.dataset.mode);
       // Вкладка частини (горно, альбом…) з'явиться, коли частина завантажиться: доти — майстерня, а пам'ять не чіпаємо.
+      // Клейма (престиж) показуємо тоді, коли до них лишилось кілька кроків, а не з нульового рахунку.
+      H.api.showWhen(st, 'fire', (st2) => st2.stamps > 0 || (st2.total || 0) + Math.max(0, st2.shown - st2.base) >= 1e8);
       setTab(st, st.panes[st.tab] ? st.tab : 'shop', false);
       setMode(st, ['1', '10', 'max'].includes(st.mode) ? st.mode : '1');
       st.timer = setInterval(() => flush(st), BATCH_MS);
@@ -1616,14 +1724,12 @@
       if (st.left.textContent !== left) st.left.textContent = left;
 
       const owned = st.styleList.filter((s) => s.owned).length;
-      const tabs = {
-        shop: 'Майстерня', house: 'Хата', orders: 'Купці' + (st.taken.length ? ' · 🐴' + st.taken.length : ''),
-        styles: 'Розписи ' + owned + '/' + (st.styleList.length || 8), fire: 'Обпал' + (st.stamps ? ' · 🔖' + st.stamps : ''),
-      };
-      for (const b of st.tabs.querySelectorAll('[data-tab]')) {
-        const t = tabs[b.dataset.tab] || st.tabText[b.dataset.tab];
-        if (t && b.textContent !== t) b.textContent = t;
-      }
+      st.tabText.shop = '🔨 Майстерня';
+      st.tabText.fire = '🔥 Клейма';
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + st.stamps : '', 1);
+      labelTab(st, 'shop');
+      labelTab(st, 'fire');
+      paintSections(st, owned);
       wheelJug(st);
       paintSign(st);
       shop(st, ctx);
@@ -1632,6 +1738,7 @@
       styles(st, ctx);
       firePane(st, ctx);
       if (v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
+      gateTabs(st, v);
       st.slowAt = 0;
       paint(st);
     },

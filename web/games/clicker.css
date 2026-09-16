@@ -267,8 +267,24 @@
   overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .clk-tabs::-webkit-scrollbar { display: none; }
-.clk-tabs button { flex: 1 0 auto; padding: 6px 10px; font-size: .9em; white-space: nowrap; }
+.clk-tabs button { flex: 1 1 auto; min-width: 0; padding: 6px 8px; font-size: .88em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Нова вкладка м'яко світиться, поки на неї вперше не глянули. */
+.clk-tabs button.fresh { box-shadow: 0 0 0 1px var(--accent) inset; animation: clk-fresh 1.8s ease-in-out infinite alternate; }
+.clk-tabs button[hidden] { display: none; }
+@keyframes clk-fresh { from { box-shadow: 0 0 0 1px rgba(244, 197, 66, .35) inset; } to { box-shadow: 0 0 10px rgba(244, 197, 66, .3), 0 0 0 1px var(--accent) inset; } }
 .clk-pane { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- згорнуті розділи Майстерні (колишні вкладки «Хата», «Розписи», «Купці») ---- */
+.clk-sec { border-top: 1px solid var(--line); padding-top: 6px; }
+.clk-sec > summary { cursor: pointer; font-weight: 600; font-size: .92em; list-style: none; padding: 2px 0; }
+.clk-sec > summary::-webkit-details-marker { display: none; }
+.clk-sec > summary::before { content: '▸ '; color: var(--muted); }
+.clk-sec[open] > summary::before { content: '▾ '; }
+.clk-secbody { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; }
+
+/* ---- «Ремесло»: горно, комора й замовлення одне під одним ---- */
+.clkc-slot { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.clkc-slot:empty { display: none; }
 .clk-sub { font-weight: 600; font-size: .92em; align-self: flex-start; }
 
 /* ---- полиця з верстатами: компактні рядки ---- */
@@ -421,7 +437,8 @@
   .clk-gold { width: 52px; height: 52px; }
   .clk-gold-jug { inset: 6px; width: 40px; height: 40px; }
   .clk-fall { width: 56px; height: 66px; margin-left: -28px; }
-  .clk-tabs button { padding: 6px 8px; font-size: .84em; }
+  .clk-tabs { gap: 2px; padding: 2px; }
+  .clk-tabs button { padding: 6px 3px; font-size: .74em; }
   .clk-clays { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
   .clk-tools { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 6px; }
 }

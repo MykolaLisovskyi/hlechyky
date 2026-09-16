@@ -196,7 +196,9 @@
   // ---------- вкладка ----------
 
   function mountTab(st, api) {
-    const pane = api.tab(st, 'kiln', 'Горно', 30);
+    // Горно — верх вкладки «Ремесло» (її робить clicker-craft.js). Без ремесла ставимо свою вкладку, як було:
+    // одна частина не мусить падати від того, що інша не завантажилась.
+    const pane = api.slot(st, 'kiln') || api.tab(st, 'kiln', '🏺 Горно', 15);
     pane.innerHTML = '<div class="clkk">'
       + '<div class="clkk-top"><div class="clkk-stage">' + kilnSvg() + '<div class="clkk-gust" hidden>💨 порив вітру</div></div>'
       + '<div class="clkk-gauge" hidden><div class="clkk-tube"><i class="clkk-band"></i><i class="clkk-mercury"></i><i class="clkk-mark"></i></div>'
@@ -230,7 +232,7 @@
     st.kUi.damp.addEventListener('pointerdown', (e) => { if (e.isTrusted && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
     for (const b of [st.kUi.stoke, st.kUi.damp]) b.addEventListener('contextmenu', (e) => e.preventDefault());
     st.kKey = (e) => {
-      if (!e.isTrusted || e.repeat || st.tab !== 'kiln' || !st.kb || api.overlayOpen(st)) return;
+      if (!e.isTrusted || e.repeat || !kilnVisible(st) || !st.kb || api.overlayOpen(st)) return;
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); doAct(st, api, STOKE); }
@@ -238,6 +240,9 @@
     };
     document.addEventListener('keydown', st.kKey);
   }
+
+  /// Чи дивиться гравець просто зараз на горно (воно — верх вкладки «Ремесло»).
+  const kilnVisible = (st) => st.tab === 'craft' || st.tab === 'kiln';
 
   // ---------- мінігра жару ----------
 
@@ -496,13 +501,13 @@
     ui.svg.querySelector('.clkk-straw').setAttribute('opacity', burning && k.strawOn ? '1' : '0');
     if (!manual) { ui.gust.hidden = true; ui.svg.classList.remove('closed'); }
     paintWares(st, api, k.batch, burning);
-    // Вкладка: стан одним поглядом.
-    let tab = 'Горно';
-    if (burning) tab = 'Горно · 🔥 ' + api.mmss(Date.parse(k.litAt) + burnMs(st) - now);
-    else if (k.state === 'cooling') tab = 'Горно · ♨';
-    else if (k.batch.length) tab = 'Горно · ' + k.batch.length + '/' + k.slots;
-    else if (k.dry) tab = 'Горно · сухих ' + k.dry;
-    api.tabLabel(st, 'kiln', tab);
+    // Ярлик «Ремесло»: стан горна одним поглядом, коротко.
+    let note = '';
+    if (burning) note = '🔥' + api.mmss(Date.parse(k.litAt) + burnMs(st) - now);
+    else if (k.state === 'cooling') note = '♨';
+    else if (k.batch.length) note = '🧱' + k.batch.length;
+    else if (k.dry) note = '🔥' + k.dry;
+    api.tabNote(st, 'craft', 'kiln', note, 2);
     paintScene(st, api, k, m);
   }
 
@@ -931,7 +936,7 @@
     if (api.serverNow(st) - at > 10 * 60 * 1000) { seen(); return; }
     // Підмайстер чи автогорно відкрили, поки гравець клацає коло: велике вікно посеред клацання з'їло б кліки. Тост —
     // і все; подія — лише для власного обпалу або коли гравець сам дивиться на горно.
-    if (l.helper && st.tab !== 'kiln') {
+    if (l.helper && !kilnVisible(st)) {
       seen();
       const whole = l.items.filter((it) => it[1] > 0).length;
       api.toast(st, '🔥 Підмайстри відкрили горно: ' + whole + ' ' + api.plural(whole, 'виріб', 'вироби', 'виробів') + ' у коморі', 'ok');
@@ -964,7 +969,17 @@
       + (!l.helper && l.items.length >= 4 && cnt[3] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
       + '</div>', { cls: 'clkk-ov' });
-    body.querySelector('.clkk-tostore').onclick = () => { api.closeOverlay(st); api.showTab(st, 'store'); };
+    body.querySelector('.clkk-tostore').onclick = () => {
+      api.closeOverlay(st);
+      // Вкладку не перемикаємо (горно й комора тепер в одній): просто підсвічуємо крок «Комора» у смузі.
+      const step = st.el.querySelector('.clk-step[data-step="store"]');
+      if (step) {
+        step.classList.remove('flash');
+        void step.offsetWidth;
+        step.classList.add('flash');
+        step.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
+      }
+    };
     if (replay) return;
     api.sfx('open');
     if (quick) return;
@@ -1006,7 +1021,7 @@
     },
 
     frame(st, api) {
-      if (st.kb && st.tab === 'kiln') paintBurn(st, api, false);
+      if (st.kb && kilnVisible(st)) paintBurn(st, api, false);
       else if (st.kb) {
         // Вкладку сховали посеред обпалу — модель однаково доходить до кінця й відкриває горно.
         const m = model(st);

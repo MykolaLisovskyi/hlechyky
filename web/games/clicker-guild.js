@@ -517,7 +517,15 @@
     order: 60,
 
     mount(st, api) {
-      st.guildPane = api.tab(st, 'guild', 'Цех', 60);
+      st.guildPane = api.tab(st, 'guild', '🤝 Село', 40);
+      // Село відкривається, коли з ним уже є про що говорити: двадцять обпалених виробів або цех, що вже щось дав.
+      api.showWhen(st, 'guild', (st2, v) => {
+        const g = v.guild;
+        if (g && (g.rank > 0 || (g.claims && g.claims.length) || (g.shelf && g.shelf.length) || g.given > 0)) return true;
+        const m = v.market;
+        if (m && m.delivered > 0) return true;
+        return !!st2.craft && st2.craft.fired >= 20;
+      });
       st.guildBody = document.createElement('div');
       st.guildBody.className = 'clkg';
       st.guildPane.appendChild(st.guildBody);
@@ -539,8 +547,7 @@
       };
       if (st.guild.enabled && !st.guild.week) st.guild.enabled = false;
       if (st.guild.enabled) celebrate(st, api, st.guild);
-      const claim = st.guild.claims.length;
-      api.tabLabel(st, 'guild', claim ? 'Цех · 🛒' : 'Цех');
+      api.tabNote(st, 'guild', 'claim', st.guild.claims.length ? '🛒' : '', 1);
       paint(st, api);
       if (st.guildOv) renderPicker(st, api);
     },

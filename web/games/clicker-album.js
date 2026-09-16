@@ -366,12 +366,12 @@
       st.albumPrev = null;
       st.albumSeen = false;
       st.albumFlash = new Set();
-      const wasStyles = st.tab === 'styles';
-      const pane = api.tab(st, 'album', 'Альбом', 50);
+      const pane = api.tab(st, 'album', '📒 Альбом', 30);
+      // Альбом з'являється з першим обпаленим виробом: до того в ньому самі тіні.
+      api.showWhen(st, 'album', (st2) => !!st2.craft && st2.craft.fired > 0);
       pane.classList.add('clka-pane');
       pane.innerHTML = '<div class="clka">'
         + '<div class="clka-head"></div>'
-        + '<details class="clka-sec clka-stylesec"><summary>Розписи з осередків</summary><div class="clka-styles"></div></details>'
         + '<section class="clka-sec"><div class="clk-sub">Альбом виробів<span class="muted small"> · клітинка +0,2 %, повний рядок +2 %, повний стовпчик +3 % · '
         + 'тап — картка</span></div><div class="clka-gridbox"></div></section>'
         + '<section class="clka-sec clka-stovesec"></section>'
@@ -380,28 +380,11 @@
       st.albumUi = {
         pane,
         head: pane.querySelector('.clka-head'),
-        styles: pane.querySelector('.clka-styles'),
         grid: pane.querySelector('.clka-gridbox'),
         stove: pane.querySelector('.clka-stovesec'),
         museum: pane.querySelector('.clka-museumsec'),
       };
-      // Розписи переїжджають: вузол ядра (його малює й слухає clicker.js) — усередину альбому. Із st.panes його
-      // прибираємо, інакше setTab ховав би його разом із «чужою» вкладкою.
-      const styles = api.pane(st, 'styles');
-      if (styles) {
-        api.hideTab(st, 'styles');
-        delete st.panes.styles;
-        styles.hidden = false;
-        styles.classList.remove('clk-pane');
-        styles.classList.add('clka-stylesin');
-        st.albumUi.styles.appendChild(styles);
-        st.albumStylesNode = styles;
-      }
-      if (wasStyles) api.showTab(st, 'album');
-      // Розписи згорнуто чи ні — пам'ятаємо: хто вже зібрав усі, не мусить гортати їх щоразу.
-      const sec = pane.querySelector('.clka-stylesec');
-      sec.open = api.storeGet('clka.styles', '1') === '1';
-      sec.addEventListener('toggle', () => api.storeSet('clka.styles', sec.open ? '1' : '0'));
+      // Розписи купуються за глеки, тож живуть у Майстерні поруч із рештою покупок (їх туди кладе ядро).
       st.albumHouse = api.layer(st, 'back', 'album');
     },
 
@@ -416,7 +399,6 @@
       st.albumPrev = a.cells.slice();
       noticeFind(st, api);
       st.albumSeen = true;
-      api.tabLabel(st, 'album', 'Альбом · ' + st.album.open + '/' + st.album.size);
       paintHead(st, api);
       paintGrid(st, api);
       paintStove(st, api);

@@ -448,27 +448,13 @@
 
   // ---------- комора: секції й дошка купців ----------
 
-  /// Комору створює ремесло (clicker-craft.js) — воно могло завантажитись і пізніше за нас, тож секції
-  /// ставимо щоразу, коли бачимо панель: замовлення зверху, купці в дорогу — в самому низу.
+  /// Вкладку «Ремесло» робить ремесло (clicker-craft.js) — воно могло завантажитись і пізніше за нас, тож
+  /// своє місце під замовленнями шукаємо щоразу, поки не знайдемо.
   function ensureStore(st, api) {
     const k = st.fair;
-    const store = api.pane(st, 'store');
-    if (!store) return;
-    if (store.firstChild !== k.ordersEl) store.insertBefore(k.ordersEl, store.firstChild);
-    const orders = k.merchantsPane || api.pane(st, 'orders');
-    if (orders && !k.merchantsPane) {
-      k.merchantsPane = orders;
-      const wasOn = st.tab === 'orders';
-      api.hideTab(st, 'orders');
-      // Панель дошки лишається тим самим елементом (ядро малює її, як і малювало), але більше не вкладка:
-      // інакше перемикання вкладок ховало б її всередині комори.
-      delete st.panes.orders;
-      orders.hidden = false;
-      orders.classList.add('clkf-merchants');
-      k.merchantsEl.appendChild(orders);
-      if (wasOn) api.showTab(st, 'store');
-    }
-    if (store.lastChild !== k.merchantsEl) store.appendChild(k.merchantsEl);
+    if (k.ordersEl.isConnected) return;
+    const slot = api.slot(st, 'fair');
+    if (slot) slot.appendChild(k.ordersEl);
   }
 
   // ---------- хроніка ----------
@@ -516,7 +502,7 @@
         m: null, orders: [], buffs: [], guest: null, nextOrderAt: 0, eventAt: 0,
         guestGone: 0, guestLooked: 0, guestSound: 0, eventSeen: null, eventLooked: 0, orderLooked: 0,
         react: null, result: null, levels: null, chronAt: 0, chronText: '', chronRecent: [],
-        plaque: null, buffsEl: null, bellEl: null, eventEl: null, chronEl: null, guestEl: null, ordersEl: null, merchantsEl: null, merchantsPane: null,
+        plaque: null, buffsEl: null, bellEl: null, eventEl: null, chronEl: null, guestEl: null, ordersEl: null,
       };
       k.plaque = document.createElement('div');
       k.plaque.className = 'clkf-plaque';
@@ -557,9 +543,6 @@
       layer.appendChild(k.guestEl);
       k.ordersEl = document.createElement('div');
       k.ordersEl.className = 'clkf-store';
-      k.merchantsEl = document.createElement('div');
-      k.merchantsEl.className = 'clkf-merch';
-      k.merchantsEl.innerHTML = '<div class="clk-sub clkf-title">🐴 Купці в дорогу<span class="muted small"> · беруть глеки й повертають більше</span></div>';
       // Смуга «Шлях виробу» здає замовлення своєю кнопкою «Далі» — щоб не лізти в чужі нутрощі, даємо їй дію.
       st.fairDeliver = (id, ev) => deliver(st, api, ev || { isTrusted: false }, id, 'as');
       ensureStore(st, api);
@@ -593,9 +576,7 @@
       }
       k.levels = levels;
       const ready = k.orders.filter((o) => o.have >= o.n).length;
-      // Ремесло підписує вкладку «Комора · N»; дописуємо, скільки замовлень уже можна здати.
-      const base = ((st.tabText && st.tabText.store) || 'Комора').replace(/ · 📜\d+$/, '');
-      api.tabLabel(st, 'store', base + (ready ? ' · 📜' + ready : ''));
+      api.tabNote(st, 'craft', 'orders', ready ? '📜' + ready : '', 1);
       paintPlaque(st, api);
       paintEvent(st, api);
       paintOrders(st, api);
@@ -614,17 +595,9 @@
       // Бафи, пригода, замовлення спливли — перемалювати без нового виду.
       if (k.buffs.some((b) => b.until <= sn && b.until > sn - 400)) paintPlaque(st, api);
       paintEvent(st, api);
-      if (st.tab === 'store') {
+      if (st.tab === 'craft') {
         countdowns(st, api, k.ordersEl);
         if (k.orders.some((o) => o.until <= sn && o.until > sn - 400) || (k.react && Date.now() - k.react.at > REACT_MS && Date.now() - k.react.at < REACT_MS + 400)) paintOrders(st, api);
-        // Дошка купців живе в коморі — її відліки ядро оновлює лише на своїй вкладці, тож тут — ми.
-        if (k.merchantsPane) {
-          for (const el of k.merchantsPane.querySelectorAll('.clk-cd')) {
-            const left = +el.dataset.at - sn;
-            const t = left > 0 ? api.mmss(left) : el.dataset.done || '0:00';
-            if (el.textContent !== t) el.textContent = t;
-          }
-        }
       }
       // Час пригоди чи нового замовника настав, а гончар лише дивиться: раз питаємо свіжий вид.
       if (api.visible(st) && st.mine) {
@@ -640,7 +613,7 @@
     unmount(st) {
       const k = st.fair;
       if (!k) return;
-      for (const el of [k.plaque, k.buffsEl, k.bellEl, k.eventEl, k.chronEl, k.guestEl, k.ordersEl, k.merchantsEl]) if (el) el.remove();
+      for (const el of [k.plaque, k.buffsEl, k.bellEl, k.eventEl, k.chronEl, k.guestEl, k.ordersEl]) if (el) el.remove();
       st.fairDeliver = null;
       st.fair = null;
     },

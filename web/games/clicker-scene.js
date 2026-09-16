@@ -1285,7 +1285,7 @@
     const c = v.craft;
     // Сушарня повна — це не ціль, а затор: підмайстри стоять.
     if (c && c.rack && c.rackSize && c.rack.length >= c.rackSize) {
-      list.push({ icon: EMBLEM.kiln, text: 'Сушарня повна — обпали сухе', sub: 'підмайстри стоять, поки нема місця', pct: 100, eta: -1, tab: st.panes.kiln ? 'kiln' : 'store', prio: 0 });
+      list.push({ icon: EMBLEM.kiln, text: 'Сушарня повна — обпали сухе', sub: 'підмайстри стоять, поки нема місця', pct: 100, eta: -1, tab: 'craft', prio: 0 });
     }
     // Верстати: що вже можна купити (найкоротша окупність) або що найближче за часом.
     let bestNow = null;
