@@ -1376,13 +1376,7 @@
     feed: () => {},
     /// Іменоване місце всередині чужої панелі: так горно, комора й замовлення живуть в одному «Ремеслі».
     slot: (st, name) => (st.el ? st.el.querySelector('[data-slot="' + name + '"]') : null),
-    hideTab(st, key) {
-      const b = st.tabs.querySelector('[data-tab="' + key + '"]');
-      if (b) b.hidden = true;
-      if (st.tab === key) setTab(st, 'shop', false);
-    },
     showTab: (st, key) => setTab(st, key),
-    pane: (st, key) => st.panes[key] || null,
     /// Свій шар частини: back — <g> у SVG під колом (viewBox 360×450, опорні точки — api.scene з clicker-scene.js),
     /// front — <div> над сценою (координати у відсотках сцени).
     layer(st, name, id) {
