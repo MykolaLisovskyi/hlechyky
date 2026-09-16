@@ -330,10 +330,16 @@
 
   // ---------- замовлення ----------
 
+  /// Хто замовив: пан із маєтку або конкретна людина з села (тексти — у каталозі).
+  function whoOf(st, o) {
+    const v = villageOf(st, o.village);
+    return o.lord ? 'Пан із маєтку' : (v && v.people[o.who]) || 'Замовник';
+  }
+
   function orderCard(st, api, o, sn) {
     const esc = (x) => api.esc(st, x);
     const v = villageOf(st, o.village);
-    const who = o.lord ? 'Пан із маєтку' : (v && v.people[o.who]) || 'Замовник';
+    const who = whoOf(st, o);
     const ready = o.have >= o.n;
     const req = [];
     if (o.style) req.push('розпис «' + esc(styleName(st, o.style)) + '»');
@@ -406,7 +412,7 @@
 
   function deliver(st, api, ev, id, bid) {
     const k = st.fair;
-    if (!ev.isTrusted || !st.mine) return;
+    if (!ev || !ev.isTrusted || !st.mine) return;
     const card = k.ordersEl.querySelector('[data-order="' + id + '"]');
     for (const x of (card ? card.querySelectorAll('[data-bid]') : [])) x.disabled = true;
     api.act(st, 'fair', { op: 'deliver', id, bid }).then((r) => {
@@ -554,6 +560,8 @@
       k.merchantsEl = document.createElement('div');
       k.merchantsEl.className = 'clkf-merch';
       k.merchantsEl.innerHTML = '<div class="clk-sub clkf-title">🐴 Купці в дорогу<span class="muted small"> · беруть глеки й повертають більше</span></div>';
+      // Смуга «Шлях виробу» здає замовлення своєю кнопкою «Далі» — щоб не лізти в чужі нутрощі, даємо їй дію.
+      st.fairDeliver = (id, ev) => deliver(st, api, ev || { isTrusted: false }, id, 'as');
       ensureStore(st, api);
     },
 
@@ -563,7 +571,8 @@
       ensureStore(st, api);
       if (!m) return;
       k.m = m;
-      k.orders = (m.orders || []).map((o) => Object.assign({}, o, { until: ms(o.until) }));
+      // whoText — для рядка «Далі» у смузі шляху: там нема місця малювати цілу картку.
+      k.orders = (m.orders || []).map((o) => Object.assign({}, o, { until: ms(o.until), whoText: whoOf(st, o) }));
       k.buffs = (m.buffs || []).map((b) => ({ kind: b.kind, src: b.src, mult: b.mult, until: ms(b.until) }));
       k.nextOrderAt = ms(m.nextOrderAt);
       k.eventAt = ms(m.eventAt);
@@ -632,6 +641,7 @@
       const k = st.fair;
       if (!k) return;
       for (const el of [k.plaque, k.buffsEl, k.bellEl, k.eventEl, k.chronEl, k.guestEl, k.ordersEl, k.merchantsEl]) if (el) el.remove();
+      st.fairDeliver = null;
       st.fair = null;
     },
   });

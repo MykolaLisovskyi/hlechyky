@@ -21,7 +21,6 @@
   const SVGNS = 'http://www.w3.org/2000/svg';
   const REDUCED = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const SKY_MS = 20000;                   // як часто перераховуємо небо: сонце за 20 с зсувається на піксель
-  const GOAL_MS = 1000;                   // банер цілі — раз на секунду, не щокадру
   const HANDS_MS = 900;                   // скільки руки лишаються біля кола після кліка
   const MAX_VOICES = 28;                  // стільки звуків водночас; решта (дрібні «шльоп») пропускаються
 
@@ -1270,7 +1269,7 @@
     paint();
   }
 
-  // ---------- банер «Наступна ціль» ----------
+  // ---------- цілі для смуги «Шлях виробу» ----------
 
   /// Інші частини можуть додати свої цілі: HClicker.goals.push((st, v, api) => ({ icon, text, sub, pct, eta, tab, prio }) | null).
   const GOALS = (window.HClicker.goals = window.HClicker.goals || []);
@@ -1329,51 +1328,11 @@
     return list[0] || null;
   }
 
-  function mountGoal(st, api) {
-    const side = st.el.querySelector('.clk-side');
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'clks-goal';
-    b.hidden = true;
-    b.innerHTML = '<span class="clks-gico"></span><span class="clks-gmain"><span class="clks-gtitle"><span class="clks-glabel">Наступна ціль</span>'
-      + '<span class="clks-geta"></span></span><b class="clks-gtext"></b><span class="clks-gsub"></span><i class="clks-gbar"><i></i></i></span>';
-    side.insertBefore(b, side.firstChild);
-    const ui = { b, ico: b.querySelector('.clks-gico'), text: b.querySelector('.clks-gtext'), sub: b.querySelector('.clks-gsub'),
-      eta: b.querySelector('.clks-geta'), bar: b.querySelector('.clks-gbar i'), goal: null };
-    b.onclick = () => {
-      const g = ui.goal;
-      if (!g) return;
-      api.sfx('tap');
-      if (g.tab && st.panes[g.tab]) api.showTab(st, g.tab);
-      if (g.row) {
-        const row = st.el.querySelector(g.row);
-        if (row) {
-          row.scrollIntoView({ block: 'nearest', behavior: REDUCED() ? 'auto' : 'smooth' });
-          row.classList.remove('flash');
-          void row.offsetWidth;
-          row.classList.add('flash');
-        }
-      }
+  /// Ціль віддаємо смузі «Шлях виробу» (clicker-craft.js): свого банера сцена більше не малює — один голос підказок.
+  function shareGoal(api) {
+    api.goalOf = (st) => {
+      try { return st.mine ? goalOf(st, api) : null; } catch (e) { console.error('[clicker:scene] goal', e); return null; }
     };
-    st.scn.goal = ui;
-  }
-
-  function paintGoal(st, api) {
-    const ui = st.scn.goal;
-    if (!ui) return;
-    const g = st.mine ? goalOf(st, api) : null;
-    ui.goal = g;
-    if (ui.b.hidden !== !g) ui.b.hidden = !g;
-    if (!g) return;
-    api.swap(ui.ico, svg32(g.icon));
-    if (ui.text.textContent !== g.text) ui.text.textContent = g.text;
-    const sub = g.sub || '';
-    if (ui.sub.textContent !== sub) ui.sub.textContent = sub;
-    const eta = g.eta === 0 ? 'готово' : g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : '';
-    if (ui.eta.textContent !== eta) ui.eta.textContent = eta;
-    const pct = Math.floor(clamp(g.pct || 0, 0, 100)) + '%';
-    if (ui.bar.style.width !== pct) ui.bar.style.width = pct;
-    ui.b.classList.toggle('ready', g.eta === 0 || g.prio === 0);
   }
 
   // ---------- «Поки тебе не було» ----------
@@ -1449,7 +1408,7 @@
     mount(st, api) {
       st.api = api;
       st.scn = {
-        vars: {}, sky: { season: 'summer', moon: 8, night: false }, skyAt: 0, houseSig: '', goalAt: 0, tab: '', clayAt: 0,
+        vars: {}, sky: { season: 'summer', moon: 8, night: false }, skyAt: 0, houseSig: '', tab: '', clayAt: 0,
         handsOn: false, awayPending: false, clay: null, squash: st.el.querySelector('.clk-squash'),
       };
       Snd.load(api);
@@ -1488,7 +1447,7 @@
       }
       st.scn.hands = st.wheelBox;
       mountSound(st, api);
-      mountGoal(st, api);
+      shareGoal(api);
       st.scn.skyAt = 0;
       st.scn.sky = paintSky(st, sceneNow(st, api));
       // Ядро вже перемалювало полиці до того, як ми підмінили значки: попросити їх ще раз з новими значками.
@@ -1506,7 +1465,6 @@
         if (clay) st.sparks.style.setProperty('--clay', clay); else st.sparks.style.removeProperty('--clay');
       }
       if (v.away && api.storeGet('clk.awayAt', '') !== String(v.away.at)) st.scn.awayPending = true;
-      st.scn.goalAt = 0;
     },
 
     frame(st, api) {
@@ -1527,7 +1485,6 @@
         scn.sky = paintSky(st, sceneNow(st, api));
         paintHouse(st);
       }
-      if (t - scn.goalAt > GOAL_MS) { scn.goalAt = t; paintGoal(st, api); }
       if (st.tab !== scn.tab) { scn.tab = st.tab; scrollTabs(st); }
       if (scn.awayPending && showAway(st, api)) scn.awayPending = false;
     },

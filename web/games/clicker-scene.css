@@ -121,27 +121,6 @@
 .clk .clks-sndmus.on { opacity: 1; color: var(--accent); border-color: currentColor; }
 
 /* ---- банер «Наступна ціль» над вкладками ---- */
-.clk .clks-goal {
-  display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; align-items: center; width: 100%; text-align: left;
-  padding: 6px 10px 8px 6px; border-radius: 12px; position: relative; overflow: hidden; white-space: normal;
-  background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
-}
-.clk .clks-goal[hidden] { display: none; }
-.clk .clks-goal:hover { background: linear-gradient(100deg, rgba(217, 169, 47, .26), var(--panel3) 60%); }
-.clks-goal.ready { border-color: var(--accent); box-shadow: 0 0 14px rgba(244, 197, 66, .18); }
-.clks-gico { width: 38px; height: 38px; border-radius: 10px; background: rgba(0, 0, 0, .25); display: grid; place-items: center; }
-.clks-gico svg { width: 32px; height: 32px; display: block; }
-.clks-gmain { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-.clks-gtitle { display: flex; justify-content: space-between; gap: 8px; font-size: .7em; text-transform: uppercase; letter-spacing: .06em; }
-.clks-glabel { color: var(--accent2); font-weight: 700; }
-.clks-geta { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.clks-goal.ready .clks-geta { color: var(--accent); font-weight: 700; }
-.clks-gtext { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clks-gsub { font-size: .74em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clks-gsub:empty { display: none; }
-.clks-gbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
-.clks-gbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
-
 /* ---- «Поки тебе не було» ---- */
 .clks-awayov .clk-ov-box { max-width: 380px; margin-top: 30px; }
 .clks-away { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
@@ -158,8 +137,8 @@
 .clk-ticon svg { width: 26px; height: 34px; display: block; }
 .clk-tool.decor .clk-ticon svg { width: 30px; height: 30px; }
 
-/* ---- ремесло: рядок під сценою такої ж ширини, як сцена ---- */
-.clk-craft { max-width: 520px; }
+/* ---- ремесло: смуга «Шлях виробу» такої ж ширини, як сцена ---- */
+.clk-path { max-width: 520px; }
 
 @keyframes clks-twinkle { from { opacity: 1; } to { opacity: .25; } }
 @keyframes clks-drift { from { transform: translateX(-18px); } to { transform: translateX(26px); } }

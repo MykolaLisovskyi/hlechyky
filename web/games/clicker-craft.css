@@ -1,4 +1,4 @@
-/* Ремесло Гончарного кола: виріб на колі, сирці на полиці, рядок ліплення, вибір виробу, комора. */
+/* Ремесло Гончарного кола: виріб на колі, сирці на полиці, смуга «Шлях виробу», вибір виробу, комора. */
 
 .clkw.wet > path:first-of-type { filter: brightness(.78) saturate(1.1); }
 /* На колі мокра глина не темнішає: чорна глина інакше зливалась би з кругом, об'єм дає світлотінь. */
@@ -17,16 +17,62 @@
 .clkw-empty { font-size: max(10px, 2.6cqw); color: #e9dcc4; opacity: .75; padding-bottom: 2px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
 @keyframes clkwdry { from { transform: scale(1.15); } to { transform: scale(1); } }
 
-/* ---- рядок ремесла під сценою ---- */
-.clk-craft { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 520px; }
-.clk-craft-pick { display: flex; align-items: center; gap: 4px; padding: 4px 8px; white-space: nowrap; flex: none; }
-.clk-craft-pick .clkw-ico { width: 22px; height: 24px; }
-.clk-craft-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.clk-craft-bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, .08); overflow: hidden; }
-.clk-craft-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); border-radius: 4px; transition: width .12s linear; }
-.clk-craft.full .clk-craft-bar i { background: var(--accent2); animation: clkwpulse 1.2s ease-in-out infinite alternate; }
-.clk-craft-line { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
-@keyframes clkwpulse { from { opacity: .55; } to { opacity: 1; } }
+/* ---- смуга «Шлях виробу» під сценою ---- */
+.clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
+.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.clk-step {
+  display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px 6px; text-align: left; position: relative;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); overflow: hidden;
+}
+/* Стрілка між кроками: шлях читається як шлях, а не як чотири окремі кнопки. */
+.clk-step + .clk-step::before {
+  content: '→'; position: absolute; left: -7px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--muted); opacity: .5; pointer-events: none;
+}
+.clk-step.on { color: var(--fg); border-color: rgba(217, 169, 47, .3); }
+.clk-step.hot { border-color: var(--accent); box-shadow: 0 0 10px rgba(244, 197, 66, .16); }
+.clk-step:hover { background: var(--panel3); }
+.clk-stico { flex: none; width: 22px; height: 24px; display: grid; place-items: center; font-size: 15px; line-height: 1; }
+.clk-stico svg, .clkw-sico { width: 22px; height: 24px; display: block; }
+.clk-step:not(.on) .clk-stico { opacity: .5; }
+.clk-sttxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.clk-sttxt b { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-stsub { font-size: .68em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.clk-stbar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, .06); }
+.clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }
+.clk-step.hot .clk-stbar i { background: var(--accent2); }
+
+/* Рядок «Далі» — єдина порада й єдина кнопка. */
+.clk-next {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; position: relative;
+  padding: 6px 10px 8px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
+}
+.clk-next[hidden] { display: none; }
+.clk-nxico { font-size: 17px; line-height: 1; text-align: center; }
+.clk-nxsvg { width: 26px; height: 26px; display: block; }
+.clk-nxtxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.clk-nxtext { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-nxsub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-nxsub[hidden] { display: none; }
+.clk-nxbtn { white-space: nowrap; padding: 5px 12px; }
+.clk-nxbtn[hidden] { display: none; }
+.clk-nxbtn.armed { background: var(--bad, #b5453a); color: #fff; }
+.clk-nxbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
+.clk-nxbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
+.clk-path.full .clk-next { border-color: var(--accent); }
+
+/* Вузька картка: чотири плитки лишаються в рядок, але без назв — лише значок і число. */
+@media (max-width: 460px) {
+  .clk-steps { gap: 3px; }
+  .clk-step { flex-direction: column; align-items: center; gap: 1px; padding: 3px 2px 6px; text-align: center; }
+  .clk-step + .clk-step::before { left: -5px; top: 14px; transform: none; }
+  .clk-sttxt { align-items: center; max-width: 100%; }
+  .clk-sttxt b { font-size: .7em; }
+  .clk-stsub { font-size: .64em; }
+  .clk-next { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 5px 8px 8px; gap: 6px; }
+  .clk-nxtext { font-size: .86em; }
+}
 
 /* ---- вибір виробу ---- */
 .clkw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin-top: 8px; }
@@ -61,5 +107,6 @@
 .clkw-rackitem.dry .small { color: var(--accent2); }
 
 @media (prefers-reduced-motion: reduce) {
-  .clkw-rack.dry svg, .clk-craft.full .clk-craft-bar i, .clkw-flame { animation: none; }
+  .clkw-rack.dry svg, .clkw-flame { animation: none; }
+  .clk-step, .clk-next, .clk-stbar i, .clk-nxbar i { transition: none; }
 }

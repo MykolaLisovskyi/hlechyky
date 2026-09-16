@@ -6,7 +6,8 @@
   2) виріб на колі, що росте від кліків: грудка → центрування → відкривання → витягування → форма. Сервер рахує
      роботу (view.craft.work/need), клієнт лише передбачає її між видами: + кліки, що ще не полетіли, + підмайстри;
   3) сирці на полиці над колом (view.craft.rack): мокрі темніші, висохлі світлі;
-  4) рядок ремесла під сценою: що ліпиться, скільки лишилось, сушарня — і вибір виробу (Act('form'));
+  4) смуга «Шлях виробу» під сценою (v8): чотири кроки коло → сушарня → горно → комора й один рядок «Далі» з
+     єдиною кнопкою, яка робить наступний крок (замість рядка ремесла, банера цілі й окремих підказок);
   5) вкладка «Комора»: вироби з горна, базар (Act('bazaar')).
 */
 (() => {
@@ -266,10 +267,12 @@
       st.jugBox.innerHTML = '<g transform="translate(50 70) scale(.78) translate(-50 -86)">' + inner + '</g>';
     }
     if (st.craftUi) {
-      const pct = Math.round(p * 1000) / 10 + '%';
-      if (st.craftUi.bar.style.width !== pct) st.craftUi.bar.style.width = pct;
-      const txt = full ? 'сушарня повна — обпали сухе в горні' : Math.floor(w % need) + ' / ' + need;
-      if (st.craftUi.work.textContent !== txt) st.craftUi.work.textContent = txt;
+      // Смужку кроку «коло» доводимо щокадру: решту смуги вистачає малювати раз на slow.
+      const bar = st.craftUi.steps.querySelector('[data-step="wheel"] .clk-stbar i');
+      if (bar) {
+        const pct = Math.round(p * 1000) / 10 + '%';
+        if (bar.style.width !== pct) bar.style.width = pct;
+      }
       st.craftUi.el.classList.toggle('full', full);
     }
   }
@@ -296,19 +299,211 @@
     return (c && c.body) || '';
   };
 
-  function paintBar(st, api) {
+  // ---------- смуга «Шлях виробу» й рядок «Далі» ----------
+
+  /// Стан горна беремо просто зі спільного st: горно (clicker-kiln.js) кладе туди свій вид. Частина могла ще й не
+  /// завантажитись — тоді кроки 3–4 просто бліді, а «Далі» веде по колу й сушарні.
+  const kilnOf = (st) => st.kView || null;
+  const burnMs = (st) => (st.catalog && st.catalog.kiln && st.catalog.kiln.burnMs) || 30000;
+
+  /// Скільки сухих сирців на сушарні просто зараз (горно рахує те саме, але може відставати на пів секунди).
+  const dryNow = (st, api) => (st.craft ? st.craft.rack.filter((r) => r.dryAt <= api.serverNow(st)).length : 0);
+
+  /// Скільки виробів піде в горно, якщо натиснути «Обпалити»: те, що вже складено, плюс сухі, що влізуть.
+  function loadNow(st, api) {
+    const k = kilnOf(st);
+    if (!k) return 0;
+    const free = Math.max(0, k.slots - k.batch.length);
+    return k.batch.length + Math.min(dryNow(st, api), free);
+  }
+
+  const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
+  const smoothOk = () => !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /// Вкладка, де живе цей крок: до v8-P2 горно й комора — дві різні вкладки, після — одна «Ремесло».
+  const tabFor = (st, step) => (st.panes.craft ? 'craft' : step === 'kiln' ? 'kiln' : 'store');
+
+  /// Розпалити горно одним дотиком: спершу скласти сухі (якщо є куди), потім запалити. Палить підмайстер, поки
+  /// гравець сам не обрав «Палю сам» — тоді ведемо його до горна, де вже мінігра.
+  function fireKiln(st, api) {
+    const k = kilnOf(st);
+    if (!k) return;
+    const light = () => {
+      if (selfFire(api)) {
+        const useStraw = k.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1';
+        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then(() => api.showTab(st, tabFor(st, 'kiln')));
+      } else {
+        api.order(st, 'kiln', { op: 'light', helper: true });
+      }
+    };
+    const free = Math.max(0, k.slots - k.batch.length);
+    if (free > 0 && dryNow(st, api) > 0) api.act(st, 'kiln', { op: 'load' }).then(light);
+    else light();
+  }
+
+  /// Один наступний крок — те єдине, що гравцеві варто зробити зараз. Перше правило, яке підходить, і виграє;
+  /// поки Око майстра питає — не радимо нічого (кола в ці секунди однаково не крутять).
+  function nextStep(st, api) {
+    const c = st.craft;
+    if (!c || !st.mine || api.guardOn(st)) return null;
+    const k = kilnOf(st);
+    const sn = api.serverNow(st);
+    const dry = dryNow(st, api);
+    const load = loadNow(st, api);
+    const word = (n) => api.plural(n, 'виріб', 'вироби', 'виробів');
+
+    // 1. Горно палає — чекаємо (або йдемо доглядати, якщо палимо самі).
+    if (k && k.state === 'burning') {
+      const left = Date.parse(k.litAt) + burnMs(st) - sn;
+      return k.helper
+        ? { icon: '🔥', text: 'Горно палає · ' + api.mmss(left), sub: 'підмайстер відкриє сам' }
+        : { icon: '🔥', text: 'Горно палає — тримай жар', btn: 'До горна', run: () => api.showTab(st, tabFor(st, 'kiln')) };
+    }
+    // 2. Є що обпалити — одна кнопка робить усе: складає сухі й розпалює.
+    if (k && load > 0 && k.state !== 'cooling') {
+      return { icon: '🔥', text: 'Обпалити ' + load + ' ' + word(load),
+        sub: selfFire(api) ? 'палиш сам — буде мінігра' : 'палить підмайстер',
+        btn: '🔥 Обпалити', run: () => fireKiln(st, api) };
+    }
+    // 3. Горно холоне — сухим доведеться зачекати.
+    if (k && k.state === 'cooling' && dry > 0) {
+      return { icon: '♨', text: 'Горно холоне · ' + api.mmss(Date.parse(k.coolUntil) - sn), sub: 'сухі чекають на нього' };
+    }
+    // 4. Замовлення вже можна здати.
+    const ready = ((st.fair && st.fair.orders) || []).filter((o) => o.until > sn && o.have >= o.n)[0];
+    if (ready && st.fairDeliver) {
+      return { icon: '📜', text: 'Здати замовлення · +' + api.short(ready.pay), sub: ready.whoText || '', btn: '🤝 Здати',
+        run: (ev) => st.fairDeliver(ready.id, ev) };
+    }
+    // 5. Сушарня повна, а сохне ще довго — підмайстри стоять, і це затор.
+    if (c.rack.length >= c.rackSize) {
+      const soon = c.rack.map((r) => r.dryAt).sort((a, b) => a - b)[0] || 0;
+      return { icon: '🧺', text: 'Сушарня повна · ' + api.mmss(soon - sn), sub: 'поки не звільниться — коло стоїть' };
+    }
+    // 6. Комора набралась — час продати.
+    const items = c.items.reduce((s2, it) => s2 + it.n, 0);
+    if (items > 0 && items >= c.storeCap / 2) {
+      const sum = c.items.reduce((s2, it) => s2 + it.value * it.n, 0);
+      return { icon: '📦', text: 'Продати ' + items + ' ' + word(items) + ' · +' + api.short(sum), sub: 'комора майже повна',
+        btn: 'Продати все', arm: 'Точно все? Ще раз', run: () => api.order(st, 'bazaar', { all: true }) };
+    }
+    // 7. Найближча покупка — те, що раніше показував банер «Наступна ціль». Але поки гравець не виліпив
+    // жодного виробу, порада «купи верстат» лише збиває: перше, що він мусить зробити, — крутнути коло.
+    const g = c.formed > 0 || c.rack.length ? (api.goalOf ? api.goalOf(st) : null) : null;
+    if (g) {
+      return { icon: g.icon, svg: true, text: g.text, sub: g.sub || '', pct: g.pct,
+        eta: g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : g.eta === 0 ? 'готово' : '',
+        btn: g.tab || g.row ? 'Глянути' : '', run: () => goToGoal(st, api, g) };
+    }
+    // 8. Нічого термінового — просто ліпи.
+    return { icon: '🏺', text: 'Крути коло — ліпиться ' + wareName(st, c.ware).toLowerCase(), sub: 'кожен клік — одна робота' };
+  }
+
+  function goToGoal(st, api, g) {
+    if (g.tab && st.panes[g.tab]) api.showTab(st, g.tab);
+    if (!g.row) return;
+    const row = st.el.querySelector(g.row);
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
+    row.classList.remove('flash');
+    void row.offsetWidth;
+    row.classList.add('flash');
+  }
+
+  /// Чотири кроки шляху: активний той, де зараз є що робити; блідий — той, до якого ще не дійшли.
+  function pathSteps(st, api) {
+    const c = st.craft;
+    const k = kilnOf(st);
+    const sn = api.serverNow(st);
+    const dry = dryNow(st, api);
+    const items = c.items.reduce((s, it) => s + it.n, 0);
+    const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
+    const work = Math.floor(workNow(st) % Math.max(1, c.need));
+    const kilnText = !k ? '—'
+      : k.state === 'burning' ? '🔥 ' + api.mmss(Date.parse(k.litAt) + burnMs(st) - sn)
+      : k.state === 'cooling' ? '♨ холоне'
+      : k.batch.length ? 'складено ' + k.batch.length
+      : dry ? 'чекає сухих' : 'холодне';
+    return [
+      { key: 'wheel', ico: api.wareSvg(c.ware, { cls: 'clkw-sico', slot: 'step-ware', clay: st.clayBody }),
+        name: wareName(st, c.ware), sub: work + '/' + c.need + ' ▾', pct: (work / Math.max(1, c.need)) * 100, on: true },
+      { key: 'rack', ico: '🧺', name: 'Сушарня', sub: c.rack.length + '/' + c.rackSize + (dry ? ' · сухих ' + dry : ''),
+        pct: (c.rack.length / Math.max(1, c.rackSize)) * 100, on: c.rack.length > 0, hot: dry > 0 },
+      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold'),
+        hot: !!k && k.state === 'burning' },
+      { key: 'store', ico: '📦', name: 'Комора', sub: items ? items + ' · ~' + api.short(sum) : 'порожня',
+        pct: (items / Math.max(1, c.storeCap)) * 100, on: items > 0 },
+    ];
+  }
+
+  function paintPath(st, api) {
     const c = st.craft;
     const ui = st.craftUi;
     if (!c || !ui) return;
-    const name = wareName(st, c.ware);
-    const now = api.serverNow(st);
-    const dry = c.rack.filter((r) => r.dryAt <= now).length;
-    const html = api.wareSvg(c.ware, { cls: 'clkw-ico', slot: 'bar-ico', clay: st.clayBody }) + '<b>' + api.esc(st, name) + '</b><span>▾</span>';
-    api.swap(ui.pick, html);
-    const rack = '🧺 сушарня ' + c.rack.length + '/' + c.rackSize + (dry ? ' · сухих ' + dry : '')
-      + (c.apprentice > 0 ? ' · підмайстри ліплять самі' : '');
-    if (ui.rack.textContent !== rack) ui.rack.textContent = rack;
-    ui.pick.disabled = !st.mine;
+    const esc = (x) => api.esc(st, x);
+    const html = pathSteps(st, api).map((s) => '<button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
+      + '" data-step="' + s.key + '"><span class="clk-stico">' + (s.ico.charAt(0) === '<' ? s.ico : esc(s.ico)) + '</span>'
+      + '<span class="clk-sttxt"><b>' + esc(s.name) + '</b><span class="clk-stsub">' + esc(s.sub) + '</span></span>'
+      + (s.pct != null ? '<i class="clk-stbar"><i style="width:' + Math.max(0, Math.min(100, s.pct)).toFixed(1) + '%"></i></i>' : '')
+      + '</button>').join('');
+    if (api.swap(ui.steps, html)) {
+      for (const b of ui.steps.querySelectorAll('[data-step]')) b.onclick = () => stepClick(st, api, b.dataset.step);
+    }
+    paintNext(st, api);
+  }
+
+  function stepClick(st, api, step) {
+    api.sfx('tap');
+    if (step === 'wheel') { openPicker(st, api); return; }
+    api.showTab(st, tabFor(st, step === 'kiln' ? 'kiln' : 'store'));
+    const sel = { rack: '.clkw-rackrow, .clkk-prep', kiln: '.clkk', store: '.clkw-store' }[step];
+    const el = sel && st.el.querySelector(sel);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
+  }
+
+  function paintNext(st, api) {
+    const ui = st.craftUi;
+    const n = nextStep(st, api);
+    ui.next = n;
+    const show = !!n;
+    if (ui.nx.hidden === show) ui.nx.hidden = !show;
+    if (!n) return;
+    const esc = (x) => api.esc(st, x);
+    const ico = n.svg ? '<svg class="clk-nxsvg" viewBox="0 0 32 32" aria-hidden="true">' + n.icon + '</svg>' : esc(n.icon);
+    api.swap(ui.nxIco, ico);
+    const text = 'Далі: ' + n.text;
+    if (ui.nxText.textContent !== text) ui.nxText.textContent = text;
+    const sub = n.sub || n.eta || '';
+    if (ui.nxSub.textContent !== sub) ui.nxSub.textContent = sub;
+    if (ui.nxSub.hidden !== !sub) ui.nxSub.hidden = !sub;
+    const label = n.btn || '';
+    // Кнопку під пальцем не перемальовуємо, поки її «звели» другим натиском.
+    if (ui.armed && Date.now() > ui.armed) ui.armed = 0;
+    if (!ui.armed && ui.nxBtn.textContent !== label) ui.nxBtn.textContent = label;
+    if (ui.nxBtn.hidden !== !label) ui.nxBtn.hidden = !label;
+    const off = !label || !st.mine || !n.run;
+    if (ui.nxBtn.disabled !== off) ui.nxBtn.disabled = off;
+    ui.nxBtn.classList.toggle('armed', !!ui.armed);
+    const pct = n.pct != null ? Math.max(0, Math.min(100, n.pct)).toFixed(1) + '%' : '0%';
+    if (ui.nxBar.style.width !== pct) ui.nxBar.style.width = pct;
+  }
+
+  function runNext(st, api, ev) {
+    const ui = st.craftUi;
+    const n = ui.next;
+    if (!n || !n.run || !st.mine) return;
+    // Незворотне (продати все) питаємо двічі — як і кнопка в коморі.
+    if (n.arm && (!ui.armed || Date.now() > ui.armed)) {
+      ui.armed = Date.now() + 3000;
+      ui.nxBtn.textContent = n.arm;
+      ui.nxBtn.classList.add('armed');
+      setTimeout(() => { if (st.craftUi === ui && Date.now() >= ui.armed) { ui.armed = 0; paintNext(st, api); } }, 3050);
+      return;
+    }
+    ui.armed = 0;
+    ui.nxBtn.classList.remove('armed');
+    api.sfx('tap');
+    n.run(ev);
   }
 
   // ---------- вибір виробу ----------
@@ -412,15 +607,19 @@
       st.craftRackFree = 0;
       st.craftRackLen = -1;
       st.craftFxAt = 0;
+      // Смуга «Шлях виробу»: чотири кроки й один рядок «Далі». Це єдиний путівник у грі — банера цілі,
+      // рядка ремесла й окремих підказок більше нема.
       const bar = document.createElement('div');
-      bar.className = 'clk-craft';
-      bar.innerHTML = '<button type="button" class="ghost clk-craft-pick" title="Що ліпити на колі"></button>'
-        + '<div class="clk-craft-mid"><div class="clk-craft-bar"><i></i></div>'
-        + '<div class="clk-craft-line small"><span class="clk-craft-work"></span><span class="clk-craft-rack muted"></span></div></div>';
+      bar.className = 'clk-path';
+      bar.innerHTML = '<div class="clk-steps"></div>'
+        + '<div class="clk-next"><span class="clk-nxico"></span>'
+        + '<span class="clk-nxtxt"><b class="clk-nxtext"></b><span class="clk-nxsub small"></span></span>'
+        + '<button type="button" class="primary clk-nxbtn" hidden></button><i class="clk-nxbar"><i></i></i></div>';
       st.stage.insertAdjacentElement('afterend', bar);
-      st.craftUi = { el: bar, pick: bar.querySelector('.clk-craft-pick'), bar: bar.querySelector('.clk-craft-bar i'),
-        work: bar.querySelector('.clk-craft-work'), rack: bar.querySelector('.clk-craft-rack') };
-      st.craftUi.pick.onclick = () => openPicker(st, api);
+      st.craftUi = { el: bar, steps: bar.querySelector('.clk-steps'), nx: bar.querySelector('.clk-next'),
+        nxIco: bar.querySelector('.clk-nxico'), nxText: bar.querySelector('.clk-nxtext'), nxSub: bar.querySelector('.clk-nxsub'),
+        nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0 };
+      st.craftUi.nxBtn.onclick = (ev) => runNext(st, api, ev);
       st.storePane = api.tab(st, 'store', 'Комора', 40);
       st.storeBody = document.createElement('div');
       st.storeBody.className = 'clkw-store';
@@ -450,7 +649,7 @@
       const riding = (st.taken && st.taken.length) || 0;
       api.tabLabel(st, 'store', 'Комора' + (count ? ' · ' + count : '') + (riding ? ' · 🐴' + riding : ''));
       st.shelfJugs._craft = null;
-      paintBar(st, api);
+      paintPath(st, api);
       paintStore(st, api);
     },
 
@@ -461,7 +660,7 @@
 
     slow(st, api, now) {
       paintShelf(st, api);
-      paintBar(st, api);
+      paintPath(st, api);
       if (st.tab === 'store') {
         for (const el of st.storeCds) {
           const left = +el.dataset.at - now;
