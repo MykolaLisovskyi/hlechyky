@@ -27,7 +27,8 @@ public interface IMelodySource
 }
 
 /// <summary>
-/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Беремо все, що
+/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Треки з 👎
+/// (<c>melody_dislikes</c>) — і всі завантаження тієї самої пісні — не беремо. Беремо все, що
 /// хоч раз звучало на радіо (<see cref="Heard"/>). Голосові, забанені й коротші за 45 секунд не беремо; одного
 /// виконавця в партії намагаємось не повторювати.
 /// </summary>
@@ -48,6 +49,11 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
                 FROM tracks t
                 WHERE t.file_path IS NOT NULL AND t.id NOT LIKE $voice AND t.duration_sec >= $min
                   AND t.id NOT IN (SELECT track_id FROM bans)
+                  AND t.id NOT IN (SELECT track_id FROM melody_dislikes)
+                  -- та сама пісня з іншого завантаження теж не годиться
+                  AND (t.song_key IS NULL OR t.song_key = '' OR t.song_key NOT IN (
+                      SELECT x.song_key FROM tracks x JOIN melody_dislikes d ON d.track_id = x.id
+                      WHERE x.song_key IS NOT NULL AND x.song_key <> ''))
                 """;
             cmd.Parameters.AddWithValue("$voice", VoiceService.Prefix + "%");
             cmd.Parameters.AddWithValue("$min", MinDuration);

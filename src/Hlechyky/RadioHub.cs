@@ -122,6 +122,22 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (old is not null && !presence.IsOnline(old)) await broadcaster.FlushAsync(rooms.DropNick(old));
     }
 
+    // ---------- «Вгадай мелодію» ----------
+
+    /// <summary>
+    /// 👎 треку: у «Вгадай мелодію» він (і та сама пісня з інших завантажень) більше не трапиться. Ще раз — зняти.
+    /// Відповідь: <c>{ ok, disliked, total, message }</c>.
+    /// </summary>
+    public object MelodyDislike(string trackId)
+    {
+        if (!Allow(input: false)) return new { ok = false, disliked = false, total = 0, message = Games.Say.TooFast };
+        if (string.IsNullOrWhiteSpace(trackId) || VoiceService.IsVoice(trackId)) return new { ok = false, disliked = false, total = 0, message = "Нема такого треку" };
+        var result = db.ToggleMelodyDislike(trackId, Nick());
+        return result is { } r
+            ? new { ok = true, disliked = r.Mine, total = r.Total, message = r.Mine ? "👎 Більше не трапиться у «Вгадай мелодію»" : "Дизлайк знято" }
+            : new { ok = false, disliked = false, total = 0, message = "Нема такого треку" };
+    }
+
     // ---------- турнір ----------
     // Кожен метод повертає текст відмови тому, хто тиснув, або null; зміни всім розсилає сам Tournament.
 

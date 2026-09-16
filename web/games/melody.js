@@ -23,7 +23,7 @@
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 8);
 
   function st(root) {
-    if (!root._mg) root._mg = { clip: '', timer: 0, radioMuted: null, played: false };
+    if (!root._mg) root._mg = { clip: '', timer: 0, radioMuted: null, played: false, disliked: {} };
     return root._mg;
   }
 
@@ -112,6 +112,31 @@
     bar.style.width = Math.min(100, (a.currentTime / d) * 100) + '%';
   }
 
+  // ---------- 👎 ----------
+  // Дизлайк живе в базі, а не в партії: тиснеш — трек (і та сама пісня з інших завантажень) більше не трапиться
+  // в «Вгадай мелодію» нікому. Стан кнопки браузер тримає сам: у партію й так потрапляють лише треки без дизлайків.
+
+  function dislikeBtn(root, id, small) {
+    const on = !!st(root).disliked[id];
+    return '<button type="button" class="ghost mgdis' + (on ? ' on' : '') + (small ? ' small' : '') + '" data-track="' + String(id).replace(/"/g, '&quot;') + '"'
+      + ' title="' + (on ? 'Зняти дизлайк' : 'Більше не давати цей трек у «Вгадай мелодію»') + '">'
+      + (small ? '👎' : on ? '👎 Не трапиться' : '👎 Більше не давати') + '</button>';
+  }
+
+  async function dislike(root, id) {
+    if (!id || !window.HGames) return;
+    const r = await HGames.call('MelodyDislike', id);
+    if (!r || !r.ok) return;
+    st(root).disliked[id] = !!r.disliked;
+    root.querySelectorAll('.mgdis').forEach((b) => {
+      if (b.dataset.track !== id) return;
+      const small = b.classList.contains('small');
+      b.classList.toggle('on', !!r.disliked);
+      b.textContent = small ? '👎' : r.disliked ? '👎 Не трапиться' : '👎 Більше не давати';
+      b.title = r.disliked ? 'Зняти дизлайк' : 'Більше не давати цей трек у «Вгадай мелодію»';
+    });
+  }
+
   // ---------- розмітка ----------
 
   function timer(root, ctx) {
@@ -142,12 +167,20 @@
       html = '<div class="mgdisc"></div>'
         + '<div class="mgwave"><i></i></div>'
         + '<button type="button" class="primary mgplay">▶ Слухати</button>';
+    } else if (v.phase === 'done' && (v.played || []).length) {
+      key = 'done:' + v.played.map((t) => t.id).join(',');
+      html = '<div class="mgwait">Що звучало. 👎 — більше не давати в цій грі</div><div class="mgplayed">'
+        + v.played.map((t) => '<div class="mgpl">'
+          + '<span class="mgmini"' + (t.thumb ? ' style="background-image:url(' + ctx.esc(t.thumb) + ')"' : '') + '></span>'
+          + '<span class="mgpt"><b>' + ctx.esc(t.title) + '</b><i>' + ctx.esc(t.artist) + '</i></span>'
+          + dislikeBtn(root, t.id, true) + '</div>').join('')
+        + '</div>';
     } else if (v.phase === 'reveal' || (v.phase === 'done' && v.answer)) {
       const a = v.answer || {};
       key = 'reveal:' + v.round + ':' + (v.phase);
       html = '<div class="mgcover"' + (a.thumb ? ' style="background-image:url(' + ctx.esc(a.thumb) + ')"' : '') + '></div>'
         + '<div class="mganswer"><div class="mgtitle">' + ctx.esc(a.title || '') + '</div><div class="mgartist">' + ctx.esc(a.artist || '') + '</div></div>'
-        + '<button type="button" class="ghost mgplay">↻ Ще раз</button>';
+        + '<div class="mgrow"><button type="button" class="ghost mgplay">↻ Ще раз</button>' + (a.id ? dislikeBtn(root, a.id, false) : '') + '</div>';
     } else {
       key = 'done';
       html = v.error ? '<div class="mgwait">' + ctx.esc(v.error) + '</div>' : '';
@@ -155,6 +188,7 @@
     if (el.dataset.key === key) return;
     el.dataset.key = key;
     el.innerHTML = html;
+    el.querySelectorAll('.mgdis').forEach((b) => b.onclick = () => dislike(root, b.dataset.track));
     const btn = el.querySelector('.mgplay');
     if (btn) btn.onclick = () => {
       const a = player(root);

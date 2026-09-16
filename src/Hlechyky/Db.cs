@@ -111,6 +111,8 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE chat ADD COLUMN room_id TEXT"); } catch (SqliteException) { /* exists */ }
         // на яке повідомлення це відповідь, і хто яке лайкнув
         try { Exec(c, "ALTER TABLE chat ADD COLUMN reply_to INTEGER"); } catch (SqliteException) { /* exists */ }
+        // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
+        Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
@@ -815,6 +817,33 @@ public sealed class Db
         }
         tx.Commit();
         return LikesFor(c, [chatId]).TryGetValue(chatId, out var l) ? l : [];
+    }
+
+    // ---- «Вгадай мелодію»: що більше не давати ----
+
+    /// <summary>
+    /// Поставити або зняти 👎 треку в «Вгадай мелодію». null — такого треку нема. Інакше — чи стоїть тепер дизлайк
+    /// від цього ніка і скільки їх у треку всього. Нік без регістру: «Оля» і «оля» — одна людина.
+    /// </summary>
+    public (bool Mine, int Total)? ToggleMelodyDislike(string trackId, string nick)
+    {
+        using var c = Open();
+        using (var t = Cmd(c, "SELECT 1 FROM tracks WHERE id=$id", ("$id", trackId)))
+        {
+            if (t.ExecuteScalar() is null) return null;
+        }
+        var nicks = new List<string>();
+        using (var q = Cmd(c, "SELECT nick FROM melody_dislikes WHERE track_id=$id", ("$id", trackId)))
+        using (var r = q.ExecuteReader())
+            while (r.Read()) nicks.Add(r.GetString(0));
+        var existing = nicks.FirstOrDefault(n => string.Equals(n, nick, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            Exec(c, "DELETE FROM melody_dislikes WHERE track_id=$id AND nick=$n", ("$id", trackId), ("$n", existing));
+            return (false, nicks.Count - 1);
+        }
+        Exec(c, "INSERT INTO melody_dislikes(track_id, nick, created_at) VALUES($id, $n, $now)", ("$id", trackId), ("$n", nick), ("$now", Now()));
+        return (true, nicks.Count + 1);
     }
 
     // ---- що кімнаті не зайшло з порад Глека ----

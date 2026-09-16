@@ -317,7 +317,12 @@ public sealed class Melody : Game
             found = _found.Where(kv => kv.Value.Artist || kv.Value.Title)
                 .Select(kv => new { seat = kv.Key, artist = kv.Value.Artist, title = kv.Value.Title, points = kv.Value.Points }).ToArray(),
             skip = _phase == Play ? _skip.Order().ToArray() : [],
-            answer = open && prepared is not null ? new { artist = prepared.Track.Artist, title = prepared.Track.Title, thumb = prepared.Track.Thumb } : null,
+            answer = open && prepared is not null ? new { id = prepared.Track.Id, artist = prepared.Track.Artist, title = prepared.Track.Title, thumb = prepared.Track.Thumb } : null,
+            // після партії — усе, що звучало: браузер дає поставити 👎 будь-якому
+            played = _phase == Done
+                ? Enumerable.Range(1, _round).Where(_ready.ContainsKey).Select(i => _ready[i].Track)
+                    .Select(t => new { id = t.Id, artist = t.Artist, title = t.Title, thumb = t.Thumb }).ToArray()
+                : null,
             scores = (int[])_scores.Clone(),
             left = _left.Order().ToArray(),
             error = _error,
