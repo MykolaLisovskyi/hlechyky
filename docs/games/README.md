@@ -34,6 +34,7 @@
 | specs/wordle.md | 41 | Глек-слово |
 | specs/daily.md | 84 | Щоденний глек (каркас) |
 | specs/skilky.md | 44 | Скільки? |
+| specs/pictionary.md | — | Піктіонарі |
 | specs/mafia.md | 46 | Мафія |
 | specs/ad-contest.md | 73 | Озвуч рекламу |
 | specs/clicker.md | 82 | Гончарне коло |

@@ -1,0 +1,106 @@
+/*
+  Піктіонарі. Полотно завжди біле — це папір, а не тема сайту; решта кольорів — змінними.
+  Картка міряє себе сама (container-type): де є місце, рахунок і здогадки стоять праворуч від полотна,
+  де нема — лягають під нього.
+*/
+:root {
+  --pcpaper: #ffffff;
+  --pcok: rgba(67, 160, 71, .16);
+}
+
+.pcwrap { container-type: inline-size; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+
+.pctop { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 40px; }
+.pchead { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcword { text-align: center; font-size: 1.25em; display: flex; gap: 14px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
+.pcreal { color: var(--accent); letter-spacing: .5px; }
+.pcw { display: inline-flex; gap: 4px; align-items: flex-end; }
+.pcw sub { font-size: .55em; color: var(--muted); margin-left: 2px; }
+.pcl { display: inline-block; min-width: .8em; text-align: center; font-weight: 700; text-transform: uppercase; }
+.pcl.hid { border-bottom: 2px solid var(--text); height: 1.1em; }
+.pcgap { display: inline-block; width: .6em; }
+
+.pctime { position: relative; justify-self: end; width: min(160px, 100%); height: 22px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.pctime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .2s linear; }
+.pctime i.hot { background: var(--danger); }
+.pcsec { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.pcmain {
+  display: grid; gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-areas: "stage side" "tools side";
+  align-items: start;
+}
+.pcstage { grid-area: stage; position: relative; }
+.pcside { grid-area: side; display: flex; flex-direction: column; gap: 6px; min-width: 0; align-self: stretch; }
+.pctools { grid-area: tools; display: flex; flex-direction: column; gap: 6px; }
+
+@container (max-width: 640px) {
+  .pcmain { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "tools" "side"; }
+  .pctop { grid-template-columns: 1fr auto; }
+  .pcword { grid-column: 1 / -1; order: 3; }
+  .pcfeed { max-height: 160px; }
+}
+
+.pccanvas {
+  display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--pcpaper);
+  border-radius: 10px; border: 1px solid var(--line); touch-action: auto;
+}
+.pccanvas.can { cursor: crosshair; touch-action: none; }
+.pccanvas.can[data-tool="fill"] { cursor: cell; }
+
+.pcover {
+  position: absolute; inset: 0; display: grid; place-items: center; padding: 12px;
+  background: rgba(0, 0, 0, .38); border-radius: 10px;
+}
+.pcover[hidden] { display: none; }
+.pcbox {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; max-width: 100%;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
+}
+.pctitle { font-weight: 700; font-size: 1.05em; }
+.pcchoices { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.pcchoices button { font-size: 1.05em; padding: 9px 16px; }
+.pcbig { font-size: 1.8em; font-weight: 800; color: var(--accent); }
+.pcgot { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pcfinal { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+.pcfinal div { display: flex; justify-content: space-between; gap: 16px; }
+
+.pcscores { display: flex; flex-direction: column; gap: 3px; }
+.pcsc { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg2); border-radius: 8px; font-size: .92em; }
+.pcsc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.pcsc.ok { background: var(--pcok); }
+.pcsc.off { opacity: .45; }
+.pcn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcm { flex: none; }
+.pcsc em { font-style: normal; color: var(--ok); font-size: .85em; }
+.pcsc b { flex: none; min-width: 2.4em; text-align: right; font-variant-numeric: tabular-nums; }
+
+.pcfeed {
+  flex: 1 1 auto; min-height: 90px; max-height: 300px; overflow-y: auto;
+  background: var(--bg2); border-radius: 8px; padding: 6px 8px; font-size: .9em;
+  display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere;
+}
+.pcf.ok { color: var(--ok); }
+.pcf.word { color: var(--accent); border-top: 1px dashed var(--line); padding-top: 2px; margin-top: 2px; }
+
+.pcguess { display: flex; gap: 6px; }
+.pcguess input {
+  flex: 1; min-width: 0; padding: 8px 10px; font-size: 1em;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.pcguess input:focus { outline: none; border-color: var(--accent2); }
+.pcguess input:disabled { opacity: .6; }
+
+.pcpal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; max-width: 420px; }
+.pcsw { aspect-ratio: 1; min-height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+.pcsw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.pcrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.pcsz, .pct, .pca {
+  min-width: 36px; height: 36px; padding: 0 6px; display: grid; place-items: center;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 1.05em;
+}
+.pcsz i { display: block; border-radius: 50%; background: var(--text); }
+.pcsz.on, .pct.on { border-color: var(--accent); background: var(--panel3); }
+.pcsep { width: 8px; }

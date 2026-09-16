@@ -19,6 +19,8 @@ data/words/*
 # Банк запитань «Скільки?» — маленький текстовий файл, який має їхати разом із грою
 # (без нього гра не має в що грати). Той самий покроковий виняток, що й для словників.
 !data/questions/
+# Словник Піктіонарі — так само їде разом із грою.
+!data/pictionary/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
