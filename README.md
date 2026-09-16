@@ -242,8 +242,9 @@ liquidsoap/               radio.liq, docker-compose.yml, .env (пароль Icec
 tools/yt-dlp/             yt-dlp.exe, ffmpeg.exe, ffprobe.exe (setup.ps1 качає)
 cache/                    завантажені треки і голосові (voice-<id>.mp3)
 data/                     hlechyky.db (історія, лайки, чат, черга, плейлисти, кеш Last.fm), ключі cookie, data/caddy (сертифікати)
-data/words/               українські словники для словесних ігор — разом із data/questions і data/pictionary єдине, що з data/ лежить у гіті
+data/words/               українські словники для словесних ігор — разом із data/questions, data/pictionary і data/telephone єдине, що з data/ лежить у гіті
 data/pictionary/          words.txt — прості слова для Піктіонарі, по темах
+data/telephone/           phrases.txt — фрази-підказки для першого кроку Зіпсованого телефону
 .github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR (зелений build на main → автодеплой)
 ```
 

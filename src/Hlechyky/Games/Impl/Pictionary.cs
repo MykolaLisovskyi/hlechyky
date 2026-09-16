@@ -28,15 +28,8 @@ public sealed class Pictionary : Game
     /// <summary>Як часто гравець може попросити повний малюнок.</summary>
     public const int SyncEveryMs = 2_000;
 
-    /// <summary>Логічне полотно: 1000 × 750. Координати точок — цілі в цих межах.</summary>
-    public const int CanvasW = 1000, CanvasH = 750;
-    /// <summary>Кольорів у палітрі клієнта (web/games/pictionary.js, PALETTE).</summary>
-    public const int Colors = 20;
-    public const int MinWidth = 1, MaxWidth = 60;
-    /// <summary>Точок в одному шматку штриха (пар x,y). 8 КБ payload вистачає з запасом.</summary>
-    public const int MaxChunkPoints = 300;
-    /// <summary>Межі одного малюнка: щоб один художник не роздув пам'ять і розсилку.</summary>
-    public const int MaxOps = 6_000, MaxPoints = 120_000;
+    /// <summary>Логічне полотно й межі штриха — спільні з іншими іграми, де малюють (<see cref="Sketch"/>).</summary>
+    public const int CanvasW = Sketch.CanvasW, CanvasH = Sketch.CanvasH, MaxChunkPoints = Sketch.MaxChunkPoints;
 
     /// <summary>Очки вгадувача: від <see cref="MinGuessPoints"/> до <see cref="MaxGuessPoints"/> залежно від часу, плюс перший.</summary>
     public const int MaxGuessPoints = 100, MinGuessPoints = 10, FirstBonus = 20;
@@ -91,9 +84,7 @@ public sealed class Pictionary : Game
     object? _result;
 
     // ---------- малюнок ----------
-    /// <summary>Операція: [вид, штрих, колір, товщина, x0, y0, x1, y1, …]. Вид 0 — лінія, 1 — заливка (одна точка).</summary>
-    readonly List<int[]> _ops = [];
-    int _points;
+    readonly Sketch _sketch = new();
     int _ver;
     /// <summary>Скільки операцій уже поїхало кадрами; кадр везе решту.</summary>
     int _sent;
@@ -261,29 +252,7 @@ public sealed class Pictionary : Game
     ActResult AddLine(int seat, JsonElement payload)
     {
         if (!CanDraw(seat)) return ActResult.Fail("Зараз малює не ти");
-        if (payload.ValueKind != JsonValueKind.Object) return ActResult.Fail("Кривий штрих");
-        var stroke = Int(payload, "s", -1);
-        var color = Int(payload, "c", -1);
-        var width = Int(payload, "w", 0);
-        if (stroke < 0 || color is < 0 or >= Colors || width is < MinWidth or > MaxWidth) return ActResult.Fail("Кривий штрих");
-        if (!payload.TryGetProperty("p", out var p) || p.ValueKind != JsonValueKind.Array) return ActResult.Fail("Кривий штрих");
-
-        var n = p.GetArrayLength();
-        if (n < 2 || n % 2 != 0 || n / 2 > MaxChunkPoints) return ActResult.Fail("Кривий штрих");
-        if (_ops.Count >= MaxOps || _points + n / 2 > MaxPoints) return ActResult.Fail("Полотно переповнене — очисть його");
-
-        var op = new int[4 + n];
-        op[0] = 0; op[1] = stroke; op[2] = color; op[3] = width;
-        var k = 0;
-        foreach (var v in p.EnumerateArray())
-        {
-            if (v.ValueKind != JsonValueKind.Number || !v.TryGetDouble(out var d) || double.IsNaN(d)) return ActResult.Fail("Кривий штрих");
-            var limit = k % 2 == 0 ? CanvasW : CanvasH;
-            op[4 + k] = (int)Math.Clamp(Math.Round(d), 0, limit);
-            k++;
-        }
-        _ops.Add(op);
-        _points += n / 2;
+        if (_sketch.Line(payload) is { } error) return ActResult.Fail(error);
         _frameDirty = true;
         return ActResult.Done;
     }
@@ -291,14 +260,7 @@ public sealed class Pictionary : Game
     ActResult AddFill(int seat, JsonElement payload)
     {
         if (!CanDraw(seat)) return ActResult.Fail("Зараз малює не ти");
-        var stroke = Int(payload, "s", -1);
-        var color = Int(payload, "c", -1);
-        var x = Int(payload, "x", -1);
-        var y = Int(payload, "y", -1);
-        if (stroke < 0 || color is < 0 or >= Colors || x is < 0 or > CanvasW || y is < 0 or > CanvasH) return ActResult.Fail("Крива заливка");
-        if (_ops.Count >= MaxOps) return ActResult.Fail("Полотно переповнене — очисть його");
-        _ops.Add([1, stroke, color, 0, x, y]);
-        _points++;
+        if (_sketch.Fill(payload) is { } error) return ActResult.Fail(error);
         _frameDirty = true;
         return ActResult.Done;
     }
@@ -307,14 +269,7 @@ public sealed class Pictionary : Game
     ActResult Undo(int seat)
     {
         if (!CanDraw(seat)) return ActResult.Fail("Зараз малює не ти");
-        if (_ops.Count == 0) return ActResult.Done;
-        var stroke = _ops[^1][1];
-        while (_ops.Count > 0 && _ops[^1][1] == stroke)
-        {
-            _points -= Math.Max(1, (_ops[^1].Length - 4) / 2);
-            _ops.RemoveAt(_ops.Count - 1);
-        }
-        Rewrite();
+        if (_sketch.Undo()) Rewrite();
         return ActResult.Done;
     }
 
@@ -345,8 +300,7 @@ public sealed class Pictionary : Game
 
     void WipeCanvas()
     {
-        _ops.Clear();
-        _points = 0;
+        _sketch.Clear();
         Rewrite();
     }
 
@@ -379,7 +333,7 @@ public sealed class Pictionary : Game
         if (_frameDirty)
         {
             _frameFrom = _sent;
-            _sent = _ops.Count;
+            _sent = _sketch.Count;
         }
         var result = new TickResult(_frameDirty, _viewDirty);
         _frameDirty = _viewDirty = false;
@@ -509,8 +463,6 @@ public sealed class Pictionary : Game
 
     object[] Feed(int take) => [.. _feed.TakeLast(take).Select(f => new { id = f.Id, seat = f.Seat, kind = f.Kind, text = f.Text })];
 
-    int[][] Ops(int from) => [.. _ops.Skip(from).Select(o => (int[])o.Clone())];
-
     public override object View(int? seat) => new
     {
         phase = _phase,
@@ -529,7 +481,7 @@ public sealed class Pictionary : Game
         gained = (int[])_gained.Clone(),
         guessed = _guessed.ToArray(),
         left = _left.Order().ToArray(),
-        drawing = new { ver = _ver, n = _ops.Count, ops = Ops(0) },
+        drawing = new { ver = _ver, n = _sketch.Count, ops = _sketch.Ops() },
         feed = Feed(FeedKeep),
         result = _result,
     };
@@ -541,8 +493,8 @@ public sealed class Pictionary : Game
         drawer = _drawer,
         ver = _ver,
         from = _frameFrom,
-        n = _ops.Count,
-        ops = Ops(_frameFrom),
+        n = _sketch.Count,
+        ops = _sketch.Ops(_frameFrom),
         mask = Mask(),
         until = _until,
         guessed = _guessed.ToArray(),

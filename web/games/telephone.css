@@ -1,0 +1,77 @@
+/*
+  Зіпсований телефон. Полотно — білий папір, решта кольорів — змінними. Панель інструментів і смужка
+  таймера повторюють Піктіонарі (ті самі класи pc*), але оголошені й тут: файл гри має жити сам по собі,
+  навіть коли pictionary.css ще не підвантажився.
+*/
+:root {
+  --tppaper: #ffffff;
+  --tplike: #e53935;
+}
+
+.tpwrap { container-type: inline-size; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.tptop { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
+.tpbody { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
+.tpbody > * { width: 100%; max-width: 560px; }
+
+.tptitle { text-align: center; font-weight: 700; font-size: 1.1em; }
+.tpprompt { text-align: center; font-size: 1.5em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
+
+.tpcanvas, .tpshow {
+  display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--tppaper);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.tpcanvas { touch-action: auto; }
+.tpcanvas.can { cursor: crosshair; touch-action: none; }
+.tpcanvas.can[data-tool="fill"] { cursor: cell; }
+.tptools[hidden] { display: none; }
+.tptools { display: flex; flex-direction: column; gap: 6px; }
+
+.tpform { display: flex; gap: 6px; }
+.tpform input {
+  flex: 1; min-width: 0; padding: 10px 12px; font-size: 1.1em;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.tpform input:focus { outline: none; border-color: var(--accent2); }
+.tpform input:disabled { opacity: .6; }
+.tproll { font-size: 1.2em; min-width: 46px; }
+
+.tpact { display: flex; gap: 10px; justify-content: center; align-items: center; }
+.tpact button { min-width: 140px; }
+.tpok { color: var(--ok); font-weight: 700; }
+.tpwho { text-align: center; color: var(--muted); font-size: .9em; }
+
+.tpchain { display: flex; flex-direction: column; gap: 12px; }
+.tpentry { position: relative; background: var(--bg2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.tpentry.fresh { animation: tpin .35s ease-out; }
+@keyframes tpin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tpentry.fresh { animation: none; } }
+.tpby { color: var(--muted); font-size: .85em; }
+.tptext { font-size: 1.25em; font-weight: 700; overflow-wrap: anywhere; }
+.tpentry .tpshow { max-width: 420px; }
+.tplike {
+  align-self: flex-end; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); font-size: .9em;
+}
+.tplike.on { color: var(--tplike); border-color: var(--tplike); }
+.tplike:disabled { cursor: default; opacity: .7; }
+
+.tpalbum { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.tpbody .pcfinal { display: flex; flex-direction: column; gap: 4px; max-width: 260px; }
+.tpbody .pcfinal div { display: flex; justify-content: space-between; gap: 16px; }
+
+/* ---- спільне з Піктіонарі: таймер і інструменти ---- */
+.tpwrap .pctime { position: relative; width: min(160px, 50%); height: 22px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.tpwrap .pctime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .25s linear; }
+.tpwrap .pctime i.hot { background: var(--danger); }
+.tpwrap .pcsec { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.tpwrap .pcpal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.tpwrap .pcsw { aspect-ratio: 1; min-height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+.tpwrap .pcsw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.tpwrap .pcrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tpwrap .pcsz, .tpwrap .pct, .tpwrap .pca {
+  min-width: 36px; height: 36px; padding: 0 6px; display: grid; place-items: center;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 1.05em;
+}
+.tpwrap .pcsz i { display: block; border-radius: 50%; background: var(--text); }
+.tpwrap .pcsz.on, .tpwrap .pct.on { border-color: var(--accent); background: var(--panel3); }
+.tpwrap .pcsep { width: 8px; }

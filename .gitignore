@@ -21,6 +21,8 @@ data/words/*
 !data/questions/
 # Словник Піктіонарі — так само їде разом із грою.
 !data/pictionary/
+# Фрази-підказки Зіпсованого телефону.
+!data/telephone/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
