@@ -117,6 +117,8 @@
 }
 .clks-sndpop input { width: 92px; accent-color: var(--accent); }
 .clk .clks-sndoff { padding: 1px 8px; font-size: .78em; }
+.clk .clks-sndmus { padding: 1px 7px; font-size: .95em; line-height: 1.25; opacity: .55; }
+.clk .clks-sndmus.on { opacity: 1; color: var(--accent); border-color: currentColor; }
 
 /* ---- банер «Наступна ціль» над вкладками ---- */
 .clk .clks-goal {

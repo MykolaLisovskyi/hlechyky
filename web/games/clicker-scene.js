@@ -681,7 +681,7 @@
   // ---------- звук ----------
 
   const Snd = {
-    on: false, vol: 0.6, ctx: null, out: null, noise: null, hum: null, voices: 0, humLevel: -1, humAt: 0,
+    on: false, vol: 0.6, ctx: null, out: null, noise: null, voices: 0,
 
     load(api) {
       this.on = api.storeGet('clk.sound', '0') === '1';
@@ -721,7 +721,8 @@
     setOn(on, api) {
       this.on = on;
       api.storeSet('clk.sound', on ? '1' : '0');
-      if (on) { this.ensure(); this.play('tap'); } else { this.humTo(0); if (this.ctx) this.ctx.suspend().catch(() => {}); }
+      if (on) { this.ensure(); this.play('tap'); Mus.start(); }
+      else { Mus.stop(); if (this.ctx) this.ctx.suspend().catch(() => {}); }
     },
 
     setVol(v, api) {
@@ -837,26 +838,16 @@
           for (let i = 0; i < 4; i++) this.burst(t + Math.random() * 0.3, 0.03, 'bandpass', 2000 + Math.random() * 2000, 0, 0.12, 3);
           this.voice(400);
           break;
-        case 'kiln': {                     // гул горна: низький шум, що наростає й сідає, з тріском
-          const ctx2 = this.ctx;
-          const src = ctx2.createBufferSource();
-          src.buffer = this.noise;
-          const lp = ctx2.createBiquadFilter();
-          lp.type = 'lowpass';
-          lp.frequency.value = 260;
-          const g = ctx2.createGain();
-          g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(0.5, t + 0.35);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
-          src.connect(lp); lp.connect(g); g.connect(this.out);
-          src.start(t, 0, 1.7);
+        case 'kiln':                       // вогонь у горні: подих полум'я й тріск дров, без низького гулу
+          this.burst(t, 0.9, 'bandpass', 700, 300, 0.3, 0.7);
+          this.burst(t + 0.05, 0.5, 'highpass', 2600, 1400, 0.12, 0.7);
           this.play('crackle');
-          this.voice(1700);
+          this.voice(1000);
           break;
-        }
-        case 'prestige':                   // обпал майстерні: вогняний «ух»
-          this.burst(t, 1.1, 'bandpass', 250, 2400, 0.45, 0.9);
-          this.tone('sawtooth', 70, 40, t, 0.1, 0.12, 1);
+        case 'prestige':                   // обпал майстерні: вогняний «ух» і дзвін на видиху
+          this.burst(t, 1.1, 'bandpass', 350, 2400, 0.34, 0.9);
+          this.bell(t + 0.5, 659, 0.16, 1.6);
+          this.bell(t + 0.72, 988, 0.12, 1.4);
           this.voice(1300);
           break;
         case 'away':                       // «поки тебе не було»: м'який акорд
@@ -884,53 +875,267 @@
 
     coins(t, n, peak) {
       for (let i = 0; i < n; i++) {
-        const at = t + i * (0.045 + Math.random() * 0.03);
-        const f = 2300 + Math.random() * 1400;
-        this.tone('square', f, f * 0.98, at, 0.001, peak * 0.35, 0.07);
-        this.tone('sine', f * 1.5, 0, at, 0.001, peak * 0.5, 0.12);
+        const at = t + i * (0.05 + Math.random() * 0.03);
+        const f = 1500 + Math.random() * 900;
+        this.tone('triangle', f, f * 0.985, at, 0.002, peak * 0.3, 0.08);
+        this.tone('sine', f * 2.4, 0, at, 0.001, peak * 0.32, 0.11);
       }
-    },
-
-    /// Гул кола: низька пилка крізь фільтр; рівень 0…1 від розгону й пасиву.
-    humTo(level) {
-      if (!this.ctx || this.ctx.state === 'closed') return;
-      level = Math.round(clamp(level, 0, 1) * 50) / 50;
-      if (level === this.humLevel) return;
-      this.humLevel = level;
-      const ctx = this.ctx;
-      if (!this.hum) {
-        if (level <= 0 || !this.on) return;
-        const o = ctx.createOscillator();
-        o.type = 'sawtooth';
-        const o2 = ctx.createOscillator();
-        o2.type = 'sine';
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.Q.value = 0.9;
-        const g = ctx.createGain();
-        g.gain.value = 0;
-        o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(this.out);
-        o.start(); o2.start();
-        this.hum = { o, o2, lp, g };
-      }
-      const now = ctx.currentTime;
-      const h = this.hum;
-      h.g.gain.setTargetAtTime(level > 0 && this.on ? 0.025 + 0.09 * level : 0, now, 0.18);
-      h.o.frequency.setTargetAtTime(46 + 46 * level, now, 0.25);
-      h.o2.frequency.setTargetAtTime(92 + 92 * level, now, 0.25);
-      h.lp.frequency.setTargetAtTime(150 + 520 * level, now, 0.25);
     },
   };
 
-  // Вкладку браузера сховали — гул стихає, контекст засинає; повернулись — прокинеться на першому звуці (Snd.ensure).
+  // Вкладку браузера сховали — контекст засинає; повернулись — звук жде першої події (Snd.ensure), а музика підхоплюється сама.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden || !Snd.ctx) return;
-    Snd.humTo(0);
-    if (Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
+    if (!Snd.ctx) return;
+    if (document.hidden) {
+      Mus.stop();
+      if (Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
+    } else if (Snd.on && Mus.on && HClicker.mounted.size) {
+      Snd.ensure();
+      Mus.start();
+    }
   });
 
+  // ---------- фонова музика: тиха капела на бандурі й сопілці ----------
+
+  // Награвання синтезується наживо: жодних файлів, нескінченна фраза, що не повторюється точно.
+  // Ля мінор натуральний із прохідною підвищеною IV — та сама фарба, що в награваннях, але без «циганщини».
+  const MUS_ROOT = 220;                       // ля першої октави — тоніка
+  const MUS_REF = 220;                        // висота, на якій зроблено зразок щипка
+  const MUS_VOL = 1;                          // все одно тихше за звуки дії: щипки самі по собі тихі
+  const BEAT = 60 / 66;                       // темп 66 — неквапом, під крок ноги коло гончарного кола
+  const BAR = BEAT * 4;
+  const MINOR = [0, 2, 3, 5, 7, 8, 10];       // ля сі до ре мі фа соль
+  const CHORDS = {
+    Am: [0, 3, 7, 12, 15, 19], Dm: [5, 8, 12, 17, 20], Em: [7, 10, 14, 19, 22],
+    F: [8, 12, 15, 20, 24], G: [10, 14, 17, 22, 26], C: [3, 7, 10, 15, 19],
+  };
+  const ROOTS = { Am: 0, Dm: 5, Em: 7, F: 8, G: 10, C: 3 };
+  const PROGS = [['Am', 'G', 'F', 'Em'], ['Am', 'Dm', 'G', 'Am'], ['Am', 'F', 'G', 'Am'], ['Dm', 'Am', 'Em', 'Am']];
+
+  const hz = (s) => MUS_ROOT * Math.pow(2, s / 12);
+  /// Найближчий до ноти звук акорду — щоб фраза сідала м'яко, а не стрибком через дві октави.
+  const near = (tones, s) => {
+    let best = s, dist = 99;
+    for (const x of tones) for (let k = 0; k < 3; k++) {
+      const c = 12 + (x % 12) + 12 * k;
+      if (Math.abs(c - s) < dist) { dist = Math.abs(c - s); best = c; }
+    }
+    return best;
+  };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+  const Mus = {
+    on: false, timer: 0, at: 0, gain: null, buf: null, prog: null, step: 0,
+    sing: 0, rest: 2, mel: 9, last: -1, ducked: true, els: null, elsAt: 0,
+
+    load(api) { this.on = api.storeGet('clk.music', '0') === '1'; },
+
+    /// Щипок бандури робимо раз: Карплус-Стронг у звичайному масиві, далі та сама хвиля грає
+    /// на різній швидкості — низькі струни виходять глухіші й довші, високі дзвінкі й короткі.
+    pluckBuf(ctx) {
+      const sr = ctx.sampleRate;
+      const n = Math.floor(sr * 2.6);
+      const N = Math.round(sr / MUS_REF);
+      const buf = ctx.createBuffer(1, n, sr);
+      const d = buf.getChannelData(0);
+      const ring = new Float32Array(N);
+      let seed = 0;
+      for (let i = 0; i < N; i++) { seed = seed * 0.6 + (Math.random() * 2 - 1) * 0.4; ring[i] = seed; }
+      let p = 0, soft = 0;
+      for (let i = 0; i < n; i++) {
+        const cur = ring[p];
+        ring[p] = (cur + ring[(p + 1) % N]) * 0.4985;    // усереднення = струна глухне згори
+        p = (p + 1) % N;
+        soft = soft * 0.32 + cur * 0.68;                 // тіло інструмента: без різі на атаці
+        d[i] = soft;
+      }
+      return buf;
+    },
+
+    /// Кімнатка, у якій стоїть коло: шум, що згасає. Без неї щипки сухі, як у телефоні.
+    roomBuf(ctx) {
+      const sr = ctx.sampleRate;
+      const n = Math.floor(sr * 1.7);
+      const buf = ctx.createBuffer(2, n, sr);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < n; i++) {
+          lp = lp * 0.78 + (Math.random() * 2 - 1) * 0.22;
+          d[i] = lp * Math.pow(1 - i / n, 2.6) * (i < sr * 0.012 ? i / (sr * 0.012) : 1);
+        }
+      }
+      return buf;
+    },
+
+    start() {
+      if (!this.on || !Snd.on) return;
+      const ctx = Snd.ensure();
+      if (!ctx) return;
+      if (!this.gain) {
+        this.buf = this.pluckBuf(ctx);
+        this.gain = ctx.createGain();
+        this.gain.gain.value = 0;
+        const conv = ctx.createConvolver();
+        conv.buffer = this.roomBuf(ctx);
+        const wet = ctx.createGain();
+        wet.gain.value = 0.25;
+        this.gain.connect(Snd.out);
+        this.gain.connect(wet);
+        wet.connect(conv);
+        conv.connect(Snd.out);
+      }
+      this.at = 0;
+      this.ducked = true;                    // перший такт сам розкриє гучність
+      if (!this.timer) this.timer = setInterval(() => this.tick(), 220);
+    },
+
+    stop() {
+      clearInterval(this.timer);
+      this.timer = 0;
+      this.at = 0;
+      this.ducked = true;
+      if (this.gain && Snd.ctx && Snd.ctx.state !== 'closed') this.gain.gain.setTargetAtTime(0, Snd.ctx.currentTime, 0.2);
+    },
+
+    setOn(on, api) {
+      this.on = on;
+      api.storeSet('clk.music', on ? '1' : '0');
+      if (on) this.start(); else this.stop();
+    },
+
+    /// Радіо сайту (чи голосове в чаті) головніше за гру: заграло — музика стихає й чекає його кінця.
+    busy() {
+      const t = performance.now();
+      if (!this.els || t - this.elsAt > 2000) { this.els = document.querySelectorAll('audio, video'); this.elsAt = t; }
+      for (const el of this.els) if (!el.paused && !el.ended) return true;
+      return false;
+    },
+
+    tick() {
+      const ctx = Snd.ctx;
+      if (!this.on || !Snd.on || !ctx || ctx.state !== 'running') return;
+      const off = document.hidden || this.busy();
+      if (off !== this.ducked) {
+        this.ducked = off;
+        this.gain.gain.setTargetAtTime(off ? 0 : MUS_VOL, ctx.currentTime, off ? 0.25 : 0.7);
+      }
+      if (off) { this.at = 0; return; }
+      const now = ctx.currentTime;
+      if (!this.at || this.at < now) this.at = now + 0.15;   // повернулись — починаємо з чистого такту
+      while (this.at < now + 1.5) { this.bar(this.at); this.at += BAR; }
+    },
+
+    // ---- голоси ----
+
+    /// Бандура: зразок щипка на потрібній висоті, згори — обгортка, щоб нота не обірвалась клацанням.
+    pluck(t, f, vel, dur) {
+      const ctx = Snd.ctx;
+      const src = ctx.createBufferSource();
+      src.buffer = this.buf;
+      src.playbackRate.value = f / MUS_REF;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vel, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(vel * 0.3, t + dur * 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0002, t + dur);
+      g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+      src.connect(g);
+      g.connect(this.gain);
+      src.start(t);
+      src.stop(t + dur + 0.05);
+    },
+
+    /// Сопілка: два тони з легким вібрато й подихом на атаці — щоб не звучало як гудок.
+    blow(t, f, vel, dur) {
+      const ctx = Snd.ctx;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, t);
+      const o2 = ctx.createOscillator();
+      o2.type = 'triangle';
+      o2.frequency.setValueAtTime(f, t);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.setValueAtTime(rnd(4.4, 5.6), t);
+      const lg = ctx.createGain();
+      lg.gain.setValueAtTime(0, t);
+      lg.gain.linearRampToValueAtTime(f * 0.006, t + dur * 0.5);
+      lfo.connect(lg);
+      lg.connect(o.frequency);
+      lg.connect(o2.frequency);
+      const thin = ctx.createGain();
+      thin.gain.value = 0.3;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vel, t + 0.08);
+      g.gain.setValueAtTime(vel, t + dur * 0.75);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(g);
+      o2.connect(thin);
+      thin.connect(g);
+      g.connect(this.gain);
+      o.start(t); o2.start(t); lfo.start(t);
+      o.stop(t + dur + 0.03); o2.stop(t + dur + 0.03); lfo.stop(t + dur + 0.03);
+      // подих на атаці: коротке шелестіння на висоті ноти
+      const air = ctx.createBufferSource();
+      air.buffer = Snd.noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f * 2;
+      bp.Q.value = 1.4;
+      const ag = ctx.createGain();
+      ag.gain.setValueAtTime(0.0001, t);
+      ag.gain.exponentialRampToValueAtTime(vel * 0.5, t + 0.03);
+      ag.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      air.connect(bp); bp.connect(ag); ag.connect(this.gain);
+      air.start(t, Math.random() * 1.2, 0.2);
+    },
+
+    // ---- фраза ----
+
+    /// Один такт: бас і щипки по акорду знизу, зверху — сопілка, що співає два-три такти й мовчить три-чотири.
+    bar(t) {
+      if (this.step % 4 === 0 && (!this.prog || Math.random() < 0.5)) this.prog = pick(PROGS);
+      const name = this.prog[this.step % 4];
+      const tones = CHORDS[name];
+      const root = ROOTS[name];
+      this.step++;
+
+      this.pluck(t + rnd(0, 0.02), hz(root - 12), 0.2, 2.4);
+      if (Math.random() < 0.45) this.pluck(t + BEAT * 2 + rnd(0, 0.03), hz(root - 12 + 7), 0.11, 1.8);
+      for (const b of [0.5, 1, 1.5, 2, 2.5, 3, 3.5]) {
+        if (Math.random() > 0.42) continue;
+        let s = pick(tones);
+        if (s === this.last) s = pick(tones);
+        this.last = s;
+        this.pluck(t + b * BEAT + rnd(-0.015, 0.03), hz(s), rnd(0.09, 0.16), rnd(1.1, 1.9));
+      }
+
+      if (this.sing > 0) { this.melody(t, tones); this.sing--; if (!this.sing) this.rest = Math.floor(rnd(3, 5)); }
+      else if (--this.rest <= 0) this.sing = Math.floor(rnd(2, 4));
+    },
+
+    /// Мелодія ходить сходинками гами, стрибки рідкі; остання фраза сідає на звук акорду.
+    melody(t, tones) {
+      const last = this.sing === 1;
+      let b = 0;
+      while (b < 3.9) {
+        const dur = last && b >= 2 ? 4 - b : pick([1, 1, 1, 0.5, 0.5, 1.5]);
+        // Голос тягне до середини своєї смуги, інакше випадкова хода залипає під стелею чи на дні.
+        const up = this.mel > 9 ? -1 : this.mel < 4 ? 1 : (Math.random() < 0.5 ? 1 : -1);
+        this.mel = clamp(this.mel + (Math.random() < 0.75 ? up : up * pick([2, 3])), 0, 13);
+        let s = 12 + MINOR[this.mel % 7] + 12 * Math.floor(this.mel / 7);
+        if (last && b + dur >= 3.9) s = near(tones, s);
+        if (Math.random() < 0.18) { b += dur; continue; }                 // пауза замість ноти — щоб фраза дихала
+        this.blow(t + b * BEAT + rnd(-0.02, 0.02), hz(s), rnd(0.06, 0.1), dur * BEAT * 0.92);
+        b += dur;
+      }
+    },
+  };
+
   /// Для перевірки з консолі: чи ввімкнено звук, у якому стані AudioContext, скільки голосів звучить.
-  window.HClicker.soundState = () => ({ on: Snd.on, vol: Snd.vol, ctx: Snd.ctx ? Snd.ctx.state : null, voices: Snd.voices, hum: Snd.humLevel });
+  window.HClicker.soundState = () => ({ on: Snd.on, vol: Snd.vol, ctx: Snd.ctx ? Snd.ctx.state : null, voices: Snd.voices, music: Mus.on, quiet: Mus.ducked });
 
   /// Назви, які можуть покликати інші частини, — на найближчий звук із набору.
   const ALIAS = {
@@ -1015,18 +1220,23 @@
     const box = document.createElement('div');
     box.className = 'clks-snd';
     box.innerHTML = '<button type="button" class="clks-sndbtn" aria-label="Звук гри"></button>'
-      + '<div class="clks-sndpop"><input type="range" min="0" max="100" step="1" aria-label="Гучність гри">'
+      + '<div class="clks-sndpop"><button type="button" class="ghost small clks-sndmus" aria-pressed="false">♪</button>'
+      + '<input type="range" min="0" max="100" step="1" aria-label="Гучність гри">'
       + '<button type="button" class="ghost small clks-sndoff">вимкнути</button></div>';
     st.stage.appendChild(box);
     const btn = box.querySelector('.clks-sndbtn');
     const range = box.querySelector('input');
     const off = box.querySelector('.clks-sndoff');
+    const mus = box.querySelector('.clks-sndmus');
     btn.innerHTML = SPK;
     const hover = !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
     let closeAt = 0;
     const paint = () => {
       box.classList.toggle('on', Snd.on);
       btn.title = Snd.on ? 'Звук гри увімкнено' + (hover ? ' — клацни, щоб вимкнути' : '') : 'Звук гри вимкнено — клацни, щоб увімкнути';
+      mus.classList.toggle('on', Mus.on);
+      mus.setAttribute('aria-pressed', Mus.on ? 'true' : 'false');
+      mus.title = Mus.on ? 'Фонове награвання грає — стихає, поки йде ефір' : 'Фонове награвання: бандура й сопілка';
       range.value = String(Math.round(Snd.vol * 100));
     };
     const openPop = () => {
@@ -1042,10 +1252,19 @@
       paint();
     });
     off.addEventListener('click', () => { Snd.setOn(false, api); box.classList.remove('open'); paint(); });
+    // Музика живе в тому самому контексті: вмикаєш її при вимкненому звуці — вмикається й звук.
+    mus.addEventListener('click', () => {
+      if (!Snd.on && !Mus.on) Snd.setOn(true, api);
+      Mus.setOn(!Mus.on, api);
+      // Увімкнули під ефір — буде тиша, і це схоже на поломку: кажемо прямо, чого не чути.
+      if (Mus.on && Mus.busy()) api.toast(st, '♪ Награвання жде: поки грає ефір, гра мовчить', 'ok');
+      openPop();
+      paint();
+    });
     range.addEventListener('input', () => { Snd.setVol(+range.value / 100, api); openPop(); });
     range.addEventListener('change', () => Snd.play('tap'));
     // Звук був увімкнений минулого разу — контекст створимо на перший жест у картці.
-    const wake = () => { if (Snd.on) Snd.ensure(); };
+    const wake = () => { if (Snd.on) { Snd.ensure(); Mus.start(); } };
     st.el.addEventListener('pointerdown', wake, { capture: true });
     st.scn.sound = { box, paint, wake, closeAt: () => clearTimeout(closeAt) };
     paint();
@@ -1231,9 +1450,10 @@
       st.api = api;
       st.scn = {
         vars: {}, sky: { season: 'summer', moon: 8, night: false }, skyAt: 0, houseSig: '', goalAt: 0, tab: '', clayAt: 0,
-        handsOn: false, humAt: 0, frameAt: 0, awayPending: false, clay: null, squash: st.el.querySelector('.clk-squash'),
+        handsOn: false, awayPending: false, clay: null, squash: st.el.querySelector('.clk-squash'),
       };
       Snd.load(api);
+      Mus.load(api);
       api.sfx = (name, o) => {
         try { feel(name, o); Snd.play(String(name || ''), o); } catch (e) { console.error('[clicker:scene] sfx', e); }
       };
@@ -1271,10 +1491,6 @@
       mountGoal(st, api);
       st.scn.skyAt = 0;
       st.scn.sky = paintSky(st, sceneNow(st, api));
-      st.scn.watch = setInterval(() => {
-        // rAF не крутиться у схованій вкладці — гул кола мусить стихнути й без кадрів.
-        if (Snd.hum && (performance.now() - st.scn.frameAt > 450 || !api.visible(st))) Snd.humTo(0);
-      }, 400);
       // Ядро вже перемалювало полиці до того, як ми підмінили значки: попросити їх ще раз з новими значками.
       if (st.shop) st.shop._sig = null;
       if (st.marks) st.marks._sig = null;
@@ -1296,16 +1512,10 @@
     frame(st, api) {
       const scn = st.scn;
       const t = performance.now();
-      scn.frameAt = t;
       // Руки біля кола: одразу після кліка і поки коло розігріте.
       const heat = st.heatFull ? Math.min(1, (st.heat * Math.exp(-Math.max(0, Date.now() - st.heatAt) / 1000 / (st.heatTau || 3))) / st.heatFull) : 0;
       const on = !api.guardOn(st) && (t - scn.clayAt < HANDS_MS || heat > 0.25);
       if (on !== scn.handsOn) { scn.handsOn = on; st.wheelBox.classList.toggle('clks-handson', on); }
-      if (Snd.ctx && Snd.on && t - scn.humAt > 120) {
-        scn.humAt = t;
-        const sec = st.baseSecond > 0 ? 0.12 + Math.min(0.18, Math.log10(1 + st.baseSecond) * 0.02) : 0;
-        Snd.humTo(api.guardOn(st) ? 0 : Math.min(1, sec + heat * 0.8));
-      }
     },
 
     slow(st, api, now) {
@@ -1324,11 +1534,12 @@
 
     unmount(st, api) {
       if (!st.scn) return;
-      clearInterval(st.scn.watch);
       if (st.scn.io) st.scn.io.disconnect();
-      Snd.humTo(0);
-      // Остання картка закрилась — звук засинає зовсім (осцилятори гулу не крутяться вхолосту).
-      if (HClicker.mounted.size <= 1 && Snd.ctx && Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
+      // Остання картка закрилась — музика й звук засинають зовсім.
+      if (HClicker.mounted.size <= 1) {
+        Mus.stop();
+        if (Snd.ctx && Snd.ctx.state === 'running') Snd.ctx.suspend().catch(() => {});
+      }
       if (st.scn.sound) { st.scn.sound.closeAt(); if (st.el) st.el.removeEventListener('pointerdown', st.scn.sound.wake, { capture: true }); }
       st.scn = null;
     },
