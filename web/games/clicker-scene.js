@@ -1142,7 +1142,7 @@
   };
 
   /// Для перевірки з консолі: чи ввімкнено звук, у якому стані AudioContext, скільки голосів звучить.
-  window.HClicker.soundState = () => ({ on: Snd.on, vol: Snd.vol, ctx: Snd.ctx ? Snd.ctx.state : null, voices: Snd.voices, music: Mus.on, quiet: Mus.ducked });
+  window.HClicker.soundState = () => ({ on: Snd.on, vol: Snd.vol, ctx: Snd.ctx ? Snd.ctx.state : null, voices: Snd.voices, music: Mus.on, quiet: Mus.on && Mus.ducked });
 
   /// Назви, які можуть покликати інші частини, — на найближчий звук із набору.
   const ALIAS = {
@@ -1226,9 +1226,10 @@
   function mountSound(st, api) {
     const box = document.createElement('div');
     box.className = 'clks-snd';
+    // ♪ — сусідка 🔊, а не жилець поповера: поки вона ховалась усередині, награвання ніхто так і не ввімкнув.
     box.innerHTML = '<button type="button" class="clks-sndbtn" aria-label="Звук гри"></button>'
-      + '<div class="clks-sndpop"><button type="button" class="ghost small clks-sndmus" aria-pressed="false">♪</button>'
-      + '<input type="range" min="0" max="100" step="1" aria-label="Гучність гри">'
+      + '<button type="button" class="clks-sndmus" aria-pressed="false" aria-label="Фонове награвання">♪</button>'
+      + '<div class="clks-sndpop"><input type="range" min="0" max="100" step="1" aria-label="Гучність гри">'
       + '<button type="button" class="ghost small clks-sndoff">вимкнути</button></div>';
     st.stage.appendChild(box);
     const btn = box.querySelector('.clks-sndbtn');
@@ -1243,7 +1244,7 @@
       btn.title = Snd.on ? 'Звук гри увімкнено' + (hover ? ' — клацни, щоб вимкнути' : '') : 'Звук гри вимкнено — клацни, щоб увімкнути';
       mus.classList.toggle('on', Mus.on);
       mus.setAttribute('aria-pressed', Mus.on ? 'true' : 'false');
-      mus.title = Mus.on ? 'Фонове награвання грає — клацни, щоб стихло' : 'Фонове награвання: бандура й сопілка';
+      mus.title = Mus.on ? 'Награвання грає — клацни, щоб стихло' : 'Фонове награвання: бандура й сопілка — клацни, щоб заграло';
       range.value = String(Math.round(Snd.vol * 100));
     };
     const openPop = () => {

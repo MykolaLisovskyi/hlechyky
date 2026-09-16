@@ -117,8 +117,14 @@
 }
 .clks-sndpop input { width: 92px; accent-color: var(--accent); }
 .clk .clks-sndoff { padding: 1px 8px; font-size: .78em; }
-.clk .clks-sndmus { padding: 1px 7px; font-size: .95em; line-height: 1.25; opacity: .55; }
-.clk .clks-sndmus.on { opacity: 1; color: var(--accent); border-color: currentColor; }
+/* ♪ стоїть поруч із 🔊 й глядиться так само: увімкнене награвання — золотий значок і обідок, вимкнене — блякле. */
+.clk .clks-sndmus {
+  width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(8, 14, 10, .5); color: rgba(244, 239, 227, .62); display: grid; place-items: center;
+  font-size: 1.1em; line-height: 1; backdrop-filter: blur(2px);
+}
+.clk .clks-sndmus:hover { background: rgba(8, 14, 10, .72); color: #f4efe3; }
+.clk .clks-sndmus.on { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, 0 0 8px -2px var(--accent); }
 
 /* ---- банер «Наступна ціль» над вкладками ---- */
 /* ---- «Поки тебе не було» ---- */
