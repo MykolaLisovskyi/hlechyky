@@ -527,6 +527,9 @@
     root.querySelector('.gbar').hidden = !!room;
     root.querySelector('.groom').hidden = !room;
     v.hidden = !!room;
+    // Лобі малює свої секції-панелі саме, а профіль, таблиця й щоденне — просто вміст,
+    // тож панель під них дає сам контейнер.
+    v.classList.toggle('boxed', view.kind === 'panel');
     syncWatch();
     if (room) {
       // Кімнати ще не знаємо (зайшли за посиланням): підписка принесе її сама, а як не принесе —
@@ -573,6 +576,11 @@
   // Сторінка столу
   // ---------------------------------------------------------------------------------------------
 
+  /// Кутики «на весь екран» малюємо самі: юнікодний ⛶ є не в кожному шрифті і подекуди
+  /// падає в порожній квадрат.
+  const FULL_ICON = (on) => '<svg class="gfico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<path d="' + (on ? 'M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4' : 'M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4') + '"/></svg>';
+
   function renderRoomHead(id) {
     const head = root.querySelector('.grhead');
     const rv = views[id];
@@ -588,8 +596,8 @@
       + '<span class="grtitle">' + (r ? iconOf(r.game) + esc(titleOf(r.game)) : 'Стіл') + '</span>'
       + (r && r.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + r.watchers + '</span>' : '')
       + '<span class="grsp"></span>' + others
-      + '<button class="ghost grfull" title="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '">'
-      + (full ? '⛝' : '⛶') + '</button>';
+      + '<button class="ghost grfull" title="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '"'
+      + ' aria-label="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '">' + FULL_ICON(full) + '</button>';
     head.querySelector('.grback').onclick = () => go('#games');
     head.querySelector('.grfull').onclick = () => { setFull(!full); renderRoomHead(id); };
     head.querySelectorAll('[data-room]').forEach((b) => b.onclick = () => go('#games/room/' + encodeURIComponent(b.dataset.room)));
@@ -648,7 +656,7 @@
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + (mineFirst.length
         ? '<div class="gsums">' + mineFirst.map(roomSummaryHtml).join('') + '</div>'
-        : '<div class="gempty">Столів нема. Постав перший і клич у балачках.</div>')
+        : '<div class="gempty glek">Столів нема. Постав перший із каталогу нижче і клич когось у балачках.</div>')
       + '</section>'
       + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + catalog.games.length + ' ігор</span></h3>'
       + '<div class="gfilters">'
@@ -1012,7 +1020,7 @@
             + '<span class="muted small">' + esc(a.text || '') + '</span>'
             + (a.reward ? '<span class="chip">🏺 ' + a.reward + '</span>' : '') + '</div>';
         }).join('') + '</div>'
-        : '<div class="gempty">Ачівок ще нема.</div>')
+        : '<div class="gempty glek">Ачівок ще нема. Вони приходять самі — за перемоги, серії й дрібні дурниці.</div>')
       + '<h4>Останні партії</h4>'
       + (recent.length
         ? '<div class="glb">' + recent.slice(0, 15).map((x) => '<div class="glbrow"><span>' + esc(titleOf(x.game)) + '</span>'

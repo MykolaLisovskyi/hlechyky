@@ -1232,10 +1232,10 @@
         const list = await api('GET', '/api/history?n=80');
         box.innerHTML = `<ul class="list">${list.map((h) => trackRow(h.track,
           `${h.source === 'autodj' ? esc(dj()) : esc(h.requestedBy || '')}${h.via === 'suggestion' ? ' · порада' : ''}${h.likes ? ' · ❤' + h.likes : ''}${h.skipped ? ' · скіп' : ''} · ${tm(h.startedAt)}`,
-          { skipped: h.skipped })).join('') || '<li class="empty">ще нічого не грало</li>'}</ul>`;
+          { skipped: h.skipped })).join('') || '<li class="empty glek">Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.</li>'}</ul>`;
       } else if (libTab === 'likes') {
         const list = await api('GET', '/api/likes');
-        box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі.</li>'}</ul>`;
+        box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty glek">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.</li>'}</ul>`;
       } else if (libTab === 'rating') {
         await renderRating();
         return;
@@ -1310,7 +1310,7 @@
         <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
       </li>`;
     box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
-      `<ul class="list">${r.items.map(row).join('') || '<li class="empty">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
+      `<ul class="list">${r.items.map(row).join('') || '<li class="empty glek">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
     box.querySelectorAll('button.unban').forEach((b) => b.onclick = (e) => {
       const ask = admin ? `Розбанити «${b.dataset.title}»?` : `Викупити «${b.dataset.title}» з бану за ${r.unbanPrice} 🏺?`;
       if (!confirm(ask)) return;
@@ -1414,7 +1414,7 @@
           ${p.thumbUrl ? `<img src="${esc(p.thumbUrl)}" alt="">` : '<div class="noimg">🎵</div>'}
           <div style="min-width:0"><div class="name" title="Показати треки">${esc(p.name)}</div><div class="r muted small">${p.count} трек${p.count % 10 === 1 && p.count % 100 !== 11 ? '' : (p.count % 10 >= 2 && p.count % 10 <= 4 && (p.count % 100 < 10 || p.count % 100 >= 20)) ? 'и' : 'ів'} · ${esc(p.createdBy)}</div></div>
           <div class="btns"><button class="primary go" title="Закинути весь плейлист у чергу впереміш">▶ у чергу</button>${(me.role === 'admin' || sameNick(p.createdBy, me.nick)) ? `<button class="ghost danger del" title="Видалити плейлист">✕</button>` : ''}</div>
-        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty">Плейлистів ще нема. Створи перший: назва вище, а треки додаються кнопкою «＋ плейлист» під тим, що грає, або «＋» в історії та улюбленому.</div>');
+        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty glek">Плейлистів ще нема. Створи перший: назва вище, а треки додаються кнопкою «＋ плейлист» під тим, що грає, або «＋» в історії та улюбленому.</div>');
     box.querySelector('#plCreate').onsubmit = async (e) => {
       e.preventDefault();
       const inp = e.target.querySelector('input');

@@ -23,18 +23,25 @@
 .groom { display: flex; flex-direction: column; gap: 12px; }
 .grhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grhead .grsp { flex: 1; }
-.grhead .grtitle { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 1.08em; }
+.grhead .grtitle { display: inline-flex; align-items: center; gap: 7px; font-family: var(--display); font-weight: 700; font-size: 1.08em; }
 .grhead .grtitle .gico { width: 19px; height: 19px; }
 .grback, .grfull { color: var(--muted); }
+.grfull:hover { color: var(--text); }
+.gfico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .grother { background: var(--panel2); color: var(--text); cursor: pointer; border: 1px solid var(--line); gap: 5px; }
 .grother .gico { width: 14px; height: 14px; }
 .grother.turn { color: var(--accent); border-color: var(--accent2); }
 /* Картка відкритого столу займає всю ширину змісту: клікер сам вмикає дві колонки від 1000px. */
-.grbox > .gtable { width: 100%; }
+.grbox > .gtable { width: 100%; background: var(--panel); border-radius: var(--radius); padding: 14px 16px 16px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); }
+.grbox > .gtable.mine { border-color: var(--accent2); }
 
-/* ---- секції лобі ---- */
-.gpanel { display: flex; flex-direction: column; gap: 10px; }
-.gpanel h3 { margin: 0; font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+/* ---- секції лобі: кожна — така сама панель, як у решті сайту ---- */
+.gpanel, .gview.boxed {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border-radius: var(--radius); padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.gpanel h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .gfilters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .gchip { cursor: pointer; border: 1px solid transparent; padding: 4px 11px; font-size: .88em; }
 .gchip:hover { background: var(--panel3); color: var(--text); }
@@ -49,7 +56,7 @@
 /* ---- резюме столу в лобі: окремий елемент, а не копія картки ---- */
 .gsums { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; align-items: start; }
 .gsum {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 12px; padding: 9px 11px;
   display: flex; flex-direction: column; gap: 6px; min-width: 0;
 }
 .gsum.mine { border-color: var(--accent2); }
@@ -67,14 +74,22 @@
 .gview { display: flex; flex-direction: column; gap: 12px; }
 .gchrome { display: flex; flex-direction: column; gap: 12px; }
 .gempty { color: var(--muted); font-size: .92em; padding: 10px 2px; }
+.gempty.glek { display: flex; gap: 12px; align-items: center; }
+.gempty.glek::before {
+  content: ''; width: 40px; height: 40px; flex: none; opacity: .85;
+  background: url('/static/glek.svg') center / contain no-repeat;
+}
+/* Перехід лобі → стіл: не стрибок, а коротке проявлення. */
+.groom:not([hidden]), .gview:not([hidden]) { animation: fadein .15s ease-out; }
+@media (prefers-reduced-motion: reduce) { .groom, .gview { animation: none; } }
 .gwait { color: var(--muted); font-size: .9em; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 14px 0; }
 .gwait.err { color: var(--danger); }
-.games h4 { margin: 4px 0 0; font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
+.games h4 { margin: 6px 0 0; font-family: var(--display); font-size: 1em; color: var(--text); font-weight: 600; }
 
 /* ---- плитки ігор ---- */
 .gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 8px; }
 .gtile {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 12px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 6px;
 }
 .gtile:hover { border-color: var(--panel3); }
@@ -88,7 +103,7 @@
 
 /* ---- картка кімнати ---- */
 .gtables { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; }
-.gtable { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.gtable { background: var(--panel2); border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .gtable.mine { border-color: var(--accent2); }
 .gseats { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .92em; flex-wrap: wrap; }
 .gseats .vs { color: var(--muted); font-size: .85em; }
@@ -207,7 +222,7 @@
 .gp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.15em; }
 .gachs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
 .gach {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 8px 10px;
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
 }
 .gach .gicon { font-size: 1.5em; line-height: 1.1; }
@@ -237,7 +252,7 @@
 .gdhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gdaily { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; align-items: start; }
 .gdcard {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 12px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 7px;
 }
 .gdcard.done { border-color: var(--ok); }
