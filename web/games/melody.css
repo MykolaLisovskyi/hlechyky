@@ -1,0 +1,59 @@
+/*
+  «Вгадай мелодію». Кольори — змінними; свої оголошені тут на :root.
+*/
+:root {
+  --mgdisc: #1b1b1b;
+  --mgok: rgba(67, 160, 71, .18);
+}
+
+.mgwrap { width: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.mgtop { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.mgtime { position: relative; width: min(160px, 50%); height: 22px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.mgtime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .25s linear; }
+.mgtime i.hot { background: var(--danger); }
+.mgtime span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.mgstage { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+.mgwait { color: var(--muted); display: flex; align-items: center; gap: 8px; text-align: center; }
+
+/* Платівка: крутиться, поки грає уривок. */
+.mgdisc {
+  width: 150px; height: 150px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent) 0 14%, var(--mgdisc) 15% 30%, #2b2b2b 31% 33%, var(--mgdisc) 34% 48%, #2b2b2b 49% 51%, var(--mgdisc) 52% 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+}
+.mgdisc.spin { animation: mgspin 1.8s linear infinite; }
+@keyframes mgspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mgdisc.spin { animation: none; } }
+
+.mgwave { width: 100%; max-width: 320px; height: 6px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.mgwave i { display: block; height: 100%; width: 0; background: var(--accent); }
+.mgplay { min-width: 150px; }
+
+.mgcover {
+  width: 150px; height: 150px; border-radius: 12px; background: var(--bg2) center / cover no-repeat;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+}
+.mganswer { text-align: center; }
+.mgtitle { font-size: 1.35em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
+.mgartist { font-size: 1.05em; color: var(--text); overflow-wrap: anywhere; }
+
+.mgmarks { display: flex; gap: 6px; justify-content: center; min-height: 1.6em; }
+.mgmarks .chip { opacity: .5; }
+.mgmarks .chip.on { opacity: 1; background: var(--mgok); color: var(--ok); }
+
+.mgguess { display: flex; gap: 6px; }
+.mgguess input {
+  flex: 1; min-width: 0; padding: 10px 12px; font-size: 1.05em;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.mgguess input:focus { outline: none; border-color: var(--accent2); }
+.mgguess input:disabled { opacity: .6; }
+
+.mgscores { display: flex; flex-direction: column; gap: 3px; }
+.mgsc { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg2); border-radius: 8px; }
+.mgsc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.mgsc.off { opacity: .45; }
+.mgn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgsc em { font-style: normal; color: var(--ok); font-size: .85em; }
+.mgsc b { min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; }

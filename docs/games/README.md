@@ -36,6 +36,7 @@
 | specs/skilky.md | 44 | Скільки? |
 | specs/pictionary.md | — | Піктіонарі |
 | specs/telephone.md | — | Зіпсований телефон |
+| specs/melody.md | — | Вгадай мелодію |
 | specs/mafia.md | 46 | Мафія |
 | specs/ad-contest.md | 73 | Озвуч рекламу |
 | specs/clicker.md | 82 | Гончарне коло |
