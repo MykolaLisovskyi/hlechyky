@@ -926,7 +926,7 @@
 
   const Mus = {
     on: false, timer: 0, at: 0, gain: null, buf: null, prog: null, step: 0,
-    sing: 0, rest: 2, mel: 9, last: -1, ducked: true, heat: 0, want: 0,
+    sing: 0, rest: 2, mel: 9, last: -1, ducked: true,
 
     load(api) { this.on = api.storeGet('clk.music', '0') === '1'; },
 
@@ -1011,10 +1011,6 @@
       return !!(el && !el.paused && !el.ended);
     },
 
-    /// Сцена каже кожен кадр, наскільки розкручене коло (0…1). Стежимо за ним повільно: темп,
-    /// що стрибає від кожного клацання, звучить як зламана платівка; плавне наростання чується як розгін.
-    drive(level) { this.want = clamp(level, 0, 1); },
-
     tick() {
       const ctx = Snd.ctx;
       if (!this.on || !Snd.on || !ctx || ctx.state !== 'running') return;
@@ -1024,10 +1020,9 @@
         this.gain.gain.setTargetAtTime(off ? 0 : MUS_VOL, ctx.currentTime, off ? 0.25 : 0.7);
       }
       if (off) { this.at = 0; return; }
-      this.heat += (this.want - this.heat) * 0.06;          // приблизно чотири секунди на розгін і на спад
       const now = ctx.currentTime;
       if (!this.at || this.at < now) this.at = now + 0.15;   // повернулись — починаємо з чистого такту
-      while (this.at < now + 1.5) this.at += this.bar(this.at);
+      while (this.at < now + 1.5) { this.bar(this.at); this.at += BAR; }
     },
 
     // ---- голоси ----
@@ -1098,10 +1093,7 @@
     // ---- фраза ----
 
     /// Один такт: бас і щипки по акорду знизу, зверху — сопілка, що співає два-три такти й мовчить три-чотири.
-    /// Розкручене коло жене темп і густоту щипків; віддає свою довжину, бо такти вже не однакові.
     bar(t) {
-      const heat = this.heat;
-      const beat = BEAT / (1 + 0.42 * heat);               // 66 → 94 ударів на розігрітому колі
       if (this.step % 4 === 0 && (!this.prog || Math.random() < 0.5)) this.prog = pick(PROGS);
       const name = this.prog[this.step % 4];
       const tones = CHORDS[name];
@@ -1109,33 +1101,32 @@
       this.step++;
 
       this.pluck(t + rnd(0, 0.02), hz(root - 12), 0.2, 2.4);
-      if (Math.random() < 0.45 + 0.3 * heat) this.pluck(t + beat * 2 + rnd(0, 0.03), hz(root - 12 + 7), 0.11, 1.8);
+      if (Math.random() < 0.45) this.pluck(t + BEAT * 2 + rnd(0, 0.03), hz(root - 12 + 7), 0.11, 1.8);
       for (const b of [0.5, 1, 1.5, 2, 2.5, 3, 3.5]) {
-        if (Math.random() > 0.42 + 0.3 * heat) continue;
+        if (Math.random() > 0.42) continue;
         let s = pick(tones);
         if (s === this.last) s = pick(tones);
         this.last = s;
-        this.pluck(t + b * beat + rnd(-0.015, 0.03), hz(s), rnd(0.09, 0.16), rnd(1.1, 1.9));
+        this.pluck(t + b * BEAT + rnd(-0.015, 0.03), hz(s), rnd(0.09, 0.16), rnd(1.1, 1.9));
       }
 
-      if (this.sing > 0) { this.melody(t, tones, beat); this.sing--; if (!this.sing) this.rest = Math.floor(rnd(3, 5)); }
+      if (this.sing > 0) { this.melody(t, tones); this.sing--; if (!this.sing) this.rest = Math.floor(rnd(3, 5)); }
       else if (--this.rest <= 0) this.sing = Math.floor(rnd(2, 4));
-      return beat * 4;
     },
 
     /// Мелодія ходить сходинками гами, стрибки рідкі; остання фраза сідає на звук акорду.
-    melody(t, tones, beat) {
+    melody(t, tones) {
       const last = this.sing === 1;
       let b = 0;
       while (b < 3.9) {
-        const dur = last && b >= 2 ? 4 - b : pick(this.heat > 0.5 ? [1, 0.5, 0.5, 0.5, 1.5] : [1, 1, 1, 0.5, 0.5, 1.5]);
+        const dur = last && b >= 2 ? 4 - b : pick([1, 1, 1, 0.5, 0.5, 1.5]);
         // Голос тягне до середини своєї смуги, інакше випадкова хода залипає під стелею чи на дні.
         const up = this.mel > 9 ? -1 : this.mel < 4 ? 1 : (Math.random() < 0.5 ? 1 : -1);
         this.mel = clamp(this.mel + (Math.random() < 0.75 ? up : up * pick([2, 3])), 0, 13);
         let s = 12 + MINOR[this.mel % 7] + 12 * Math.floor(this.mel / 7);
         if (last && b + dur >= 3.9) s = near(tones, s);
         if (Math.random() < 0.18) { b += dur; continue; }                 // пауза замість ноти — щоб фраза дихала
-        this.blow(t + b * beat + rnd(-0.02, 0.02), hz(s), rnd(0.06, 0.1), dur * beat * 0.92);
+        this.blow(t + b * BEAT + rnd(-0.02, 0.02), hz(s), rnd(0.06, 0.1), dur * BEAT * 0.92);
         b += dur;
       }
     },
@@ -1481,8 +1472,6 @@
       const heat = st.heatFull ? Math.min(1, (st.heat * Math.exp(-Math.max(0, Date.now() - st.heatAt) / 1000 / (st.heatTau || 3))) / st.heatFull) : 0;
       const on = !api.guardOn(st) && (t - scn.clayAt < HANDS_MS || heat > 0.25);
       if (on !== scn.handsOn) { scn.handsOn = on; st.wheelBox.classList.toggle('clks-handson', on); }
-      // Той самий жар, що й руки, жене темп награвання: розкрутив коло — музика підхоплює.
-      if (Mus.on) Mus.drive(api.guardOn(st) ? 0 : heat);
     },
 
     slow(st, api, now) {
