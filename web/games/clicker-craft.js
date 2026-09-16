@@ -8,7 +8,7 @@
   3) сирці на полиці над колом (view.craft.rack): мокрі темніші, висохлі світлі;
   4) смуга «Шлях виробу» під сценою (v8): чотири кроки коло → сушарня → горно → комора й один рядок «Далі» з
      єдиною кнопкою, яка робить наступний крок (замість рядка ремесла, банера цілі й окремих підказок);
-  5) вкладка «Комора»: вироби з горна, базар (Act('bazaar')).
+  5) вкладка «Комора»: вироби з горна, базар (Act('bazaar')) — усе, лише звичайні або все, крім дзвінких.
 */
 (() => {
   const PROGRESS_STEPS = 48;              // стільки разів за виріб перемальовуємо силует на колі — не щокадру
@@ -592,6 +592,28 @@
     }
   }
 
+  // ---------- продаж гуртом ----------
+
+  /// Скільки виробів і глеків забере базар, якщо брати якість до q включно (1 — звичайні, 2 — і добрі, 3 — усе).
+  function sellUpTo(items, q) {
+    let n = 0, sum = 0;
+    for (const it of items) if (it.q <= q) { n += it.n; sum += it.value * it.n; }
+    return { q, n, sum };
+  }
+
+  /// Кнопки продажу: «все» завжди, а вужчі — лише коли вони справді щось лишають у коморі. Ніяких перемикачів і
+  /// пам'яті: кожна кнопка сама каже, що забере й скільки за це дадуть.
+  function sellButtons(items) {
+    const all = sellUpTo(items, 3);
+    if (!all.n) return [];
+    const out = [{ q: 3, n: all.n, sum: all.sum, label: 'Продати все' }];
+    const one = sellUpTo(items, 1);
+    const two = sellUpTo(items, 2);
+    if (one.n > 0 && one.n < all.n) out.push({ q: 1, n: one.n, sum: one.sum, label: 'Лише ★ звичайні' });
+    if (two.n > one.n && two.n < all.n) out.push({ q: 2, n: two.n, sum: two.sum, label: 'Усе, крім ★★★ дзвінких' });
+    return out;
+  }
+
   // ---------- комора ----------
 
   function paintStore(st, api) {
@@ -624,10 +646,16 @@
       byWare.set(it.ware, g);
     }
     const groups = [...byWare.values()].sort((a, b) => b.sum - a.sum);
+    // Продаж гуртом: «Продати все» і, коли є що лишити, — вужчі кнопки. Кожна написана тими самими словами, що й
+    // рядки комори («★ звичайний», «★★★ дзвінкий»), і одразу каже, скільки виробів забере й за скільки.
+    const sells = sellButtons(c.items);
     const head = '<div class="clk-sub">📦 Комора · ' + total + ' ' + api.plural(total, 'виріб', 'вироби', 'виробів')
       + (total ? ' · разом ~' + api.short(sum) : '') + '</div>'
       + (total
-        ? '<button type="button" class="primary clkw-sellall"' + (st.mine ? '' : ' disabled') + '>Продати все · +' + api.short(sum) + '</button>'
+        ? '<div class="clkw-sells">' + sells.map((b, i) => '<button type="button" data-sq="' + b.q + '"'
+          + ' class="' + (i ? 'ghost small' : 'primary') + ' clkw-sellall"' + (st.mine ? '' : ' disabled') + '>'
+          + esc(b.label) + ' · ' + b.n + ' ' + api.plural(b.n, 'виріб', 'вироби', 'виробів') + ' · +' + api.short(b.sum)
+          + '</button>').join('') + '</div>'
           + '<div class="muted small">Що не влізе в ' + c.storeCap + ' — продається саме.</div>'
         : '');
     const items = total
@@ -646,19 +674,19 @@
       : '<div class="clk-teaser muted small">Комора порожня — сюди лягають вироби з горна.</div>';
 
     if (api.swap(st.storeBody, rack + head + items)) {
-      const all = st.storeBody.querySelector('.clkw-sellall');
-      if (all) {
+      for (const b of st.storeBody.querySelectorAll('[data-sq]')) {
+        const q = +b.dataset.sq;
         let armed = 0;
-        all.onclick = () => {
-          // Усе одним натиском — питаємо двічі: дзвінкі й розписні теж поїдуть.
-          if (!armed || Date.now() > armed) {
+        b.onclick = () => {
+          // «Продати все» питаємо двічі: дзвінкі й розписні теж поїдуть. Вужчі кнопки дороге лишають — там натиск один.
+          if (q === 3 && (!armed || Date.now() > armed)) {
             armed = Date.now() + 3000;
-            const was = all.textContent;
-            all.textContent = 'Точно все? Ще раз';
-            setTimeout(() => { if (Date.now() >= armed && all.isConnected) all.textContent = was; }, 3050);
+            const was = b.textContent;
+            b.textContent = 'Точно все? Ще раз';
+            setTimeout(() => { if (Date.now() >= armed && b.isConnected) b.textContent = was; }, 3050);
             return;
           }
-          api.order(st, 'bazaar', { all: true });
+          api.order(st, 'bazaar', { all: true, q });
         };
       }
       for (const b of st.storeBody.querySelectorAll('[data-sell]')) b.onclick = () => api.order(st, 'bazaar', { key: b.dataset.sell, n: +b.dataset.n });

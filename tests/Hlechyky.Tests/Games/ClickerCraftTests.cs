@@ -198,6 +198,28 @@ public class ClickerCraftTests
     }
 
     [Fact]
+    public void Selling_up_to_a_quality_leaves_the_dearer_wares_in_the_store()
+    {
+        var h = Wheel();
+        Items(h, ("pot||1", 2), ("pot||2", 1), ("pot||3", 1));
+        var before = Pots(h);
+        // «Лише звичайні» бере два горщики по 20 (дно кліків: 40 × 0,5) — добрий і дзвінкий лишаються.
+        var r = Act(h, "bazaar", new { all = true, q = 1 });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("(лише звичайні)", r.Message);
+        Assert.Equal(before + 2 * 20, Pots(h));
+        // Звичайних більше нема — кнопка про це й каже, а не про порожню комору.
+        Assert.Equal("Звичайних у коморі нема", Act(h, "bazaar", new { all = true, q = 1 }).Message);
+        // «Усе, крім дзвінких» забирає доброго (20 × 1,6) і лишає дзвінкого.
+        var two = Act(h, "bazaar", new { all = true, q = 2 });
+        Assert.True(two.Ok, two.Message);
+        Assert.Contains("(крім дзвінких)", two.Message);
+        Assert.Equal(before + 2 * 20 + 32, Pots(h));
+        Assert.Equal("pot||3", Craft(h).GetProperty("items").EnumerateArray().Single().GetProperty("key").GetString());
+        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2 }).Message);
+    }
+
+    [Fact]
     public void Broken_items_in_a_save_are_dropped()
     {
         var h = Wheel();

@@ -100,7 +100,9 @@
 
 /* ---- комора: рядок на виріб, розписи й якості за ▾ ---- */
 .clkw-store { display: flex; flex-direction: column; gap: 8px; }
-.clkw-sellall { align-self: flex-start; }
+/* Продаж гуртом: «Продати все» головною, вужчі — тихими кнопками під нею. */
+.clkw-sells { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.clkw-sellall.ghost { border-color: var(--line); }
 .clkw-groups { display: flex; flex-direction: column; gap: 4px; }
 .clkw-group { border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
 .clkw-group.star { border-color: rgba(244, 197, 66, .55); }

@@ -240,23 +240,10 @@ public sealed partial class Clicker
         return ActResult.Accept($"🏺 На колі тепер {w.Name.ToLowerInvariant()}");
     }
 
-    /// <summary>Базар: продати вироби з комори за глеки. <c>{ key, n }</c> або <c>{ all: true }</c>.</summary>
+    /// <summary>Базар: продати вироби з комори за глеки. <c>{ key, n }</c> або <c>{ all: true, q? }</c>.</summary>
     ActResult Bazaar(JsonElement payload)
     {
-        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("all", out var all) && all.ValueKind == JsonValueKind.True)
-        {
-            var sold = 0;
-            long sum = 0;
-            foreach (var (item, count) in AllItems().ToList())
-            {
-                sum = Sum(sum, Mul(ItemValue(item.Ware, item.Style, item.Quality), count));
-                sold += count;
-            }
-            if (sold == 0) return ActResult.Fail("У коморі порожньо — нічого везти на базар");
-            _items.Clear();
-            Add(sum);
-            return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}: +{Short(sum)} {Pots(sum)}");
-        }
+        if (Flag(payload, "all")) return BazaarAll(payload);
         if (ParseItem(Str(payload, "key")) is not { } it) return ActResult.Fail("Такого виробу в коморі нема");
         var want = (int)Math.Clamp(Num(payload, "n") ?? 1, 1, StoreCap);
         var have = ItemCount(x => x == it);
@@ -266,6 +253,30 @@ public sealed partial class Clicker
         var pots = Mul(ItemValue(it.Ware, it.Style, it.Quality), n);
         Add(pots);
         return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{Short(pots)} {Pots(pots)}");
+    }
+
+    /// <summary>
+    /// Продати гуртом: <c>q</c> — найвища якість, яку забирає базар (1 — лише звичайні, 2 — усе, крім дзвінких,
+    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом.
+    /// </summary>
+    ActResult BazaarAll(JsonElement payload)
+    {
+        var q = (int)Math.Clamp(Num(payload, "q") ?? 3, 1, 3);
+        var sold = 0;
+        long sum = 0;
+        foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
+        {
+            sum = Sum(sum, Mul(ItemValue(item.Ware, item.Style, item.Quality), count));
+            sold += count;
+            _items.Remove(ItemKey(item.Ware, item.Style, item.Quality));
+        }
+        if (sold == 0)
+            return ActResult.Fail(ItemTotal > 0
+                ? q == 1 ? "Звичайних у коморі нема" : "У коморі самі дзвінкі — їх базар не бере"
+                : "У коморі порожньо — нічого везти на базар");
+        Add(sum);
+        var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : "";
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
     }
 
     static string WaresWord(long n) => Plural(n, "виріб", "вироби", "виробів");
