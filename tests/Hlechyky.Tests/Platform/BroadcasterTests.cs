@@ -20,7 +20,7 @@ public class BroadcasterTests
             h.Rooms.ViewsFor,
             id => byConn.TryGetValue(id, out var nick) ? nick : null,
             nick => [.. byConn.Where(p => string.Equals(p.Value, nick, StringComparison.OrdinalIgnoreCase)).Select(p => p.Key)],
-            text => new { text });
+            (text, roomId) => new { text, roomId });
     }
 
     static RoomHarness Watched(string game, Dictionary<string, string> conns)
@@ -160,7 +160,7 @@ public class BroadcasterTests
         var sends = Broadcaster.Plan(
             [new Journal("рядок"), new LobbyChanged(), new RoomViews(h.RoomId)],
             h.Rooms.Snapshot, h.Rooms.ViewsFor, _ => null, _ => [],
-            _ => throw new InvalidOperationException("база зайнята"));
+            (_, _) => throw new InvalidOperationException("база зайнята"));
 
         Assert.DoesNotContain(sends, s => s.Event == "chat");
         Assert.Single(sends, s => s.Event == "rooms");   // решта пачки летить як летіла
@@ -176,6 +176,43 @@ public class BroadcasterTests
 
         Assert.Single(sends, s => s.Event == "rooms");
         Assert.Single(sends, s => s.Event == "chat");
+    }
+
+    [Fact]
+    public void The_lobby_snapshot_goes_out_before_the_line_that_talks_about_it()
+    {
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        // Так це й лежить в Outbox після Join: спершу рядок зі StartRound, потім LobbyChanged.
+        var sends = Plan(h, [new Journal("сіли грати", h.RoomId), new LobbyChanged()]);
+
+        Assert.Equal("rooms", sends[0].Event);
+        Assert.True(sends.FindIndex(s => s.Event == "rooms") < sends.FindIndex(s => s.Event == "chat"));
+    }
+
+    [Fact]
+    public void A_journal_line_carries_the_table_it_is_about()
+    {
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        var sends = Plan(h, [new Journal("Оля поставила стіл", h.RoomId)]);
+
+        var chat = Assert.Single(sends, s => s.Event == "chat");
+        Assert.Equal(h.RoomId, Body(chat).GetProperty("roomId").GetString());
+    }
+
+    [Fact]
+    public void An_invite_goes_to_everyone_with_the_nick_that_calls()
+    {
+        var h = new RoomHarness("t-party");
+        h.Join("Оля");
+        var sends = Plan(h, [new Invite(h.RoomId, "Оля", "Оля кличе в тестову компанію")]);
+
+        var invite = Assert.Single(sends, s => s.Event == "invite");
+        Assert.Equal(new ToAll(), invite.Target);
+        Assert.Equal(h.RoomId, Body(invite).GetProperty("roomId").GetString());
+        Assert.Equal("Оля", Body(invite).GetProperty("by").GetString());
+        Assert.Equal("Оля кличе в тестову компанію", Body(invite).GetProperty("text").GetString());
     }
 
     [Fact]

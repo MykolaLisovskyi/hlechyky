@@ -41,7 +41,11 @@ type RoomReply = { ok: boolean; message: string; roomId?: string };
 | `wallet` | з'єднанням ніка | `{ balance: number, delta: number, reason: string, text: string }` |
 | `achievement` | з'єднанням ніка | `{ key, title, text, icon, reward }` |
 | `toast` | з'єднанням ніка | `{ text: string, kind: 'ok'\|'err'\|'wait' }` |
-| `chat` | усім | як зараз; рядки Журналу мають `kind: 'system'`, слова Глека — `'dj'` |
+| `invite` | усім | `{ roomId: string, by: string, text: string }` — «Влад кличе в Мафію». Свій заклик (`by` = мій нік) браузер відкидає сам |
+| `chat` | усім | як зараз; рядки Журналу мають `kind: 'system'`, слова Глека — `'dj'`. Необов'язковий `roomId` — живий стіл, про який рядок: браузер малює біля нього кнопку «Сісти»/«Дивитись». Відповідь на `/столи` має `kind: 'tables'`, масив `rooms: string[]` і летить **лише** тому, хто спитав (у базу не лягає) |
+
+`rooms` завжди випереджає `chat` в одній пачці: інакше рядок про стіл доходив би раніше за новину про
+те, що там уже нема місця (ARCHITECTURE §5).
 
 ```ts
 type RoomSummary = {

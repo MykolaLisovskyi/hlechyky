@@ -248,11 +248,16 @@ public interface IRoomContext
 | `LobbyChanged` | усім | `rooms`: список `RoomSummary` (без Private) |
 | `RoomViews(roomId)` | глядачам кімнати | `room`: `{ room: RoomSummary, seat, view }`; для `Hidden` — свій вид кожному з'єднанню, інакше один вид у групу `room:<id>` |
 | `RoomFrame(roomId, frame)` | групі `room:<id>` | `frame`: `{ id, f }` |
-| `Journal(text)` | усім | `chat` з kind `system` (через `Db.AddChat` від імені сайту) |
+| `Journal(text, roomId?)` | усім | `chat` з kind `system` (через `Db.AddChat` від імені сайту); `roomId` — живий стіл, про який рядок, і браузер малює біля нього кнопку «Сісти»/«Дивитись» |
 | `DjSays(text)` | усім | `chat` kind `dj` (через `RadioEngine.SayAsync`) |
 | `Wallet(nick, balance, delta, reason)` | усім з'єднанням ніка | `wallet` |
 | `Achievement(nick, key…)` | усім з'єднанням ніка + рядок у Журнал | `achievement` |
 | `Toast(nick, text, kind)` | усім з'єднанням ніка | `toast` (рідко: «ставку повернуто») |
+| `Invite(roomId, by, text)` | усім | `invite`: «Влад кличе в Мафію» з кнопкою «Сісти». Свій же заклик відкидає браузер — тільки він знає, хто за цією вкладкою |
+
+`rooms` (`LobbyChanged`) летить **першим** у пачці, хоч би де воно лежало в `Outbox`: знімок лобі
+рахується від живого стану, а не від місця в черзі. Інакше рядок «Оля і Петро сіли грати» доходив би до
+браузера раніше за новину, що за тим столом уже нема місця, і кнопка на ньому кликала б сідати.
 
 Для per-seat видів `Broadcaster` під `room.Sync` будує словник `seat → view` один раз (а не по виду на
 з'єднання) і розкладає по `Watchers` за `Presence.Get(connId)` → `room.SeatOf(nick)`.
@@ -401,6 +406,15 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 - Завантажувач: `GET /api/games/catalog` → для кожної гри `<script src="/games/<id>.js">` (+ `<link>` на
   `/games/<id>.css`, якщо `hasCss`). Поки модуль не завантажився, кімната показує «завантажую…».
   Модуль без серверної гри або сервер без модуля — попередження в консоль, не падіння.
+  Той самий файл ніколи не вантажиться двічі (`loadedFiles`). Балачкам, які згадують стіл, усі модулі ні
+  до чого, тож у них два легші входи: `ensureNames()` — сам каталог (щоб написати «Мафія», а не `mafia`),
+  і `ensureIcon(gameId, ready)` — рівно один файл заради іконки гри. Поки він летить, на кнопці стоїть 🎲.
+- **Столи в балачках** (PLAN.md §7.4): `HGames.roomLink(id)` віддає `{ game, icon, title, who, canSit,
+  label }` або `null`, коли столу вже нема; `sitAt(id)` садить і веде на сторінку столу, `openAt(id)` —
+  просто веде. `app.js` тримає в рядку порожній слот `.roomslot[data-room]` і перемальовує всі слоти на
+  кожному `rooms`: стіл заповнився чи його прибрали — кнопка міняється разом із ним, а не бреше. Заклик
+  (`invite`) `core` показує сам: десять секунд, кнопка «Сісти», мовчить у режимі `⛶` і на вузькому екрані
+  під час партії.
 - **Маршрути.** `tail` у `show(tail)` — це те, що в адресі після `#games/`: порожньо — лобі,
   `room/<id>` — сторінка столу, `profile` / `leaders` / `daily` / `x:<панель>` — підрозділ. Усередині
   це `view = { kind, id }`; `core` сам нікуди не «перемикається», а кличе `go('#games/…')`, і назад

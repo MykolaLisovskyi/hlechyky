@@ -49,7 +49,11 @@ public sealed class NowPlaying
     public string? SeedId { get; set; }
 }
 
-public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind);
+/// <summary>
+/// Рядок балачок. <paramref name="RoomId"/> — жива кімната, про яку цей рядок: фронт малює біля нього
+/// кнопку «Сісти»/«Дивитись». null — звичайна репліка, ніякого столу за нею нема.
+/// </summary>
+public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind, string? RoomId = null);
 
 public sealed record SearchResult(string Id, string Title, string Artist, string? Album, int DurationSec, string? ThumbUrl);
 

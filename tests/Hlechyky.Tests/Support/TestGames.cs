@@ -45,6 +45,21 @@ public sealed class TestParty : Game
     public override object View(int? seat) => new { turn = 0, starts = Starts, acts = Acts, me = seat };
 }
 
+/// <summary>
+/// Стіл, що починає сам, щойно його поставили, і вільного місця нікому вже не обіцяє. Живих таких ігор
+/// нема (усі Immediate у нас приватні), але гілка в <c>Rooms.Create</c> є: заклик «сідай» має мовчати там,
+/// де сідати нема куди.
+/// </summary>
+public sealed class TestNow : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-now", "Тестовий одразу", "тестовий одразу", GameGroup.Live, 1, 2, Start: StartMode.Immediate);
+
+    public override void Start() { }
+
+    public override object View(int? seat) => new { turn = (int?)null };
+}
+
 /// <summary>Гра з прихованою інформацією: у виді кожного місця своє, глядач не бачить нічого зайвого.</summary>
 public sealed class TestHidden : Game
 {

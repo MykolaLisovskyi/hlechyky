@@ -55,7 +55,7 @@ public sealed class Broadcaster(
         try
         {
             sends = Plan(all, rooms.Snapshot, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
-                text => db.AddChat(site.CurrentValue.Name, text, "system"));
+                (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId));
         }
         catch (Exception ex)
         {
@@ -112,16 +112,20 @@ public sealed class Broadcaster(
         Func<string, RoomBroadcast?> viewsFor,
         Func<string, string?> nickOf,
         Func<string, IReadOnlyList<string>> connectionsOf,
-        Func<string, object> journal)
+        Func<string, string?, object> journal)
     {
         var keep = Coalesce(messages);
         var sends = new List<Send>();
+        Send? lobby = null;
         foreach (var index in keep)
         {
             switch (messages[index])
             {
                 case LobbyChanged:
-                    sends.Add(new Send(new ToAll(), "rooms", snapshot()));
+                    // Знімок лобі рахується від живого стану, а не від місця в черзі, тож і летить першим
+                    // (нижче). Інакше рядок «Оля і Петро сіли грати» доходив би до браузера раніше за
+                    // новину, що за тим столом уже нема місця, і кнопка на ньому кликала б сідати.
+                    lobby = new Send(new ToAll(), "rooms", snapshot());
                     break;
                 case RoomViews views:
                     if (viewsFor(views.RoomId) is { } b) sends.AddRange(ViewSends(b, nickOf));
@@ -132,8 +136,11 @@ public sealed class Broadcaster(
                 case Journal line:
                     // Рядок Журналу дорогою в чат заходить у SQLite. Впала база — це біда одного рядка,
                     // а не всієї пачки: види, кадри й лобі мають полетіти однаково.
-                    try { sends.Add(new Send(new ToAll(), "chat", journal(line.Text))); }
+                    try { sends.Add(new Send(new ToAll(), "chat", journal(line.Text, line.RoomId))); }
                     catch (Exception) { }
+                    break;
+                case Invite invite:
+                    sends.Add(new Send(new ToAll(), "invite", new { roomId = invite.RoomId, by = invite.By, text = invite.Text }));
                     break;
                 case WalletChanged w:
                     sends.Add(new Send(new ToConnections(connectionsOf(w.Nick)), "wallet",
@@ -148,6 +155,7 @@ public sealed class Broadcaster(
                     break;
             }
         }
+        if (lobby is not null) sends.Insert(0, lobby);
         return sends;
     }
 

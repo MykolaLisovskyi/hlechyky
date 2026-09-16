@@ -25,7 +25,7 @@ public sealed class Db
         CREATE TABLE IF NOT EXISTS bans(track_id TEXT PRIMARY KEY, by_nick TEXT, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS chat(
             id INTEGER PRIMARY KEY AUTOINCREMENT, nick TEXT NOT NULL, text TEXT NOT NULL,
-            kind TEXT NOT NULL DEFAULT 'chat', created_at TEXT NOT NULL);
+            kind TEXT NOT NULL DEFAULT 'chat', created_at TEXT NOT NULL, room_id TEXT);
         CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS queue_items(
             position INTEGER NOT NULL, item_id TEXT PRIMARY KEY, track_id TEXT NOT NULL,
@@ -107,6 +107,8 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE tracks ADD COLUMN song_key TEXT"); } catch (SqliteException) { /* exists */ }
         // скільки черепків віддали за бан; 0 — забанив адмін
         try { Exec(c, "ALTER TABLE bans ADD COLUMN price INTEGER NOT NULL DEFAULT 0"); } catch (SqliteException) { /* exists */ }
+        // id столу, про який цей рядок Журналу: фронт малює біля нього кнопку «Сісти»/«Дивитись»
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN room_id TEXT"); } catch (SqliteException) { /* exists */ }
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
     }
@@ -704,14 +706,19 @@ public sealed class Db
 
     // ---- chat ----
 
-    public ChatMessage AddChat(string nick, string text, string kind)
+    /// <summary>
+    /// Рядок у балачки. <paramref name="roomId"/> — жива кімната, про яку цей рядок («Влад поставив стіл»):
+    /// фронт малює біля нього кнопку до столу. Кімнати живуть у пам'яті й помирають із сервером, але id
+    /// лежить у базі разом із рядком — інакше після F5 кнопка зникала б із історії ще за життя столу.
+    /// </summary>
+    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null)
     {
         var now = Now();
         using var c = Open();
-        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, created_at) VALUES($n, $t, $k, $now); SELECT last_insert_rowid();",
-            ("$n", nick), ("$t", text), ("$k", kind), ("$now", now));
+        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, created_at) VALUES($n, $t, $k, $r, $now); SELECT last_insert_rowid();",
+            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$now", now));
         var id = (long)cmd.ExecuteScalar()!;
-        return new ChatMessage(id, nick, text, Ts(now), kind);
+        return new ChatMessage(id, nick, text, Ts(now), kind, roomId);
     }
 
     /// <summary>Last <paramref name="nChat"/> people/DJ messages plus last <paramref name="nLog"/> log lines, oldest first,
@@ -720,16 +727,18 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, """
-            SELECT id, nick, text, kind, created_at FROM (
+            SELECT id, nick, text, kind, created_at, room_id FROM (
                 SELECT * FROM chat WHERE kind <> 'system' ORDER BY id DESC LIMIT $nc)
             UNION ALL
-            SELECT id, nick, text, kind, created_at FROM (
+            SELECT id, nick, text, kind, created_at, room_id FROM (
                 SELECT * FROM chat WHERE kind = 'system' ORDER BY id DESC LIMIT $nl)
             ORDER BY id
             """, ("$nc", nChat), ("$nl", nLog));
         using var r = cmd.ExecuteReader();
         var list = new List<ChatMessage>();
-        while (r.Read()) list.Add(new ChatMessage(r.GetInt64(0), r.GetString(1), r.GetString(2), Ts(r.GetString(4)), r.GetString(3)));
+        while (r.Read())
+            list.Add(new ChatMessage(r.GetInt64(0), r.GetString(1), r.GetString(2), Ts(r.GetString(4)), r.GetString(3),
+                r.IsDBNull(5) ? null : r.GetString(5)));
         return list;
     }
 

@@ -185,6 +185,17 @@ public sealed class Rooms
         return list;
     }
 
+    /// <summary>
+    /// Id живих столів для команди <c>/столи</c>: спершу ті, куди ще можна сісти, далі ті, що вже грають,
+    /// і в кожній купці — найстаріші першими. Дограні пропускаємо: сідати вже нікуди, а місця в картці
+    /// вони займають.
+    /// </summary>
+    public List<string> LiveIds() => [.. Snapshot()
+        .Where(r => r.Status != "finished")
+        .OrderBy(r => r.Status == "lobby" ? 0 : 1)
+        .ThenBy(r => r.CreatedAt)
+        .Select(r => r.Id)];
+
     /// <summary>Кімната за id; null — уже нема. Broadcaster і хаб більше нічого про список не знають.</summary>
     public Room? Find(string? id)
     {
@@ -235,6 +246,7 @@ public sealed class Rooms
             ? "Стіл готовий. Можна почати самому або дочекатись друзів"
             : "Стіл готовий. Треба ще одного гравця", room.Id);
         string? failed = null;
+        var waiting = true;
         lock (room.Sync)
         {
             if (info.Start == StartMode.Immediate || room.Full)
@@ -242,10 +254,19 @@ public sealed class Rooms
                 failed = StartRound(room, outbox);
                 if (failed is null) reply = new RoomReply(true, "", room.Id);
             }
+            waiting = room.Status == RoomStatus.Lobby;
         }
         // Drop бере спільний замок, тому робиться поза замком кімнати: один напрямок вкладення на весь файл.
         if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
         if (!info.Private) outbox.Add(new LobbyChanged());
+        // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу і заклик
+        // тостом. Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про
+        // початок напише StartRound своїм рядком, і кнопка на ньому веде туди ж.
+        if (!info.Private && waiting)
+        {
+            outbox.Add(new Journal($"Новий стіл: {info.Title} ({PlayersLabel(info)}) · господар {nick}", room.Id));
+            outbox.Add(new Invite(room.Id, nick, $"{nick} кличе в {info.Accusative}"));
+        }
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, reply);
@@ -591,10 +612,15 @@ public sealed class Rooms
         if (!room.Info.Solo && !SameCrew(room.LoggedSeats, room.Seats))
         {
             room.LoggedSeats = (string?[])room.Seats.Clone();
-            outbox.Add(new Journal($"{Nicks(room)} сіли грати в {room.Info.Accusative}"));
+            // З id столу цей рядок стає ще й запрошенням подивитись: у Журналі біля нього — кнопка.
+            outbox.Add(new Journal($"{Nicks(room)} сіли грати в {room.Info.Accusative}", room.Info.Private ? null : room.Id));
         }
         return null;
     }
+
+    /// <summary>«4–12» або «2» — скільки за цей стіл сідає. Соло сюди не доходить.</summary>
+    static string PlayersLabel(GameInfo info) =>
+        info.MinPlayers == info.MaxPlayers ? info.MaxPlayers.ToString() : $"{info.MinPlayers}–{info.MaxPlayers}";
 
     /// <summary>Той самий склад за столом; порядок місць не рахується, бо «Ще раз» їх обертає.</summary>
     static bool SameCrew(string?[]? was, string?[] now)

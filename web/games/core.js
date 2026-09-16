@@ -33,7 +33,8 @@
   const modules = {};           // id гри → модуль (HGames.register)
   const extraPanels = [];       // registerPanel
   const failed = new Set();     // модулі, які не завантажились
-  let loading = null;           // проміс завантаження каталогу
+  let loading = null;           // проміс завантаження каталогу з модулями (ensureCatalog)
+  let names = null;             // проміс самого лише каталогу — назви для балачок (ensureNames)
 
   let rooms = [];               // останній 'rooms'
   const views = {};             // id кімнати → { room, seat, view }
@@ -387,23 +388,45 @@
   /// (зникаючі хрестики — у ttt.js), і тоді сервер каже це полем module каталогу.
   const moduleOf = (g) => g.module || g.id;
 
+  const loadedFiles = new Map();   // файл модуля → проміс завантаження: двічі той самий не тягнемо
+
+  const loadFile = (f) => {
+    if (!loadedFiles.has(f)) loadedFiles.set(f, loadScript('/games/' + f + '.js'));
+    return loadedFiles.get(f);
+  };
+
+  function addCss(g, f) {
+    if (!g.hasCss || document.querySelector('link[data-game="' + f + '"]')) return;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = '/games/' + f + '.css';
+    l.dataset.game = f;
+    document.head.appendChild(l);
+  }
+
+  /// Іконку гри знає лише її модуль, а балачки згадують стіл ще до того, як людина зайшла в «Ігри».
+  /// Тягнемо рівно один файл (разом із його css, інакше пізній loadModules його проґавить) і кличемо
+  /// ready(), коли модуль зареєструвався. Поки він летить, на кнопці стоїть 🎲 — і це не помилка.
+  function ensureIcon(gameId, ready) {
+    if (modules[gameId]) return;
+    // Спершу каталог: без нього ми не знаємо навіть, у якому файлі ця гра живе.
+    ensureNames().then(() => {
+      const g = byId[gameId];
+      if (!g || modules[gameId]) return;
+      addCss(g, moduleOf(g));
+      return loadFile(moduleOf(g));
+    }).then(() => { if (modules[gameId] && ready) ready(); })
+      .catch(() => { /* каталог не прочитався — лишається 🎲, і це не привід шуміти */ });
+  }
+
   /// Вантажимо всі модулі одразу: у каталозі їх буде два десятки, а послідовні await —
   /// це два десятки round-trip-ів поспіль. Один файл вантажимо рівно раз, скільки б ігор у ньому
   /// не реєструвалось. Вердикт «не завантажився» ставимо лише коли все відстрілялось.
   async function loadModules() {
     const want = catalog.games.filter((g) => !modules[g.id]);
     const files = [...new Set(want.map(moduleOf))];
-    for (const g of want) {
-      const f = moduleOf(g);
-      if (g.hasCss && !document.querySelector('link[data-game="' + f + '"]')) {
-        const l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = '/games/' + f + '.css';
-        l.dataset.game = f;
-        document.head.appendChild(l);
-      }
-    }
-    const res = await Promise.all(files.map(async (f) => [f, await loadScript('/games/' + f + '.js')]));
+    for (const g of want) addCss(g, moduleOf(g));
+    const res = await Promise.all(files.map(async (f) => [f, await loadFile(f)]));
     const loaded = Object.fromEntries(res);
     for (const g of want) {
       if (modules[g.id]) continue;
@@ -415,11 +438,25 @@
     refreshAll();
   }
 
-  function ensureCatalog() {
-    if (loading) return loading;
-    loading = api('GET', '/api/games/catalog').then((c) => {
+  /// Самі назви ігор, без двох десятків модулів: стільки треба балачкам, щоб написати «Мафія», а не
+  /// «mafia». Запит той самий і кешується разом із повним ensureCatalog().
+  function ensureNames() {
+    if (names) return names;
+    names = api('GET', '/api/games/catalog').then((c) => {
       catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0] };
       for (const g of catalog.games) byId[g.id] = g;
+      return catalog;
+    }).catch((e) => {
+      names = null;
+      console.warn('[games] каталог не прочитався', e);
+      throw e;
+    });
+    return names;
+  }
+
+  function ensureCatalog() {
+    if (loading) return loading;
+    loading = ensureNames().then(() => {
       renderShell();
       renderView();
       return loadModules();
@@ -1125,6 +1162,73 @@
   });
 
   // =============================================================================================
+  // Столи в балачках (PLAN.md §7.4): кнопка в рядку Журналу, заклик тостом, відповідь на /столи
+  // =============================================================================================
+
+  /// Стіл так, як він виглядає в рядку балачок: іконка з назвою, склад, стан людською мовою і те, що з
+  /// ним можна зробити зараз. null — такого столу вже нема: дограли й прибрали, або він приватний.
+  /// Джерело — та сама подія 'rooms', що малює лобі, тож кнопка не бреше про вчорашній склад.
+  function roomLink(id) {
+    const r = rooms.find((x) => x.id === id) || (views[id] && views[id].room);
+    if (!r) return null;
+    const all = seatCount(r), took = takenSeats(r), free = all - took;
+    const mine = seatOfMe(r) != null;
+    const canSit = !mine && r.status === 'lobby' && free > 0 && !seatedElsewhere(id);
+    return {
+      id: r.id,
+      game: r.game,
+      icon: iconOf(r.game),                                    // готовий HTML: 🎲, поки модуль гри не прийшов
+      title: iconOf(r.game) + esc(titleOf(r.game)),            // іконка з назвою — для рядка, який гри не називає
+      who: (all > 1 ? took + '/' + all : 'соло') + ' · '
+        + (r.status === 'playing' ? 'іде партія' : r.status === 'finished' ? 'дограли'
+          : free ? 'чекає гравців' : 'ось-ось почнуть'),
+      canSit,
+      label: mine ? 'До столу' : canSit ? 'Сісти' : 'Дивитись',
+    };
+  }
+
+  async function sitAt(id) {
+    const r = await call('JoinRoom', id);
+    if (r.ok) go('#games/room/' + encodeURIComponent(id));
+    return r;
+  }
+
+  const openAt = (id) => go('#games/room/' + encodeURIComponent(id));
+
+  /// «Влад кличе в Мафію» — десять секунд і кнопка «Сісти». Мовчимо, коли кличемо самі себе, коли за
+  /// тим столом уже нема куди сідати і коли тост закрив би пів партії: на весь екран або на вузькому
+  /// екрані просто під час гри. Другий заклик за той самий стіл замінює перший, а не громадиться.
+  function inviteToast(inv) {
+    if (!inv || !inv.roomId || sameNick(inv.by, me.nick)) return;
+    const link = roomLink(inv.roomId);
+    if (!link || !link.canSit) return;
+    if (full || (view.kind === 'room' && window.matchMedia('(max-width: 900px)').matches)) return;
+    const box = document.getElementById('toasts');
+    if (!box) { toast(inv.text, 'ok'); return; }
+    const was = box.querySelector('.ginvite[data-room="' + CSS.escape(inv.roomId) + '"]');
+    if (was) was.remove();
+    const el = document.createElement('div');
+    el.className = 'toast ok ginvite';
+    el.dataset.room = inv.roomId;
+    el.innerHTML = '<span class="gi-what">' + link.icon + '</span>'
+      + '<span class="gi-text">' + esc(inv.text) + '<br><span class="muted small">' + esc(link.who) + '</span></span>'
+      + '<button class="primary gi-sit">Сісти</button>'
+      + '<button class="ghost gi-no" title="Не зараз" aria-label="Не зараз">✕</button>';
+    el.querySelector('.gi-sit').onclick = (e) => busy(e.currentTarget, 'сідаю…', async () => {
+      const r = await sitAt(inv.roomId);
+      if (r.ok) el.remove();
+      return r;
+    });
+    el.querySelector('.gi-no').onclick = () => el.remove();
+    box.appendChild(el);
+    ensureIcon(link.game, () => { const w = el.querySelector('.gi-what'); if (w) w.innerHTML = iconOf(link.game); });
+    setTimeout(() => el.remove(), INVITE_MS);
+  }
+
+  /// Десять секунд: досить, щоб прочитати й натиснути, і не досить, щоб набриднути.
+  const INVITE_MS = 10000;
+
+  // =============================================================================================
   // Тости гаманця й ачівок
   // =============================================================================================
 
@@ -1185,6 +1289,9 @@
       watched.clear();
       c.on('rooms', (list) => {
         rooms = list || [];
+        // Щойно столи взагалі є — беремо назви ігор: без них балачки писали б «mafia» замість «Мафія».
+        // Модулі при цьому не тягнемо: слухачеві, який у «Ігри» не заходить, вони ні до чого.
+        if (rooms.length) ensureNames().catch(() => { /* напишемо id, це не привід шуміти */ });
         for (const r of rooms) {
           const rv = views[r.id];
           if (rv) { rv.room = r; rv.seat = seatOfMe(r); rv.loose = false; }
@@ -1243,6 +1350,7 @@
           + (a.reward ? ' — +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
+      c.on('invite', inviteToast);
       loadWallet();          // черепки видно в шапці з будь-якого розділу, тож питаємо їх одразу
     },
 
@@ -1269,6 +1377,15 @@
       setFull(false);
       syncWatch();
     },
+
+    /// Стіл для рядка балачок: { id, game, icon, title, who, canSit, label } або null, якщо столу вже нема.
+    roomLink,
+    /// Підтягнути модуль однієї гри заради її іконки; ready() — коли вона вже справжня.
+    ensureIcon,
+    /// Сісти за стіл прямо з балачок і піти до нього.
+    sitAt,
+    /// Просто відкрити сторінку столу.
+    openAt,
 
     /// Для модулів і панелей, яким треба смикнути хаб самим (конкурс реклами тощо).
     call,

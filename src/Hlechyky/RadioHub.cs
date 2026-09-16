@@ -50,9 +50,17 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         {
             var now = DateTime.UtcNow;
             if (LastCommand.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 1200) return "Не так швидко";
-            var r = ChatCommands.Run(text);
+            var r = ChatCommands.Run(text, rooms.LiveIds);
             if (r.Error is not null) return r.Error;   // на друкарську помилку паузу не вішаємо
             LastCommand[nick] = now;
+            // /столи — погляд у лобі, не виходячи з балачок: відповідь бачить лише той, хто спитав, і в базу
+            // вона не лягає. Самі столи браузер уже має з події rooms, тож звідси йдуть тільки їхні id.
+            if (r.Rooms is { } tables)
+            {
+                await Clients.Caller.SendAsync("chat",
+                    new { id = 0L, nick, text = r.Text, at = DateTimeOffset.UtcNow, kind = r.Kind, rooms = tables });
+                return null;
+            }
             (chatText, kind) = (r.Text!, r.Kind);
         }
         await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind));
