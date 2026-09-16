@@ -724,6 +724,34 @@ public class ClickerGuildTests
     }
 
     [Fact]
+    public void The_last_weekly_wagon_moves_into_todays_wagon()
+    {
+        var g = new Tsekh();
+        g.Clock.UtcNow = Thursday;
+        // Стан, який лишився від тижневих возів: покладене руками має пережити перехід на денний віз.
+        g.Store.SaveState(ClickerGuildService.StoreKey, """
+            {"weeks":{"2026-W37":{"total":11,"wares":{"pot":11},"givers":{"оля":{"nick":"Оля","n":11}},"claimed":{},"logged":0},
+                      "2026-W38":{"total":299,"wares":{"pot":99,"bowl":50,"jug":50,"makitra":50,"dish":50},
+                                  "givers":{"оля":{"nick":"Оля","n":200},"петро":{"nick":"Петро","n":99}},"claimed":{},"logged":0}},
+             "potters":{"оля":{"nick":"Оля","rank":1,"seen":"2026-09-10T12:00:00+00:00"}}}
+            """);
+        var w = g.Svc.Summary("оля", Thursday).Today;
+        Assert.Equal(D10, w.Day);                                          // останній тижневий віз — сьогоднішній
+        Assert.Equal(299, w.Total);
+        Assert.Equal(200, w.Mine);
+        Assert.Equal(["Оля", "Петро"], w.Givers.Select(x => x.Nick).ToArray());
+        Assert.Equal(3, w.Tier);                                           // 299 виробів на денну ціль — золото
+        Assert.Equal(1, Views.Json(g.Svc.Roster("оля")).GetProperty("potters")[0].GetProperty("rank").GetInt32());
+
+        // Переносимо раз: наступний запис уже без «weeks», а сьогоднішній віз лишається на місці.
+        g.Svc.Give("оля", "Оля", "pot", 1, Thursday);
+        var json = JsonNode.Parse(g.Store.States[ClickerGuildService.StoreKey])!;
+        Assert.Null(json["weeks"]);
+        Assert.Equal(300, json["days"]![D10]!["total"]!.GetValue<int>());
+        Assert.Equal(300, new ClickerGuildService(g.Store, g.Clock).Summary("оля", Thursday).Today.Total);
+    }
+
+    [Fact]
     public void Old_days_are_pruned()
     {
         var g = new Tsekh();

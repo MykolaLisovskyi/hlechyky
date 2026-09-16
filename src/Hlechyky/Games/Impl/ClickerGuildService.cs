@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Hlechyky.Games.Impl;
 
@@ -88,6 +89,10 @@ public sealed class ClickerGuildService
         public Dictionary<string, PotterRow> Potters { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, List<GuildGift>> Mail { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, SentRow> Sent { get; set; } = new(StringComparer.Ordinal);
+
+        /// <summary>Тижневі вози старого стану — лише щоб раз перенести останній з них у день (див. <c>Migrate</c>).</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, DayRow>? Weeks { get; set; }
     }
 
     sealed class DayRow
@@ -146,7 +151,23 @@ public sealed class ClickerGuildService
         {
             _log?.LogWarning(ex, "стан цеху гончарів зіпсований — починаємо з чистого");
         }
-        return _state = Normalize(s ?? new State());
+        return _state = Normalize(Migrate(s ?? new State(), _clock.UtcNow));
+    }
+
+    /// <summary>
+    /// Вози були тижневі, стали денні — ключі стану інші, тож останній тижневий віз переносимо в сьогоднішній день:
+    /// покладене руками не зникає, нагорода за нього забирається як за сьогоднішній. Раз і назавжди: після переносу
+    /// <c>weeks</c> у стані більше нема (наступний запис їх не пише).
+    /// </summary>
+    static State Migrate(State s, DateTimeOffset now)
+    {
+        if (s.Weeks is { Count: > 0 } weeks && (s.Days is null || s.Days.Count == 0))
+        {
+            var last = weeks.Where(x => x.Value is not null).OrderBy(x => x.Key, StringComparer.Ordinal).LastOrDefault();
+            if (last.Value is not null) (s.Days ??= new(StringComparer.Ordinal))[Days.Of(now)] = last.Value;
+        }
+        s.Weeks = null;
+        return s;
     }
 
     static State Normalize(State s)
