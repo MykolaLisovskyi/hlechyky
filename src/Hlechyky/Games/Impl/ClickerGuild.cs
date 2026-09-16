@@ -11,13 +11,13 @@ public sealed record ClickerGuildRank(string Key, string Name, long Fired, long 
     string[] PieceWares, string[] PieceStyles, string Perk);
 
 /// <summary>
-/// Цех: тижневий віз для всіх гончарів, дарунки, хата друга, похвала в Журнал, цехові ранги (контракт гачків —
+/// Цех: денний віз для всіх гончарів, дарунки, хата друга, похвала в Журнал, цехові ранги (контракт гачків —
 /// docs/games/specs/clicker-v7.md §2.7, як реалізовано — docs/games/specs/clicker-v7-guild.md). Спільне живе в
 /// <see cref="ClickerGuildService"/>; тут — те, що належить самому гончареві: ранг, скільки поклав на вози й
 /// подарував, полиця дарунків, коли хвалився. Без сервісу (тести, гола гра) цех зачинений, але гра не падає, а
 /// ранг і його перки — зі збереження — лишаються.
 ///
-/// Нічого змагального: віз один на всіх, нагорода кожному однакова, пропущений тиждень нічого не забирає, престиж
+/// Нічого змагального: віз один на всіх, нагорода кожному однакова, пропущений день нічого не забирає, престиж
 /// «Обпал» цеху не чіпає.
 /// </summary>
 public sealed partial class Clicker
@@ -206,7 +206,7 @@ public sealed partial class Clicker
         };
     }
 
-    /// <summary>Покласти вироби з комори на віз тижня.</summary>
+    /// <summary>Покласти вироби з комори на віз дня.</summary>
     ActResult GuildGive(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
     {
         if (ParseItem(Str(payload, "key")) is not { } it) return ActResult.Fail("Такого виробу в коморі нема");
@@ -243,8 +243,8 @@ public sealed partial class Clicker
 
     ActResult GuildClaim(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
     {
-        var week = Str(payload, "week");
-        var r = svc.Claim(GuildKey, week.Length > 0 ? week : null, now);
+        var day = Str(payload, "day");
+        var r = svc.Claim(GuildKey, day.Length > 0 ? day : null, now);
         if (r.Error is { } why) return ActResult.Fail(why);
         var gain = WagonReward(r.Tier, r.Was, out var minutes);
         Add(gain);
@@ -363,12 +363,12 @@ public sealed partial class Clicker
         return new
         {
             enabled = true,
-            week = ClickerGuildService.WagonView(s.Week),
-            // Минулий тиждень — лише коли там є що забрати чи на що глянути.
+            day = ClickerGuildService.WagonView(s.Today),
+            // Учорашній віз — лише коли там є що забрати чи на що глянути.
             prev = s.Prev.Total > 0 ? ClickerGuildService.WagonView(s.Prev) : null,
-            claims = new[] { s.Prev, s.Week }
+            claims = new[] { s.Prev, s.Today }
                 .Where(w => w.Mine >= ClickerGuildService.MinGive && w.Tier > w.Claimed)
-                .Select(w => new { week = w.Week, tier = w.Tier, was = w.Claimed, pots = WagonReward(w.Tier, w.Claimed, out var m), minutes = m }),
+                .Select(w => new { day = w.Day, tier = w.Tier, was = w.Claimed, pots = WagonReward(w.Tier, w.Claimed, out var m), minutes = m }),
             gifts = new { left = s.GiftsLeft, sent = _giftsSent, got = _giftsGot },
             shelf = _giftShelf.Select(g => new { from = g.From, ware = g.Ware, style = g.Style, q = g.Quality, at = g.At }),
             rank = _guildRank,

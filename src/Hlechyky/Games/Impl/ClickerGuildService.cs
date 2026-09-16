@@ -14,24 +14,24 @@ public sealed record WagonSub(string Ware, int Need, int Have);
 public sealed record WagonGiver(string Nick, int N);
 
 /// <summary>
-/// Віз одного тижня очима одного гончаря: ціль, що вже лежить, рівень (0 — ще ні, 1 бронза, 2 срібло, 3 золото),
+/// Віз одного дня очима одного гончаря: ціль, що вже лежить, рівень (0 — ще ні, 1 бронза, 2 срібло, 3 золото),
 /// скільки дав він сам і на який рівень уже забрав нагороду.
 /// </summary>
 public sealed record WagonInfo(
-    string Week, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
+    string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
     IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed);
 
-/// <summary>Усе, що кімнаті треба від цеху для виду: цей тиждень, минулий і скільки дарунків лишилось сьогодні.</summary>
-public sealed record GuildSummary(WagonInfo Week, WagonInfo Prev, int GiftsLeft);
+/// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній і скільки дарунків лишилось сьогодні.</summary>
+public sealed record GuildSummary(WagonInfo Today, WagonInfo Prev, int GiftsLeft);
 
 /// <summary>Що сталось після внеску: віз після нього і рівень, якого він щойно вперше досяг (0 — нічого нового).</summary>
 public sealed record WagonGive(WagonInfo Wagon, int Reached);
 
-/// <summary>Нагорода воза: за який тиждень, який рівень і на який уже платили раніше. <c>Error</c> — відмова.</summary>
-public sealed record WagonClaim(string? Error, string Week, int Tier, int Was);
+/// <summary>Нагорода воза: за який день, який рівень і на який уже платили раніше. <c>Error</c> — відмова.</summary>
+public sealed record WagonClaim(string? Error, string Day, int Tier, int Was);
 
 /// <summary>
-/// Цех гончарів — спільне для всіх кімнат Гончарного кола: тижневий віз, скринька дарунків і список гончарів. Один
+/// Цех гончарів — спільне для всіх кімнат Гончарного кола: денний віз, скринька дарунків і список гончарів. Один
 /// на сервер, свій замок, стан — JSON у <see cref="IGameStore"/> під ключем <see cref="StoreKey"/>, пишеться після
 /// кожної зміни. Посилань на кімнати не тримає — лише дані за ніком у нижньому регістрі (як <c>Rooms.NickKey</c>).
 ///
@@ -39,24 +39,24 @@ public sealed record WagonClaim(string? Error, string Week, int Tier, int Was);
 /// в різному порядку. Час приходить параметром від гри (<c>Ctx.Clock</c>): так дві кімнати в тестах живуть кожна
 /// своїм годинником, а сервіс нічого не вгадує. Власний <see cref="IClock"/> — лише для ендпоінтів.
 ///
-/// Дух: друзів 2–4, тож нічого змагального. Ціль воза росте з кількістю гончарів минулого тижня, нагорода однакова
-/// кожному, хто поклав хоч п'ять виробів, пропущений тиждень нічого не забирає.
+/// Дух: друзів 2–4, тож нічого змагального. Ціль воза росте з кількістю гончарів учорашнього дня, нагорода однакова
+/// кожному, хто поклав хоч п'ять виробів, пропущений день нічого не забирає.
 /// </summary>
 public sealed class ClickerGuildService
 {
     public const string StoreKey = "clicker-guild";
-    /// <summary>Скільки виробів на воза «важить» один гончар (бронза). Мінімум — двоє, навіть коли грає один.</summary>
-    public const int PerPotter = 50, MinPotters = 2;
+    /// <summary>Скільки виробів на воза «важить» один гончар (бронза) за день. Мінімум — двоє, навіть коли грає один.</summary>
+    public const int PerPotter = 12, MinPotters = 2;
     /// <summary>Хто поклав на віз хоч стільки — забирає нагороду.</summary>
     public const int MinGive = 5;
     public const int GiftsPerDay = 3, ShelfSize = 12, MailMax = 40;
-    /// <summary>Скільки тижнів тримати в стані: поточний, минулий (його нагорода ще забирається) і ще два про запас.</summary>
-    public const int WeeksKept = 4;
+    /// <summary>Скільки днів тримати в стані: сьогоднішній, вчорашній (його нагорода ще забирається) і ще два про запас.</summary>
+    public const int DaysKept = 4;
     public const int RosterMax = 100;
     /// <summary>Пороги рівнів у частках цілі: бронза 100 %, срібло 150 %, золото 200 %.</summary>
     public static readonly double[] TierShare = [0, 1, 1.5, 2];
     /// <summary>Хвилини власного пасиву за рівень.</summary>
-    public static readonly int[] TierMinutes = [0, 30, 60, 120];
+    public static readonly int[] TierMinutes = [0, 10, 20, 35];
     public static readonly string[] TierNames = ["", "бронза", "срібло", "золото"];
     /// <summary>«Нагороду за бронзу» — знахідний відмінок.</summary>
     static readonly string[] TierNamesAcc = ["", "бронзу", "срібло", "золото"];
@@ -84,13 +84,13 @@ public sealed class ClickerGuildService
 
     sealed class State
     {
-        public Dictionary<string, WeekRow> Weeks { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, DayRow> Days { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, PotterRow> Potters { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, List<GuildGift>> Mail { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, SentRow> Sent { get; set; } = new(StringComparer.Ordinal);
     }
 
-    sealed class WeekRow
+    sealed class DayRow
     {
         public int Total { get; set; }
         public Dictionary<string, int> Wares { get; set; } = new(StringComparer.Ordinal);
@@ -152,11 +152,11 @@ public sealed class ClickerGuildService
     static State Normalize(State s)
     {
         // Чого не було в старому стані (чи в руках, що правили базу) — порожнє, а не null.
-        s.Weeks = Clean(s.Weeks);
+        s.Days = Clean(s.Days);
         s.Potters = Clean(s.Potters);
         s.Mail = Clean(s.Mail);
         s.Sent = Clean(s.Sent);
-        foreach (var w in s.Weeks.Values)
+        foreach (var w in s.Days.Values)
         {
             w.Wares = Clean(w.Wares);
             w.Givers = Clean(w.Givers);
@@ -180,38 +180,27 @@ public sealed class ClickerGuildService
         catch (Exception ex) { _log?.LogWarning(ex, "стан цеху гончарів не записався"); }
     }
 
-    // ---------- тиждень за Києвом ----------
+    // ---------- день за Києвом ----------
 
-    static DateTime KyivDate(DateTimeOffset now) => TimeZoneInfo.ConvertTime(now, Days.Kyiv).Date;
+    /// <summary>Київський день, у якому <paramref name="now"/>: «2026-09-16». Рядки порівнюються як дати.</summary>
+    public static string DayOf(DateTimeOffset now) => Days.Of(now);
 
-    static string WeekOfDate(DateTime d) =>
-        $"{ISOWeek.GetYear(d)}-W{ISOWeek.GetWeekOfYear(d).ToString("00", CultureInfo.InvariantCulture)}";
+    /// <summary>День перед тим, у якому <paramref name="now"/>.</summary>
+    public static string DayBefore(DateTimeOffset now) => Days.Of(now.AddDays(-1));
 
-    /// <summary>ISO-тиждень за київським календарем: «2026-W38». Рядки порівнюються як дати.</summary>
-    public static string WeekOf(DateTimeOffset now) => WeekOfDate(KyivDate(now));
-
-    /// <summary>Тиждень перед тим, у якому <paramref name="now"/>.</summary>
-    public static string WeekBefore(DateTimeOffset now) => WeekOfDate(KyivDate(now).AddDays(-7));
-
-    /// <summary>Київська північ наступного понеділка — коли віз цього тижня від'їжджає.</summary>
-    public static DateTimeOffset WeekEnds(DateTimeOffset now)
-    {
-        var d = KyivDate(now);
-        var monday = d.AddDays(-(((int)d.DayOfWeek + 6) % 7) + 7);
-        var utc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(monday, DateTimeKind.Unspecified), Days.Kyiv);
-        return new DateTimeOffset(utc, TimeSpan.Zero);
-    }
+    /// <summary>Київська північ — коли сьогоднішній віз від'їжджає.</summary>
+    public static DateTimeOffset DayEnds(DateTimeOffset now) => Days.NextMidnight(now);
 
     // ---------- ціль воза ----------
 
     /// <summary>
-    /// Ціль воза: <see cref="PerPotter"/> виробів на гончаря ×0,85–1,15 (зерно тижня), до п'ятірок; і дві-три підцілі
-    /// з найпоширеніших виробів — кожна своя частка цілі ×0,8–1,2. Та сама пара (тиждень, гончарі) — та сама ціль.
+    /// Ціль воза: <see cref="PerPotter"/> виробів на гончаря ×0,85–1,15 (зерно дня), до п'ятірок; і дві-три підцілі
+    /// з найпоширеніших виробів — кожна своя частка цілі ×0,8–1,2. Та сама пара (день, гончарі) — та сама ціль.
     /// </summary>
-    public static (int Goal, IReadOnlyList<(string Ware, int Need)> Subs) GoalFor(string week, int potters)
+    public static (int Goal, IReadOnlyList<(string Ware, int Need)> Subs) GoalFor(string day, int potters)
     {
         potters = Math.Max(MinPotters, potters);
-        var rng = new Random(Days.Seed("clicker-wagon", week));
+        var rng = new Random(Days.Seed("clicker-wagon", day));
         var goal = Fives(PerPotter * potters * (0.85 + 0.3 * rng.NextDouble()));
         var pool = SubPool.OrderBy(_ => rng.Next()).ToList();
         var count = 2 + rng.Next(2);
@@ -233,15 +222,15 @@ public sealed class ClickerGuildService
         return 0;
     }
 
-    /// <summary>Скільки гончарів «важить» тиждень: ті, хто давав хоч щось тижнем раніше (не менше двох).</summary>
+    /// <summary>Скільки гончарів «важить» день: ті, хто давав хоч щось учора (не менше двох).</summary>
     static int PottersFor(State s, string before) =>
-        Math.Max(MinPotters, s.Weeks.TryGetValue(before, out var w) ? w.Givers.Values.Count(g => g.N > 0) : 0);
+        Math.Max(MinPotters, s.Days.TryGetValue(before, out var w) ? w.Givers.Values.Count(g => g.N > 0) : 0);
 
-    WagonInfo Info(State s, string week, string before, DateTimeOffset endsAt, string nickKey)
+    WagonInfo Info(State s, string day, string before, DateTimeOffset endsAt, string nickKey)
     {
         var potters = PottersFor(s, before);
-        var (goal, subs) = GoalFor(week, potters);
-        s.Weeks.TryGetValue(week, out var row);
+        var (goal, subs) = GoalFor(day, potters);
+        s.Days.TryGetValue(day, out var row);
         var subRows = subs.Select(x => new WagonSub(x.Ware, x.Need, row?.Wares.GetValueOrDefault(x.Ware) ?? 0)).ToList();
         var total = row?.Total ?? 0;
         var givers = (row?.Givers.Values ?? Enumerable.Empty<GiverRow>())
@@ -250,20 +239,21 @@ public sealed class ClickerGuildService
             .OrderBy(g => g.Nick, StringComparer.Create(CultureInfo.GetCultureInfo("uk-UA"), true))
             .Select(g => new WagonGiver(g.Nick, g.N))
             .ToList();
-        return new WagonInfo(week, endsAt, potters, goal, total, subRows, givers, TierOf(goal, total, subRows),
+        return new WagonInfo(day, endsAt, potters, goal, total, subRows, givers, TierOf(goal, total, subRows),
             row?.Givers.GetValueOrDefault(nickKey)?.N ?? 0, row?.Claimed.GetValueOrDefault(nickKey) ?? 0);
     }
 
     WagonInfo Current(State s, DateTimeOffset now, string nickKey) =>
-        Info(s, WeekOf(now), WeekBefore(now), WeekEnds(now), nickKey);
+        Info(s, DayOf(now), DayBefore(now), DayEnds(now), nickKey);
 
     WagonInfo Previous(State s, DateTimeOffset now, string nickKey)
     {
-        var d = KyivDate(now).AddDays(-7);
-        return Info(s, WeekOfDate(d), WeekOfDate(d.AddDays(-7)), WeekEnds(now).AddDays(-7), nickKey);
+        // Учорашній віз від'їхав опівночі — тобто в «наступну північ» учорашнього дня, з поправкою на переведення часу.
+        var yesterday = now.AddDays(-1);
+        return Info(s, DayOf(yesterday), DayBefore(yesterday), Days.NextMidnight(yesterday), nickKey);
     }
 
-    /// <summary>Віз цього тижня, минулого і скільки дарунків ще можна сьогодні — для виду кімнати.</summary>
+    /// <summary>Сьогоднішній віз, учорашній і скільки дарунків ще можна сьогодні — для виду кімнати.</summary>
     public GuildSummary Summary(string nickKey, DateTimeOffset now)
     {
         lock (_lock)
@@ -273,15 +263,15 @@ public sealed class ClickerGuildService
         }
     }
 
-    /// <summary>Покласти вироби на віз цього тижня. Вироби вже забрала з комори кімната — тут лише облік.</summary>
+    /// <summary>Покласти вироби на сьогоднішній віз. Вироби вже забрала з комори кімната — тут лише облік.</summary>
     public WagonGive Give(string nickKey, string nick, string ware, int n, DateTimeOffset now)
     {
         lock (_lock)
         {
             var s = S();
-            var week = WeekOf(now);
+            var day = DayOf(now);
             if (n <= 0) return new WagonGive(Current(s, now, nickKey), 0);
-            if (!s.Weeks.TryGetValue(week, out var row)) s.Weeks[week] = row = new WeekRow();
+            if (!s.Days.TryGetValue(day, out var row)) s.Days[day] = row = new DayRow();
             row.Total += n;
             row.Wares[ware] = row.Wares.GetValueOrDefault(ware) + n;
             if (!row.Givers.TryGetValue(nickKey, out var giver)) row.Givers[nickKey] = giver = new GiverRow();
@@ -297,10 +287,11 @@ public sealed class ClickerGuildService
     }
 
     /// <summary>
-    /// Забрати нагороду воза: цього тижня або минулого (до кінця цього). Хто поклав хоч <see cref="MinGive"/>, забирає
-    /// рівень, якого віз досяг; віз потім доріс — можна добрати різницю. Без <paramref name="week"/> — спершу минулий.
+    /// Забрати нагороду воза: сьогоднішнього або вчорашнього (до кінця сьогоднішнього дня). Хто поклав хоч
+    /// <see cref="MinGive"/>, забирає рівень, якого віз досяг; віз потім доріс — можна добрати різницю. Без
+    /// <paramref name="day"/> — спершу вчорашній.
     /// </summary>
-    public WagonClaim Claim(string nickKey, string? week, DateTimeOffset now)
+    public WagonClaim Claim(string nickKey, string? day, DateTimeOffset now)
     {
         lock (_lock)
         {
@@ -308,30 +299,30 @@ public sealed class ClickerGuildService
             var cur = Current(s, now, nickKey);
             var prev = Previous(s, now, nickKey);
             WagonInfo w;
-            if (string.IsNullOrEmpty(week)) w = Claimable(prev) ? prev : cur;
-            else if (week == cur.Week) w = cur;
-            else if (week == prev.Week) w = prev;
-            else return new WagonClaim("Той віз уже давно поїхав — нагороди за нього не забрати", week, 0, 0);
+            if (string.IsNullOrEmpty(day)) w = Claimable(prev) ? prev : cur;
+            else if (day == cur.Day) w = cur;
+            else if (day == prev.Day) w = prev;
+            else return new WagonClaim("Той віз уже давно поїхав — нагороди за нього не забрати", day, 0, 0);
 
             if (w.Mine < MinGive)
-                return new WagonClaim($"Нагорода — тим, хто поклав на віз хоч {MinGive} виробів (у тебе {w.Mine})", w.Week, 0, 0);
-            if (w.Tier == 0) return new WagonClaim("Віз ще не наповнився навіть до бронзи — докладаймо разом", w.Week, 0, 0);
-            if (w.Claimed >= w.Tier) return new WagonClaim($"Нагороду за {TierNamesAcc[w.Tier]} ти вже забрав", w.Week, 0, 0);
+                return new WagonClaim($"Нагорода — тим, хто поклав на віз хоч {MinGive} виробів (у тебе {w.Mine})", w.Day, 0, 0);
+            if (w.Tier == 0) return new WagonClaim("Віз ще не наповнився навіть до бронзи — докладаймо разом", w.Day, 0, 0);
+            if (w.Claimed >= w.Tier) return new WagonClaim($"Нагороду за {TierNamesAcc[w.Tier]} ти вже забрав", w.Day, 0, 0);
 
-            if (!s.Weeks.TryGetValue(w.Week, out var row)) return new WagonClaim("Такого воза нема", w.Week, 0, 0);
+            if (!s.Days.TryGetValue(w.Day, out var row)) return new WagonClaim("Такого воза нема", w.Day, 0, 0);
             row.Claimed[nickKey] = w.Tier;
             Save();
-            return new WagonClaim(null, w.Week, w.Tier, w.Claimed);
+            return new WagonClaim(null, w.Day, w.Tier, w.Claimed);
         }
     }
 
     static bool Claimable(WagonInfo w) => w.Mine >= MinGive && w.Tier > w.Claimed;
 
-    /// <summary>Старі тижні — геть: нагорода за них однаково вже не забирається.</summary>
+    /// <summary>Старі дні — геть: нагорода за них однаково вже не забирається.</summary>
     static void Prune(State s, DateTimeOffset now)
     {
-        var oldest = WeekOfDate(KyivDate(now).AddDays(-7 * (WeeksKept - 1)));
-        foreach (var key in s.Weeks.Keys.Where(k => string.CompareOrdinal(k, oldest) < 0).ToList()) s.Weeks.Remove(key);
+        var oldest = Days.Of(now.AddDays(-(DaysKept - 1)));
+        foreach (var key in s.Days.Keys.Where(k => string.CompareOrdinal(k, oldest) < 0).ToList()) s.Days.Remove(key);
     }
 
     // ---------- дарунки ----------
@@ -407,7 +398,7 @@ public sealed class ClickerGuildService
         }
     }
 
-    /// <summary><c>GET /api/games/clicker/guild</c>: гончарі цеху (за абеткою) і віз цього тижня.</summary>
+    /// <summary><c>GET /api/games/clicker/guild</c>: гончарі цеху (за абеткою) і сьогоднішній віз.</summary>
     public object Roster(string? meNick)
     {
         var now = _clock.UtcNow;
@@ -415,11 +406,11 @@ public sealed class ClickerGuildService
         lock (_lock)
         {
             var s = S();
-            var week = Current(s, now, me);
-            s.Weeks.TryGetValue(week.Week, out var row);
+            var today = Current(s, now, me);
+            s.Days.TryGetValue(today.Day, out var row);
             return new
             {
-                week = WagonView(week),
+                day = WagonView(today),
                 potters = s.Potters
                     .OrderBy(x => x.Value.Nick, StringComparer.Create(CultureInfo.GetCultureInfo("uk-UA"), true))
                     .Select(x => new
@@ -435,7 +426,7 @@ public sealed class ClickerGuildService
     /// <summary>Віз у форму для дроту — однакова в розі кімнати й у списку цеху.</summary>
     public static object WagonView(WagonInfo w) => new
     {
-        id = w.Week, endsAt = w.EndsAt, potters = w.Potters, goal = w.Goal, total = w.Total,
+        id = w.Day, endsAt = w.EndsAt, potters = w.Potters, goal = w.Goal, total = w.Total,
         subs = w.Subs.Select(x => new { ware = x.Ware, need = x.Need, have = x.Have }),
         givers = w.Givers.Select(g => new { nick = g.Nick, n = g.N }),
         tier = w.Tier, mine = w.Mine, claimed = w.Claimed,

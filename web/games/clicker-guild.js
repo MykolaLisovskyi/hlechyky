@@ -2,7 +2,7 @@
   Цех Гончарного кола (docs/games/specs/clicker-v7.md §4 B5; як зроблено — clicker-v7-guild.md). Частина ядра clicker.js.
 
   Вкладка «Цех»:
-  1) віз тижня — великий SVG-віз, що наповнюється виробами, смуга з порогами бронза/срібло/золото, підцілі, внески
+  1) віз дня — великий SVG-віз, що наповнюється виробами, смуга з порогами бронза/срібло/золото, підцілі, внески
      друзів (за абеткою, без місць), «Покласти на віз» (вибір виробів із комори) і «Забрати нагороду»;
   2) дарунки — скільки ще сьогодні, вибір друга й виробу, полиця дарунків «від Миколи»;
   3) ранг — шлях учень → челядник → майстер → цехмістр, що бракує, майстерштук, перки й вимикач автогорна;
@@ -137,7 +137,7 @@
 
   function wagonHtml(st, api, v) {
     const esc = (x) => api.esc(st, x);
-    const w = v.week;
+    const w = v.day;
     const c = cat(st);
     const minGive = (c && c.minGive) || 5;
     const subs = w.subs.map((s) => '<div class="clkg-sub' + (s.have >= s.need ? ' done' : '') + '">'
@@ -147,20 +147,20 @@
       ? '<div class="clkg-givers">' + w.givers.map((g) => '<span class="clkg-chip' + (g.nick === myNick(st) ? ' me' : '') + '">'
         + esc(g.nick) + ' · ' + g.n + '</span>').join('') + '</div>'
       : '<div class="muted small">Віз ще порожній — хтось має покласти перший горщик.</div>';
-    const claims = (v.claims || []).map((cl) => '<button type="button" class="primary clkg-claim" data-claim="' + esc(cl.week) + '">'
-      + '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier] + (cl.week !== w.id ? ' (минулий тиждень)' : '')
+    const claims = (v.claims || []).map((cl) => '<button type="button" class="primary clkg-claim" data-claim="' + esc(cl.day) + '">'
+      + '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier] + (cl.day !== w.id ? ' (вчорашній віз)' : '')
       + ' · +' + api.potsShort(cl.pots) + '</button>').join('');
     const mineNote = w.mine >= minGive
       ? 'ти поклав(ла) ' + w.mine + ' — нагорода твоя, щойно віз дійде до порогу'
       : 'поклади хоч ' + minGive + ' (' + w.mine + ' є) — і нагорода віза буде й твоя';
     const prev = v.prev
-      ? '<div class="muted small">Минулого тижня: ' + (v.prev.tier ? TIER_ICON[v.prev.tier] + ' ' + TIER[v.prev.tier] : 'до бронзи не дотягли — не біда') + ', разом ' + v.prev.total + '</div>'
+      ? '<div class="muted small">Учора: ' + (v.prev.tier ? TIER_ICON[v.prev.tier] + ' ' + TIER[v.prev.tier] : 'до бронзи не дотягли — не біда') + ', разом ' + v.prev.total + '</div>'
       : '';
-    return '<section class="clkg-card clkg-week">'
+    return '<section class="clkg-card clkg-day">'
       + '<div class="clk-sub">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
-      + info('Село — це всі гончарі сайту разом: один віз на тиждень, дарунки одне одному, хати в гості. Бронза — ціль і всі '
-        + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю гончарів минулого тижня (' + w.potters + '). '
-        + 'Пропущений тиждень нічого не забирає.') + '</div>'
+      + info('Село — це всі гончарі сайту разом: один віз на день, дарунки одне одному, хати в гості. Бронза — ціль і всі '
+        + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю вчорашніх гончарів (' + w.potters + '). '
+        + 'Пропущений день нічого не забирає.') + '</div>'
       + wagonSvg(st, api, w)
       + '<div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small">· '
       + (w.tier ? TIER_ICON[w.tier] + ' ' + TIER[w.tier] : 'ще до бронзи') + '</span></div>'
@@ -401,7 +401,7 @@
     let head;
     let rows;
     if (mode === 'give') {
-      const w = v.week;
+      const w = v.day;
       head = '<div class="clk-sub">🧺 Покласти на віз</div><p class="muted small clk-note">Потрібні: '
         + w.subs.map((s) => esc(wareName(st, s.ware)) + ' ' + Math.min(s.have, s.need) + '/' + s.need).join(' · ')
         + '. Будь-який розпис і якість рахуються; на воза краще класти простіші — дзвінкі згодяться для майстерштука.</p>';
@@ -479,7 +479,7 @@
       b.onclick = (e) => {
         if (!e.isTrusted) return;
         b.disabled = true;
-        act(st, api, { op: 'claim', week: b.dataset.claim }, 'wagon').then((r) => {
+        act(st, api, { op: 'claim', day: b.dataset.claim }, 'wagon').then((r) => {
           if (r && r.ok) api.sparks(st, null, 16, true, 50, 40);
           else b.disabled = false;
         });
@@ -569,11 +569,11 @@
       const g = v.guild;
       if (!g) return;
       st.guild = {
-        enabled: !!g.enabled, rank: g.rank || 0, week: g.week || null, prev: g.prev || null, claims: g.claims || [],
+        enabled: !!g.enabled, rank: g.rank || 0, day: g.day || null, prev: g.prev || null, claims: g.claims || [],
         gifts: g.gifts || { left: 0, sent: 0, got: 0 }, shelf: g.shelf || [], given: g.given || 0, next: g.next || null,
         autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
       };
-      if (st.guild.enabled && !st.guild.week) st.guild.enabled = false;
+      if (st.guild.enabled && !st.guild.day) st.guild.enabled = false;
       if (st.guild.enabled) celebrate(st, api, st.guild);
       api.tabNote(st, 'guild', 'claim', st.guild.claims.length ? '🛒' : '', 1);
       paint(st, api);

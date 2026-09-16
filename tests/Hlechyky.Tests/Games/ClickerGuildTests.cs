@@ -7,14 +7,14 @@ using Hlechyky.Tests.Support;
 namespace Hlechyky.Tests.Games;
 
 /// <summary>
-/// Цех (пакет B5, ClickerGuild.cs + ClickerGuildService.cs): тижневий віз, нагорода, дарунки, хата друга, похвала,
+/// Цех (пакет B5, ClickerGuild.cs + ClickerGuildService.cs): денний віз, нагорода, дарунки, хата друга, похвала,
 /// ранги й майстерштук, перки, без сервісу, збереження, обпал, двоє друзів з одним сервісом і паралельні виклики.
 /// </summary>
 public class ClickerGuildTests
 {
-    // Годинник RoomHarness стоїть на четвер 2026-09-10 12:00 UTC — це 15:00 у Києві, тиждень 2026-W37.
+    // Годинник RoomHarness стоїть на четвер 2026-09-10 12:00 UTC — це 15:00 у Києві, київський день 2026-09-10.
     static readonly DateTimeOffset Thursday = new(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
-    const string W37 = "2026-W37", W38 = "2026-W38";
+    const string D10 = "2026-09-10", D11 = "2026-09-11";
 
     sealed class Tsekh
     {
@@ -74,42 +74,42 @@ public class ClickerGuildTests
         }
     }
 
-    /// <summary>Докласти на віз цього тижня рівно стільки, щоб він дійшов до рівня tier.</summary>
+    /// <summary>Докласти на сьогоднішній віз рівно стільки, щоб він дійшов до рівня tier.</summary>
     static void Fill(RoomHarness h, Tsekh g, string nick, int tier)
     {
-        var w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Week;
+        var w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Today;
         foreach (var sub in w.Subs) if (sub.Need > sub.Have) GiveN(h, sub.Ware, sub.Need - sub.Have);
-        w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Week;
+        w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Today;
         var target = (int)Math.Ceiling(w.Goal * ClickerGuildService.TierShare[tier]);
         if (target > w.Total) GiveN(h, "pot", target - w.Total);
     }
 
     static IEnumerable<string> Journal(RoomHarness h) => h.Outbox.OfType<Journal>().Select(j => j.Text);
 
-    // ---------- тиждень і ціль ----------
+    // ---------- день і ціль ----------
 
     [Fact]
-    public void The_week_follows_the_Kyiv_calendar()
+    public void The_day_follows_the_Kyiv_calendar()
     {
-        Assert.Equal(W37, ClickerGuildService.WeekOf(Thursday));
-        // Неділя 23:59 у Києві (літо, UTC+3) — ще той тиждень; 00:00 понеділка — вже наступний.
-        Assert.Equal(W37, ClickerGuildService.WeekOf(new DateTimeOffset(2026, 9, 13, 20, 59, 0, TimeSpan.Zero)));
-        Assert.Equal(W38, ClickerGuildService.WeekOf(new DateTimeOffset(2026, 9, 13, 21, 0, 0, TimeSpan.Zero)));
-        Assert.Equal(new DateTimeOffset(2026, 9, 13, 21, 0, 0, TimeSpan.Zero), ClickerGuildService.WeekEnds(Thursday));
-        Assert.Equal("2026-W36", ClickerGuildService.WeekBefore(Thursday));
+        Assert.Equal(D10, ClickerGuildService.DayOf(Thursday));
+        // 23:59 у Києві (літо, UTC+3) — ще той день; 00:00 — уже наступний.
+        Assert.Equal(D10, ClickerGuildService.DayOf(new DateTimeOffset(2026, 9, 10, 20, 59, 0, TimeSpan.Zero)));
+        Assert.Equal(D11, ClickerGuildService.DayOf(new DateTimeOffset(2026, 9, 10, 21, 0, 0, TimeSpan.Zero)));
+        Assert.Equal(new DateTimeOffset(2026, 9, 10, 21, 0, 0, TimeSpan.Zero), ClickerGuildService.DayEnds(Thursday));
+        Assert.Equal("2026-09-09", ClickerGuildService.DayBefore(Thursday));
         // Узимку (UTC+2) межа зсувається на годину.
-        Assert.Equal("2026-W50", ClickerGuildService.WeekOf(new DateTimeOffset(2026, 12, 13, 21, 59, 0, TimeSpan.Zero)));
-        Assert.Equal("2026-W51", ClickerGuildService.WeekOf(new DateTimeOffset(2026, 12, 13, 22, 0, 0, TimeSpan.Zero)));
+        Assert.Equal("2026-12-13", ClickerGuildService.DayOf(new DateTimeOffset(2026, 12, 13, 21, 59, 0, TimeSpan.Zero)));
+        Assert.Equal("2026-12-14", ClickerGuildService.DayOf(new DateTimeOffset(2026, 12, 13, 22, 0, 0, TimeSpan.Zero)));
     }
 
     [Fact]
-    public void The_goal_comes_from_the_week_seed_and_the_number_of_potters()
+    public void The_goal_comes_from_the_day_seed_and_the_number_of_potters()
     {
-        var (a, subsA) = ClickerGuildService.GoalFor(W37, 2);
-        var (b, subsB) = ClickerGuildService.GoalFor(W37, 2);
+        var (a, subsA) = ClickerGuildService.GoalFor(D10, 2);
+        var (b, subsB) = ClickerGuildService.GoalFor(D10, 2);
         Assert.Equal(a, b);
         Assert.Equal(subsA, subsB);
-        Assert.InRange(a, 85, 115);
+        Assert.InRange(a, 20, 30);
         Assert.Equal(0, a % 5);
         Assert.InRange(subsA.Count, 2, 3);
         Assert.Equal(subsA.Count, subsA.Select(s => s.Ware).Distinct().Count());
@@ -117,24 +117,24 @@ public class ClickerGuildTests
         Assert.All(subsA, s => Assert.InRange(s.Need, 5, a));
 
         // Один гончар — однаково як двоє; четверо — удвічі більше.
-        Assert.Equal(a, ClickerGuildService.GoalFor(W37, 1).Goal);
-        Assert.InRange(ClickerGuildService.GoalFor(W37, 4).Goal, 170, 230);
-        // Різні тижні — різні вози (хоч котрийсь із кількох).
-        Assert.True(Enumerable.Range(30, 8).Select(i => ClickerGuildService.GoalFor($"2026-W{i}", 2)).Distinct().Count() > 1);
+        Assert.Equal(a, ClickerGuildService.GoalFor(D10, 1).Goal);
+        Assert.InRange(ClickerGuildService.GoalFor(D10, 4).Goal, 40, 55);
+        // Різні дні — різні вози (хоч котрийсь із кількох).
+        Assert.True(Enumerable.Range(10, 8).Select(i => ClickerGuildService.GoalFor($"2026-09-{i}", 2)).Distinct().Count() > 1);
     }
 
     [Fact]
-    public void Givers_of_last_week_decide_how_heavy_this_week_is()
+    public void Givers_of_yesterday_decide_how_heavy_today_is()
     {
         var g = new Tsekh();
         foreach (var nick in new[] { "а", "б", "в" }) g.Svc.Give(nick, nick, "pot", 1, Thursday);
-        var next = Thursday.AddDays(7);
-        var w = g.Svc.Summary("а", next).Week;
-        Assert.Equal(W38, w.Week);
+        var next = Thursday.AddDays(1);
+        var w = g.Svc.Summary("а", next).Today;
+        Assert.Equal(D11, w.Day);
         Assert.Equal(3, w.Potters);
-        Assert.Equal(ClickerGuildService.GoalFor(W38, 3).Goal, w.Goal);
-        // А на цьому тижні минулого нема — двоє за замовчуванням.
-        Assert.Equal(2, g.Svc.Summary("а", Thursday).Week.Potters);
+        Assert.Equal(ClickerGuildService.GoalFor(D11, 3).Goal, w.Goal);
+        // А сьогодні вчорашнього нема — двоє за замовчуванням.
+        Assert.Equal(2, g.Svc.Summary("а", Thursday).Today.Potters);
     }
 
     [Fact]
@@ -162,11 +162,11 @@ public class ClickerGuildTests
         Assert.True(r.Ok, r.Message);
         Assert.Contains("на віз", r.Message);
 
-        var week = G(h).GetProperty("week");
-        Assert.Equal(W37, week.GetProperty("id").GetString());
-        Assert.Equal(3, week.GetProperty("total").GetInt32());
-        Assert.Equal(3, week.GetProperty("mine").GetInt32());
-        Assert.Equal("Оля", week.GetProperty("givers")[0].GetProperty("nick").GetString());
+        var day = G(h).GetProperty("day");
+        Assert.Equal(D10, day.GetProperty("id").GetString());
+        Assert.Equal(3, day.GetProperty("total").GetInt32());
+        Assert.Equal(3, day.GetProperty("mine").GetInt32());
+        Assert.Equal("Оля", day.GetProperty("givers")[0].GetProperty("nick").GetString());
         var items = h.View(0).GetProperty("craft").GetProperty("items");
         Assert.Equal(1, items.GetArrayLength());                         // горщики пішли, глечики лишились
         Assert.Equal(3L, G(h).GetProperty("given").GetInt64());
@@ -183,7 +183,7 @@ public class ClickerGuildTests
         var g = new Tsekh();
         var h = g.Potter("Оля");
         Fill(h, g, "Оля", 1);
-        Assert.Equal(1, G(h).GetProperty("week").GetProperty("tier").GetInt32());
+        Assert.Equal(1, G(h).GetProperty("day").GetProperty("tier").GetInt32());
         Assert.Single(Journal(h), t => t.Contains("Віз цеху") && t.Contains("бронза") && t.Contains("Оля"));
 
         GiveN(h, "pot", 1);
@@ -197,10 +197,10 @@ public class ClickerGuildTests
     {
         var g = new Tsekh();
         var h = g.Potter("Оля");
-        var goal = g.Svc.Summary("оля", h.Clock.UtcNow).Week.Goal;
+        var goal = g.Svc.Summary("оля", h.Clock.UtcNow).Today.Goal;
         GiveN(h, "pot", goal * 2);
-        Assert.Equal(0, G(h).GetProperty("week").GetProperty("tier").GetInt32());
-        Assert.Equal(200.0, G(h).GetProperty("week").GetProperty("pct").GetDouble());
+        Assert.Equal(0, G(h).GetProperty("day").GetProperty("tier").GetInt32());
+        Assert.Equal(200.0, G(h).GetProperty("day").GetProperty("pct").GetDouble());
     }
 
     [Fact]
@@ -215,12 +215,12 @@ public class ClickerGuildTests
         Fill(h, g, "Оля", 1);
         var claim = G(h).GetProperty("claims")[0];
         Assert.Equal(1, claim.GetProperty("tier").GetInt32());
-        // Голе коло: пасиву нема, тож дно — 20 кліків на хвилину: 30 хв бронзи — 600 глеків.
-        Assert.Equal(600, claim.GetProperty("pots").GetInt64());
+        // Голе коло: пасиву нема, тож дно — 20 кліків на хвилину: 10 хв бронзи — 200 глеків.
+        Assert.Equal(200, claim.GetProperty("pots").GetInt64());
         var before = Pots(h);
         var r = Guild(h, new { op = "claim" });
         Assert.True(r.Ok, r.Message);
-        Assert.Equal(before + 600, Pots(h));
+        Assert.Equal(before + 200, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
         Assert.Equal("Нагороду за бронзу ти вже забрав", Guild(h, new { op = "claim" }).Message);
         Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
@@ -228,8 +228,8 @@ public class ClickerGuildTests
         // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить.
         Fill(h, g, "Оля", 3);
         before = Pots(h);
-        Assert.True(Guild(h, new { op = "claim", week = W37 }).Ok);
-        Assert.Equal(before + 1800, Pots(h));
+        Assert.True(Guild(h, new { op = "claim", day = D10 }).Ok);
+        Assert.Equal(before + (35 - 10) * 20, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
     }
 
@@ -241,38 +241,38 @@ public class ClickerGuildTests
         Patch(h, s => s["upgrades"]!["kiln"] = 100);                    // 300 глеків/с
         Fill(h, g, "Оля", 1);
         var passive = h.View(0).GetProperty("baseSecond").GetDouble();
-        Assert.Equal((long)(passive * 30 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        Assert.Equal((long)(passive * 10 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
         Patch(h, s => GuildRow(s)["rank"] = 3);
-        Assert.Equal((long)(passive * 45 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        Assert.Equal((long)(passive * 15 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
     }
 
     [Fact]
-    public void Last_weeks_wagon_can_be_claimed_during_this_week_but_not_later()
+    public void Yesterdays_wagon_can_be_claimed_today_but_not_later()
     {
         var g = new Tsekh();
         var h = g.Potter("Оля");
         Fill(h, g, "Оля", 2);
-        h.Clock.UtcNow = new DateTimeOffset(2026, 9, 13, 21, 5, 0, TimeSpan.Zero);   // понеділок 00:05 у Києві
+        h.Clock.UtcNow = new DateTimeOffset(2026, 9, 10, 21, 5, 0, TimeSpan.Zero);   // 00:05 наступного дня в Києві
         var view = G(h);
-        Assert.Equal(W38, view.GetProperty("week").GetProperty("id").GetString());
-        Assert.Equal(0, view.GetProperty("week").GetProperty("total").GetInt32());
-        Assert.Equal(W37, view.GetProperty("prev").GetProperty("id").GetString());
-        Assert.Equal(W37, view.GetProperty("claims")[0].GetProperty("week").GetString());
+        Assert.Equal(D11, view.GetProperty("day").GetProperty("id").GetString());
+        Assert.Equal(0, view.GetProperty("day").GetProperty("total").GetInt32());
+        Assert.Equal(D10, view.GetProperty("prev").GetProperty("id").GetString());
+        Assert.Equal(D10, view.GetProperty("claims")[0].GetProperty("day").GetString());
         var before = Pots(h);
         Assert.True(Guild(h, new { op = "claim" }).Ok);
-        Assert.Equal(before + 60 * 20, Pots(h));
+        Assert.Equal(before + 20 * 20, Pots(h));
 
-        // Ще тиждень — той віз поїхав назавжди.
+        // Ще день — той віз поїхав назавжди.
         var g2 = new Tsekh();
         var h2 = g2.Potter("Петро");
         Fill(h2, g2, "Петро", 1);
-        h2.Clock.Advance(TimeSpan.FromDays(14));
-        Assert.Equal("Той віз уже давно поїхав — нагороди за нього не забрати", Guild(h2, new { op = "claim", week = W37 }).Message);
+        h2.Clock.Advance(TimeSpan.FromDays(2));
+        Assert.Equal("Той віз уже давно поїхав — нагороди за нього не забрати", Guild(h2, new { op = "claim", day = D10 }).Message);
         Assert.StartsWith("Нагорода — тим, хто поклав", Guild(h2, new { op = "claim" }).Message);
     }
 
     [Fact]
-    public void A_skipped_week_takes_nothing_away()
+    public void A_skipped_day_takes_nothing_away()
     {
         var g = new Tsekh();
         var h = g.Potter("Оля");
@@ -281,7 +281,7 @@ public class ClickerGuildTests
         var view = G(h);
         Assert.Equal(1, view.GetProperty("rank").GetInt32());
         Assert.Equal(30, view.GetProperty("given").GetInt64());
-        Assert.Equal(2, view.GetProperty("week").GetProperty("potters").GetInt32());
+        Assert.Equal(2, view.GetProperty("day").GetProperty("potters").GetInt32());
     }
 
     // ---------- двоє друзів ----------
@@ -294,7 +294,7 @@ public class ClickerGuildTests
         var petro = g.Potter("Петро");
         GiveN(ola, "pot", 4);
 
-        var seen = G(petro).GetProperty("week");
+        var seen = G(petro).GetProperty("day");
         Assert.Equal(4, seen.GetProperty("total").GetInt32());
         Assert.Equal(0, seen.GetProperty("mine").GetInt32());
         Assert.Equal("Оля", seen.GetProperty("givers")[0].GetProperty("nick").GetString());
@@ -305,7 +305,7 @@ public class ClickerGuildTests
         Assert.StartsWith("Нагорода — тим, хто поклав на віз хоч 5", Guild(ola, new { op = "claim" }).Message);
         GiveN(ola, "pot", 1);
         Assert.True(Guild(ola, new { op = "claim" }).Ok);
-        var givers = G(ola).GetProperty("week").GetProperty("givers").EnumerateArray().Select(x => x.GetProperty("nick").GetString()!).ToList();
+        var givers = G(ola).GetProperty("day").GetProperty("givers").EnumerateArray().Select(x => x.GetProperty("nick").GetString()!).ToList();
         Assert.Equal(["Оля", "Петро"], givers);                          // за абеткою, не за внеском
     }
 
@@ -468,7 +468,7 @@ public class ClickerGuildTests
     }
 
     [Fact]
-    public void The_roster_lists_potters_alphabetically_with_this_weeks_share()
+    public void The_roster_lists_potters_alphabetically_with_todays_share()
     {
         var g = new Tsekh();
         g.Clock.UtcNow = Thursday;
@@ -480,7 +480,7 @@ public class ClickerGuildTests
         Assert.Equal(["Оля", "Петро"], potters.Select(p => p.GetProperty("nick").GetString()!).ToArray());
         Assert.Equal(3, potters[1].GetProperty("gave").GetInt32());
         Assert.True(potters[1].GetProperty("me").GetBoolean());
-        Assert.Equal(3, roster.GetProperty("week").GetProperty("total").GetInt32());
+        Assert.Equal(3, roster.GetProperty("day").GetProperty("total").GetInt32());
     }
 
     // ---------- похвала ----------
@@ -701,12 +701,12 @@ public class ClickerGuildTests
         Assert.True(g.Store.States.ContainsKey(ClickerGuildService.StoreKey));
 
         var again = new ClickerGuildService(g.Store, g.Clock);
-        Assert.Equal(7, again.Summary("оля", Thursday).Week.Mine);
+        Assert.Equal(7, again.Summary("оля", Thursday).Today.Mine);
         Assert.Equal(1, Views.Json(again.Roster(null)).GetProperty("potters")[0].GetProperty("rank").GetInt32());
 
         // Зіпсований стан — цех з чистого, без падіння.
         g.Store.SaveState(ClickerGuildService.StoreKey, "{oops");
-        Assert.Equal(0, new ClickerGuildService(g.Store, g.Clock).Summary("оля", Thursday).Week.Total);
+        Assert.Equal(0, new ClickerGuildService(g.Store, g.Clock).Summary("оля", Thursday).Today.Total);
     }
 
     [Fact]
@@ -724,13 +724,13 @@ public class ClickerGuildTests
     }
 
     [Fact]
-    public void Old_weeks_are_pruned()
+    public void Old_days_are_pruned()
     {
         var g = new Tsekh();
         g.Svc.Give("оля", "Оля", "pot", 1, Thursday);
-        g.Svc.Give("оля", "Оля", "pot", 1, Thursday.AddDays(35));
+        g.Svc.Give("оля", "Оля", "pot", 1, Thursday.AddDays(5));
         var json = JsonNode.Parse(g.Store.States[ClickerGuildService.StoreKey])!;
-        Assert.Single(json["weeks"]!.AsObject());
+        Assert.Single(json["days"]!.AsObject());
     }
 
     [Fact]
@@ -746,12 +746,12 @@ public class ClickerGuildTests
             if (i % 100 == 0) svc.Gift("дарувальник" + i / 100, "Дарувальник", "Петро", new ItemInfo("pot", "", 1), Thursday);
             svc.Summary(nick, Thursday);
         });
-        var w = svc.Summary("гончар0", Thursday).Week;
+        var w = svc.Summary("гончар0", Thursday).Today;
         Assert.Equal(800, w.Total);
         Assert.Equal(8, w.Givers.Count);
         Assert.All(w.Givers, x => Assert.Equal(100, x.N));
         Assert.Equal(8, svc.TakeMail("петро")!.Count);
-        Assert.Equal(800, new ClickerGuildService(store, new FakeClock()).Summary("x", Thursday).Week.Total);
+        Assert.Equal(800, new ClickerGuildService(store, new FakeClock()).Summary("x", Thursday).Today.Total);
     }
 
     /// <summary>Сховище, яке витримує паралельні записи (FakeStore — звичайний словник).</summary>
@@ -772,7 +772,7 @@ public class ClickerGuildTests
         var cat = h.View(0).GetProperty("catalog").GetProperty("guild");
         Assert.Equal(4, cat.GetProperty("ranks").GetArrayLength());
         Assert.Equal("Цехмістр", cat.GetProperty("ranks")[3].GetProperty("name").GetString());
-        Assert.Equal(120, cat.GetProperty("tiers")[3].GetProperty("minutes").GetInt32());
+        Assert.Equal(35, cat.GetProperty("tiers")[3].GetProperty("minutes").GetInt32());
         Assert.Equal(ClickerGuildService.MinGive, cat.GetProperty("minGive").GetInt32());
         Assert.Equal("косівський розпис", cat.GetProperty("styleWords").GetProperty("kosiv").GetString());
         // Каталог — не у виді кожної пачки.
