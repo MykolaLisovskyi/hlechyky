@@ -985,9 +985,13 @@
         wet.connect(conv);
         conv.connect(Snd.out);
       }
+      // Вже граємо — виходимо НЕ чіпаючи такту. start() висить на pointerdown картки (щоб музика
+      // прокинулась на перший жест), тож колись кожен клік скидав at у нуль: такт обривався й починався наново,
+      // ноти налізали одна на одну — і звучало це як «музика пришвидшується від клацання».
+      if (this.timer) return;
       this.at = 0;
       this.ducked = true;                    // перший такт сам розкриє гучність
-      if (!this.timer) this.timer = setInterval(() => this.tick(), 220);
+      this.timer = setInterval(() => this.tick(), 220);
     },
 
     stop() {
