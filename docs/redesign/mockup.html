@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Глечики: макет</title>
+<style>
+:root{--bg:#0f1f18;--bg2:#16291f;--panel:#1c3328;--panel2:#234032;--panel3:#2b4c3c;--line:#2f4d3d;--text:#ecf1ea;--muted:#9db3a5;--accent:#f4c542;--accent2:#d9a92f;--ink:#2a1e03;--ok:#7bd389;--danger:#e57373;--clay:#c5763a}
+*{box-sizing:border-box}
+body{margin:0;background:#0a1510;color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif;padding:24px}
+h1{font-size:1.3em;margin:0 0 6px}
+p.lead{color:var(--muted);margin:0 0 22px;max-width:900px}
+.screen{margin:0 auto 40px;max-width:1280px}
+.screen>h2{font-size:.95em;color:var(--accent);margin:0 0 8px;font-weight:600}
+.screen>h2 small{color:var(--muted);font-weight:400;margin-left:8px}
+.frame{background:var(--bg);border:1px solid #2a4436;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+/* шапка */
+.hdr{display:flex;align-items:center;gap:12px;padding:0 14px;height:54px;background:rgba(15,31,24,.95);border-bottom:1px solid var(--line);position:relative}
+.hdr .brand{font-weight:800;display:flex;align-items:center;gap:8px;font-size:1.05em}
+.hdr .brand i{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 40% 40%,#ffd35a,#b8860b);display:inline-block}
+.nav{display:flex;gap:2px;background:var(--bg2);border-radius:10px;padding:2px}
+.nav span{padding:5px 11px;border-radius:8px;color:var(--muted);white-space:nowrap}
+.nav span.on{background:var(--panel2);color:var(--text)}
+.nav span b{color:var(--accent);font-weight:600;margin-left:4px}
+.mini{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 6px}
+.mini .cv{width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#5b3a1e,#2a1e0e);flex:none}
+.mini .tt{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.2}
+.mini .tt small{display:block;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;line-height:1}
+.btn.p{background:var(--accent);color:var(--ink);border-color:transparent;font-weight:600}
+.btn.live{border-color:var(--accent2)}
+.btn.live i{width:7px;height:7px;border-radius:50%;background:var(--danger);display:inline-block}
+.btn.ic{padding:5px 8px}
+.vol{width:90px;height:4px;border-radius:9px;background:var(--bg2);position:relative}
+.vol:after{content:"";position:absolute;left:0;top:0;bottom:0;width:70%;background:var(--accent);border-radius:9px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--panel2);color:var(--muted);font-size:.85em;white-space:nowrap}
+.chip.gold{color:var(--accent)}
+.chip.badge{background:var(--accent);color:var(--ink);font-weight:700;font-size:.75em;padding:0 5px;min-width:16px;justify-content:center}
+.nick{padding:4px 10px;border-radius:999px;background:var(--panel2)}
+.prog{position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--bg2)}
+.prog:after{content:"";position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent)}
+/* тіло */
+.body{display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:520px}
+.body.nochat{grid-template-columns:1fr}
+.main{padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.rail{border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;padding:10px;gap:8px}
+.tabs{display:flex;gap:4px}
+.tabs span{padding:4px 10px;border-radius:8px;color:var(--muted)}
+.tabs span.on{background:var(--panel2);color:var(--text)}
+.online{display:flex;gap:4px;flex-wrap:wrap}
+.online .chip{color:var(--text)}
+.online .chip:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.msgs{flex:1;display:flex;flex-direction:column;gap:5px;font-size:.9em}
+.msg b{color:var(--accent);margin-right:5px}
+.msg.sys{color:var(--muted);font-size:.9em}
+.msg.sys .btn{padding:2px 8px;font-size:.9em;margin-left:4px}
+.msg.dj{background:#2a2210;border:1px solid #4a3a12;border-radius:8px;padding:5px 8px}
+.msg.dj b{color:var(--clay)}
+.inp{display:flex;gap:6px}
+.inp div{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--muted)}
+.panel{background:var(--panel);border-radius:14px;padding:14px}
+.panel h3{margin:0 0 10px;font-size:1.02em;font-weight:700;display:flex;align-items:center;gap:8px}
+.panel h3 small{color:var(--muted);font-weight:500}
+.now{display:grid;grid-template-columns:120px 1fr;gap:14px}
+.now .cv{aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#5b3a1e,#2a1e0e)}
+.now .t{font-size:1.25em;font-weight:700}
+.now .a{color:var(--muted)}
+.now .by{color:var(--muted);font-size:.9em;margin-top:6px}
+.bar{height:6px;border-radius:9px;background:var(--bg2);margin-top:10px;position:relative}
+.bar:after{content:"";position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:9px}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.search{display:flex;gap:8px}
+.search div{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--muted)}
+.two{display:grid;grid-template-columns:3fr 2fr;gap:12px}
+.q{display:flex;flex-direction:column;gap:6px}
+.qi{display:grid;grid-template-columns:20px 38px 1fr auto;gap:8px;align-items:center;background:var(--bg2);border-radius:9px;padding:6px 8px}
+.qi .n{color:var(--muted);text-align:right}
+.qi .cv{width:38px;height:38px;border-radius:6px;background:#3a2d0a}
+.qi small{display:block;color:var(--muted)}
+.sug{display:grid;grid-template-columns:44px 1fr;gap:8px;background:var(--bg2);border-radius:9px;padding:8px;margin-bottom:6px}
+.sug .cv{width:44px;height:44px;border-radius:6px;background:#2b4c3c}
+.sug small{display:block;color:var(--muted)}
+.sug .r{color:var(--accent);font-size:.85em}
+.sub{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.sub span{padding:5px 11px;border-radius:9px;color:var(--muted)}
+.sub span.on{background:var(--panel2);color:var(--text)}
+.sub .sp{flex:1}
+.tables{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tb{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.tb.mine{border-color:var(--accent2)}
+.tb .h{display:flex;justify-content:space-between;align-items:center;font-weight:600}
+.tb .s{color:var(--muted);font-size:.9em}
+.tb .s b{color:var(--text);font-weight:500}
+.tb .s .turn{color:var(--accent)}
+.filters{display:flex;gap:6px;align-items:center}
+.filters .chip{padding:4px 10px;font-size:.9em}
+.filters .chip.on{background:var(--panel3);color:var(--text)}
+.filters .find{margin-left:auto;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:5px 10px;color:var(--muted);width:180px}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;display:flex;flex-direction:column;gap:3px}
+.tile b{font-size:.95em}
+.tile small{color:var(--muted);line-height:1.3}
+.tile .pl{color:var(--muted);font-size:.8em}
+.tile .plus{margin-top:auto;align-self:flex-start;font-size:.85em;padding:3px 8px}
+.empty{color:var(--muted);padding:6px 2px}
+/* стіл */
+.rb{display:flex;align-items:center;gap:10px}
+.rb .back{color:var(--muted)}
+.rb .t{font-weight:700;font-size:1.1em}
+.rb .sp{flex:1}
+.card{background:var(--panel);border:1px solid var(--accent2);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.card .seats{display:flex;justify-content:center;gap:8px;color:var(--muted)}
+.clk{display:grid;grid-template-columns:minmax(300px,46%) 1fr;gap:14px}
+.scene{aspect-ratio:4/5;border-radius:16px;background:radial-gradient(500px 220px at 50% 0,#1e3a5f,#0d1a2a 70%);position:relative;overflow:hidden;max-height:380px}
+.scene .hut{position:absolute;left:8%;right:8%;bottom:0;height:46%;background:linear-gradient(#3a2a18,#22160b);border-radius:12px 12px 0 0}
+.scene .wheel{position:absolute;left:50%;bottom:8%;width:38%;aspect-ratio:1;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle,#8a5a2b 0 30%,#5b3a1e 31% 60%,#3a2412 61%);box-shadow:0 0 0 3px rgba(244,197,66,.35)}
+.scene .cnt{position:absolute;top:10px;left:0;right:0;text-align:center}
+.scene .cnt b{font-size:2em;color:var(--accent)}
+.scene .cnt small{display:block;color:var(--muted)}
+.ws{display:flex;flex-direction:column;gap:6px}
+.ws .tabs{margin-bottom:2px}
+.wi{display:grid;grid-template-columns:1fr auto;gap:2px 10px;background:var(--bg2);border-radius:9px;padding:7px 10px}
+.wi small{color:var(--muted)}
+.wi .c{color:var(--accent);font-weight:600;align-self:center}
+.goal{background:#2a2210;border:1px solid #4a3a12;border-radius:9px;padding:7px 10px;font-size:.9em}
+.goal b{color:var(--accent)}
+.st{text-align:center;color:var(--muted);font-size:.9em}
+/* телефон */
+.phones{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
+.phone{width:300px;height:600px;background:var(--bg);border:1px solid #2a4436;border-radius:26px;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.phone .hdr{height:46px;padding:0 12px}
+.phone .main{padding:10px;gap:8px;flex:1;overflow:hidden;font-size:.92em}
+.phone .panel{padding:10px;border-radius:12px}
+.mp{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#0b1712;border-top:1px solid var(--line)}
+.mp .cv{width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#5b3a1e,#2a1e0e)}
+.mp .tt{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.2;font-size:.9em}
+.mp .tt small{display:block;color:var(--muted)}
+.mtabs{display:flex;background:#0b1712;border-top:1px solid var(--line);height:54px}
+.mtabs span{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);font-size:.75em;gap:2px;position:relative}
+.mtabs span i{font-style:normal;font-size:1.25em}
+.mtabs span.on{color:var(--accent)}
+.mtabs .badge{position:absolute;top:6px;right:18%}
+.phone .tb{padding:8px 10px}
+.phone .list{display:flex;flex-direction:column;gap:4px}
+.phone .li{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:9px;padding:6px 10px}
+.phone .li b{flex:1;font-weight:600}
+.phone .li .plus{padding:2px 8px;font-size:.85em}
+.note{color:var(--muted);font-size:.9em;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>Глечики: макет нового каркаса</h1>
+<p class="lead">Статичний малюнок до плану <code>docs/redesign/PLAN.md</code>. Кольори й Глек лишаються, змінюється каркас: три розділи в шапці, міні-плеєр і гаманець завжди під рукою, балачки згортаються, відкритий стіл займає всю ширину.</p>
+
+<section class="screen">
+<h2>1. Ефір <small>балачки відкриті · шапка з міні-плеєром і смужкою прогресу</small></h2>
+<div class="frame">
+  <div class="hdr">
+    <div class="brand"><i></i>Глечики</div>
+    <div class="nav"><span class="on">📻 Ефір</span><span>🎵 Бібліотека</span><span>🎮 Ігри<b>2</b></span></div>
+    <div class="mini"><div class="cv"></div><div class="tt">Smoke On The Water (2024 Remix)<small>Deep Purple · закинув Дядько Глек</small></div>
+      <span class="btn live"><i></i> В ефірі · Стоп</span><span class="btn">❤ 3</span><span class="btn ic" title="Скіп">⏭</span><div class="vol"></div><span class="chip">🎧 2</span></div>
+    <span class="chip gold">🏺 42</span><span class="nick">Клод</span><span class="btn ic">💬</span>
+    <div class="prog"></div>
+  </div>
+  <div class="body">
+    <div class="main">
+      <div class="panel">
+        <h3>В ефірі</h3>
+        <div class="now"><div class="cv"></div><div>
+          <div class="t">Smoke On The Water (2024 Remix)</div><div class="a">Deep Purple</div>
+          <div class="by">закинув <b style="color:var(--text)">Дядько Глек</b> <span class="chip gold">авто</span></div>
+          <div class="bar"></div>
+          <div class="row"><span class="btn">❤ 3</span><span class="btn">⏭ Скіп</span><span class="btn">＋ плейлист</span><span class="chip">джерело ↗</span><span class="chip" style="color:var(--danger)">🚫 бан · 20 🏺</span></div>
+          <div class="row" style="gap:2px;font-size:1.1em">🔥 ❤️ 😂 🕺 🥲 😴 🤔 🙌</div>
+        </div></div>
+      </div>
+      <div class="panel">
+        <h3>Закинути пісню</h3>
+        <div class="search"><div>🔎 Назва, виконавець або посилання (YouTube, YT Music, Spotify…)</div><span class="btn p">Закинути</span><span class="btn ic">🎙</span></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h3>Черга <small>· 2 · ~7 хв</small></h3>
+          <div class="q">
+            <div class="qi"><span class="n">1</span><div class="cv"></div><div>Соні Уолкмен<small>гурт [О] · закинув Влад · ось-ось</small></div><span class="btn ic">⋯</span></div>
+            <div class="qi"><span class="n">2</span><div class="cv"></div><div>Come As You Are<small>Nirvana · порада Глека · за ~4 хв</small></div><span class="btn ic">⋯</span></div>
+          </div></div>
+        <div class="panel"><h3>🏺 Дядько Глек радить <small>· під Deep Purple</small></h3>
+          <div class="sug"><div class="cv"></div><div>Highway Star<small>Deep Purple</small><div class="r">той самий альбом</div></div></div>
+          <div class="sug"><div class="cv"></div><div>Sultans of Swing<small>Dire Straits</small><div class="r">схожі виконавці</div></div></div>
+          <div class="note">Що вже було · Улюблене · Плейлисти →</div>
+        </div>
+      </div>
+    </div>
+    <aside class="rail">
+      <div class="tabs"><span class="on">Балачки</span><span>Журнал</span><span style="margin-left:auto">✕</span></div>
+      <div class="online"><span class="chip">владік</span><span class="chip">микола</span><span class="chip">Smaug</span><span class="chip">Клод</span></div>
+      <div class="msgs">
+        <div class="msg"><b>владік</b> хто в мафію?</div>
+        <div class="msg sys">🎭 владік поставив стіл «Мафія» (4–12) <span class="btn">Сісти</span></div>
+        <div class="msg"><b>Smaug</b> йду</div>
+        <div class="msg dj"><b>Дядько Глек</b> Витягнув з полиці Deep Purple — Smoke On The Water — схоже на Nirvana — Come As You Are.</div>
+        <div class="msg"><b>микола</b> дайте доклікати глеки</div>
+      </div>
+      <div class="inp"><span class="btn ic">/</span><span class="btn ic">🙂</span><div>Отут тяпати…</div><span class="btn p">→</span></div>
+    </aside>
+  </div>
+</div>
+</section>
+
+<section class="screen">
+<h2>2. Ігри · Лобі <small>живі столи з усіх груп зверху, каталог із фільтрами знизу; балачки згорнуті (бейдж 3)</small></h2>
+<div class="frame">
+  <div class="hdr">
+    <div class="brand"><i></i>Глечики</div>
+    <div class="nav"><span>📻 Ефір</span><span>🎵 Бібліотека</span><span class="on">🎮 Ігри<b>2</b></span></div>
+    <div class="mini"><div class="cv"></div><div class="tt">Smoke On The Water (2024 Remix)<small>Deep Purple</small></div>
+      <span class="btn live"><i></i> В ефірі · Стоп</span><span class="btn">❤ 3</span><span class="btn ic">⏭</span><div class="vol"></div><span class="chip">🎧 2</span></div>
+    <span class="chip gold">🏺 42</span><span class="nick">Клод</span><span class="btn ic">💬 <span class="chip badge">3</span></span>
+    <div class="prog"></div>
+  </div>
+  <div class="body nochat">
+    <div class="main">
+      <div class="sub"><span class="on">Лобі</span><span>👤 Профіль</span><span>🏆 Таблиця</span><span>🫙 Щоденний глек</span><span>📣 Реклама</span></div>
+      <div class="panel"><h3>🔥 Живі столи <small>· 2</small></h3>
+        <div class="tables">
+          <div class="tb mine"><div class="h"><span>♟ Шахи</span><span class="chip">10 хв</span></div><div class="s"><b>Клод</b> проти <b>Smaug</b> · <span class="turn">твій хід</span></div><div class="row" style="margin-top:2px"><span class="btn p">Відкрити</span></div></div>
+          <div class="tb"><div class="h"><span>🎭 Мафія</span><span class="chip">4–12</span></div><div class="s"><b>владік, Smaug</b> · вільно 10 · чекає гравців</div><div class="row" style="margin-top:2px"><span class="btn p">Сісти</span><span class="btn">Дивитись</span></div></div>
+          <div class="tb" style="border-style:dashed;justify-content:center;color:var(--muted);text-align:center">Постав свій стіл ↓<br>і клич у балачках</div>
+        </div>
+      </div>
+      <div class="panel"><h3>Каталог <small>· 25 ігор</small></h3>
+        <div class="filters"><span class="chip on">Усі</span><span class="chip">♟ Настільні</span><span class="chip">⚡ Швидкі</span><span class="chip">🎉 Компанія</span><span class="chip">🏺 Соло</span><div class="find">🔎 знайти гру</div></div>
+        <div class="tiles" style="margin-top:10px">
+          <div class="tile"><b>🏺 Гончарне коло</b><small>Крути коло, ліпи глеки, лови розписні</small><span class="pl">соло</span><span class="btn p plus">Грати</span></div>
+          <div class="tile"><b>🎭 Мафія</b><small>Село засинає, прокидається мафія</small><span class="pl">4–12 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>♟ Шахи</b><small>Класика, з годинником</small><span class="pl">2 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>🐍 Змійка</b><small>Хто довший, той і правий</small><span class="pl">2 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>❓ Скільки?</b><small>Хто ближче — той більше очок</small><span class="pl">1–12 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>🔤 Ерудит</b><small>Слова на дошці 15×15</small><span class="pl">2–4 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>💣 Бомбер</b><small>Вибухи в лабіринті</small><span class="pl">2–4 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>🚢 Морський бій</b><small>Влучив — стріляй ще</small><span class="pl">2 👤</span><span class="btn plus">+ Стіл</span></div>
+          <div class="tile"><b>💥 Сапер дня</b><small>Одне поле на всіх</small><span class="pl">соло</span><span class="btn p plus">Грати</span></div>
+          <div class="tile"><b>🟩 Глек-слово</b><small>П'ять літер, шість спроб</small><span class="pl">соло</span><span class="btn p plus">Грати</span></div>
+        </div>
+        <div class="note">… і ще 15 плиток</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="screen">
+<h2>3. Ігри · Стіл <small>гончарне коло на всю ширину: сцена і верстати поруч; ← Лобі, інші мої столи чипами, ⛶ на весь екран</small></h2>
+<div class="frame">
+  <div class="hdr">
+    <div class="brand"><i></i>Глечики</div>
+    <div class="nav"><span>📻 Ефір</span><span>🎵 Бібліотека</span><span class="on">🎮 Ігри<b>2</b></span></div>
+    <div class="mini"><div class="cv"></div><div class="tt">Smoke On The Water (2024 Remix)<small>Deep Purple</small></div>
+      <span class="btn live"><i></i> В ефірі · Стоп</span><span class="btn">❤ 3</span><span class="btn ic">⏭</span><div class="vol"></div><span class="chip">🎧 2</span></div>
+    <span class="chip gold">🏺 42</span><span class="nick">Клод</span><span class="btn ic">💬 <span class="chip badge">3</span></span>
+    <div class="prog"></div>
+  </div>
+  <div class="body nochat">
+    <div class="main">
+      <div class="rb"><span class="back">← Лобі</span><span class="t">🏺 Гончарне коло</span><span class="chip">👁 1</span><span class="sp"></span><span class="chip gold">♟ Шахи · твій хід</span><span class="btn ic">⛶</span></div>
+      <div class="card">
+        <div class="clk">
+          <div class="scene"><div class="cnt"><b>1 284</b> глеків<small>за клік +3 · 2 підмайстри · #4 Вовочка попереду на 217</small></div><div class="hut"></div><div class="wheel"></div></div>
+          <div class="ws">
+            <div class="goal">НАСТУПНА ЦІЛЬ · <b>Швидше коло · рівень 2</b></div>
+            <div class="tabs"><span class="on">Майстерня</span><span>Хата</span><span>Горно</span><span>Комора</span><span>Альбом</span></div>
+            <div class="row" style="margin:0 0 4px"><small style="color:var(--muted)">купувати</small><span class="chip on">×1</span><span class="chip">×10</span><span class="chip">макс</span></div>
+            <div class="wi"><div>Швидше коло<small>+1 глек за клік</small></div><div class="c">🏺 15</div></div>
+            <div class="wi"><div>Підмайстер<small>+0,5 глека за секунду</small></div><div class="c">🏺 100 · ×4</div></div>
+            <div class="wi"><div>Маховик<small>розгін кола</small></div><div class="c">🏺 450</div></div>
+            <div class="wi"><div>Замісити глину<small>10 хв відлежування</small></div><div class="c">🏺 800</div></div>
+            <div class="wi"><div>Дошка купців<small>3 замовлення / 4 хв</small></div><div class="c">🏺 1 200</div></div>
+          </div>
+        </div>
+        <div class="st">Коло крутиться і без тебе, поки ти слухаєш радіо</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="screen">
+<h2>4. Телефон <small>чотири вкладки внизу, міні-плеєр над ними; лобі коротке, стіл на весь екран</small></h2>
+<div class="phones">
+  <div class="phone">
+    <div class="hdr"><div class="brand"><i></i></div><b>Ігри</b><span style="flex:1"></span><span class="chip gold">🏺 42</span><span class="nick">Клод</span></div>
+    <div class="main">
+      <div class="sub" style="font-size:.9em"><span class="on">Лобі</span><span>Профіль</span><span>Таблиця</span><span>Щоденний</span></div>
+      <div class="panel"><h3>🔥 Живі столи</h3>
+        <div class="list">
+          <div class="tb mine"><div class="h"><span>♟ Шахи</span><span class="chip gold">твій хід</span></div></div>
+          <div class="tb"><div class="h"><span>🎭 Мафія</span><span class="chip">2/12</span></div><div class="row" style="margin-top:2px"><span class="btn p">Сісти</span></div></div>
+        </div></div>
+      <div class="panel"><h3>Каталог</h3>
+        <div class="filters" style="font-size:.85em"><span class="chip on">Усі</span><span class="chip">Настільні</span><span class="chip">Швидкі</span><span class="chip">Соло</span></div>
+        <div class="list" style="margin-top:8px">
+          <div class="li">🏺<b>Гончарне коло</b><span class="btn p plus">Грати</span></div>
+          <div class="li">🎭<b>Мафія</b><span class="btn plus">+</span></div>
+          <div class="li">♟<b>Шахи</b><span class="btn plus">+</span></div>
+          <div class="li">🐍<b>Змійка</b><span class="btn plus">+</span></div>
+        </div></div>
+    </div>
+    <div class="mp"><div class="cv"></div><div class="tt">Smoke On The Water<small>Deep Purple</small></div><span class="btn live"><i></i></span><span class="btn ic">⏭</span></div>
+    <div class="mtabs"><span><i>📻</i>Ефір</span><span><i>🎵</i>Бібліотека</span><span class="on"><i>🎮</i>Ігри</span><span><i>💬</i>Балачки<span class="chip badge">3</span></span></div>
+  </div>
+  <div class="phone">
+    <div class="hdr"><span class="back" style="color:var(--muted)">← Лобі</span><b>🏺 Гончарне коло</b><span style="flex:1"></span><span class="btn ic">⛶</span></div>
+    <div class="main">
+      <div class="scene" style="max-height:none;aspect-ratio:4/4.2"><div class="cnt"><b>1 284</b> глеків<small>за клік +3 · 2 підмайстри</small></div><div class="hut"></div><div class="wheel"></div></div>
+      <div class="goal">ЦІЛЬ · <b>Швидше коло · рівень 2</b></div>
+      <div class="tabs" style="font-size:.9em"><span class="on">Майстерня</span><span>Хата</span><span>Горно</span><span>Комора</span></div>
+      <div class="wi"><div>Швидше коло<small>+1 за клік</small></div><div class="c">🏺 15</div></div>
+      <div class="wi"><div>Підмайстер<small>+0,5/с</small></div><div class="c">🏺 100</div></div>
+    </div>
+    <div class="mp"><div class="cv"></div><div class="tt">Smoke On The Water<small>Deep Purple</small></div><span class="btn live"><i></i></span><span class="btn ic">⏭</span></div>
+    <div class="mtabs"><span><i>📻</i>Ефір</span><span><i>🎵</i>Бібліотека</span><span class="on"><i>🎮</i>Ігри</span><span><i>💬</i>Балачки<span class="chip badge">3</span></span></div>
+  </div>
+</div>
+</section>
+</body>
+</html>

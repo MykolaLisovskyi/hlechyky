@@ -42,6 +42,9 @@
   let chatTab = 'chat';
   let libTab = 'history';
   let queueDur = [];
+  let route = 'efir';                                        // efir | lib | games | chat (телефон)
+  let chatOpen = localStorage.getItem('chatOpen') !== '0';   // балачки типово відкриті
+  let baseTitle = 'Глечики';
 
   const dj = () => state?.djName || 'Дядько Глек';
   const djGen = () => state?.djNameGen || 'Дядька Глека';
@@ -186,6 +189,8 @@
       });
       navigator.mediaSession.setActionHandler('pause', () => stopAudio());
       navigator.mediaSession.setActionHandler('stop', () => stopAudio());
+      // «наступний трек» на навушниках і клавіатурі — це наш скіп: ефір один на всіх
+      navigator.mediaSession.setActionHandler('nexttrack', () => skipNow());
     } catch { /* unsupported */ }
   }
 
@@ -205,9 +210,98 @@
 
   let nowSig = '', queueSig = '', sugSig = '';
   let dragging = null, pendingQueueRender = false; // queue drag-to-reorder state
-    function renderNow() {
+
+  const reactsHtml = () => EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('');
+  function wireReacts(box) {
+    box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
+      if (conn) conn.invoke('React', b.dataset.e).catch(() => {});
+    });
+  }
+  const skipNow = () => api('POST', '/api/skip').then(ok).catch(fail);
+
+  /// Лайк, скіп, плейлист і бан — один набір обробників на обидві копії трека (панель і шапка),
+  /// щоб не тримати дві однакові гілки, які розійдуться від першої ж правки.
+  function wireNow(box, t, o) {
+    const at = (act) => box.querySelector(`[data-act="${act}"]`);
+    at('like')?.addEventListener('click', (e) => busy(e.currentTarget, '', () => api('POST', `/api/like/${t.id}`).catch(fail)));
+    at('skip')?.addEventListener('click', (e) => busy(e.currentTarget, o.mini ? '' : 'скіп…', skipNow));
+    at('pl')?.addEventListener('click', () => openPlaylistPicker(t.id, t.title));
+    at('ban')?.addEventListener('click', (e) => {
+      const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
+      const ask = banPrice
+        ? `Забанити «${t.title}» назавжди за ${banPrice} 🏺?
+Трек скіпнеться і більше не заграє. Викупити його з бану теж коштуватиме черепки.`
+        : 'Забанити цей трек назавжди?';
+      if (!confirm(ask)) return;
+      busy(e.currentTarget, 'баню…', () => api('POST', `/api/ban/${t.id}`).then((r) => { ok(r); if (route === 'lib' && libTab === 'bans') loadLib(); }).catch(fail));
+    });
+  }
+
+  /// Те, що в ефірі, малюється двічі з одного джерела: велика панель «В ефірі» (o.mini не задано)
+  /// і міні-плеєр у шапці (o.mini). Шапка бере коротку версію — обкладинка, назва, ❤ і ⏭.
+  function paintNowInto(box, o) {
     const n = state.now;
-    const box = $('now');
+    const live = n.source === 'user' || n.source === 'autodj';
+    const mini = !!o.mini;
+    if (!live) {
+      const spot = n.spotifyLive;
+      const title = spot ? 'Spotify-резерв' : 'Тиша';
+      const sub = spot ? (n.spotifyTitle || '') : `${dj()} шукає щось на полиці…`;
+      box.innerHTML = mini
+        ? `<a class="mini-cv" href="#efir" title="Перейти в Ефір"><img src="/static/glek.svg" alt=""></a>
+           <a class="mini-tt" href="#efir" title="${esc(title)}"><b>${esc(title)}</b><small>${esc(sub)}</small></a>`
+        : `<div class="coverwrap"><img class="cover dj" src="/static/glek.svg" alt=""></div>
+        <div>
+          <div class="title">${esc(title)}</div>
+          <div class="artist">${esc(sub)}</div>
+          <div class="by">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
+          <div class="reacts">${reactsHtml()}</div>
+        </div>`;
+      if (!mini) wireReacts(box);
+      return;
+    }
+    const t = n.track || {};
+    const liked = n.likers.some((x) => sameNick(x, me.nick));
+    const pending = n.skipPending;
+    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>`;
+    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : ' Скіп'}</button>`;
+    if (mini) {
+      box.innerHTML = `<a class="mini-cv" href="#efir" title="Перейти в Ефір">${cover(t)}</a>
+        <a class="mini-tt" href="#efir" title="${esc(`${t.title} — ${t.artist}`)}"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></a>
+        <span class="mini-acts">${like}${skip}</span>`;
+      wireNow(box, t, o);
+      return;
+    }
+    const by = n.source === 'user'
+      ? `закинув <b>${esc(n.requestedBy)}</b>${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
+      : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
+    // адмін банить безкоштовно; решта — за черепки, і голосові не банять
+    const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
+    const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
+    box.innerHTML = `
+      <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
+      <div style="min-width:0">
+        <div class="title">${esc(t.title)}</div>
+        <div class="artist">${esc(t.artist)}</div>
+        <div class="by">${by}</div>
+        ${n.reason ? `<div class="why">${esc(n.reason)}</div>` : ''}
+        <div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div>
+        <div class="times"><span id="tElapsed">0:00</span><span>${fmt(n.durationSec)}</span></div>
+        ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
+        <div class="actions">
+          ${like}${skip}
+          <button data-act="pl" title="Зберегти в плейлист">＋ плейлист</button>
+          ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
+          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
+        </div>
+        <div class="reacts" title="Реакція, яку побачать усі">${reactsHtml()}</div>
+      </div>`;
+    wireNow(box, t, o);
+    wireReacts(box);
+  }
+
+  function renderNow() {
+    const n = state.now;
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
       n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName]);
     if (sig === nowSig) return;
@@ -215,85 +309,37 @@
     const banner = $('banner');
     banner.hidden = state.liquidsoapOk;
     banner.textContent = 'Ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
-    $('liqStatus').className = 'chip ' + (state.liquidsoapOk ? 'ok' : 'err');
-    $('liqStatus').textContent = state.liquidsoapOk ? 'ефір' : 'ефір ↓';
+    // Зелений чіп «ефір» у шапці — шум: показуємо лише тоді, коли з ефіром щось не так.
+    $('liqStatus').hidden = !!state.liquidsoapOk;
+    $('liqStatus').className = 'chip err';
+    $('liqStatus').textContent = 'ефір ↓';
 
-    if (n.source === 'user' || n.source === 'autodj') {
-      const t = n.track || {};
-      const liked = n.likers.some((x) => sameNick(x, me.nick));
-      const by = n.source === 'user'
-        ? `закинув <b>${esc(n.requestedBy)}</b>${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
-        : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
-      const why = n.reason ? `<div class="why">${esc(n.reason)}</div>` : '';
-      const pending = n.skipPending;
-      // адмін банить безкоштовно; решта — за черепки, і голосові не банять
-      const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
-      const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
-      box.innerHTML = `
-        <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
-        <div style="min-width:0">
-          <div class="title">${esc(t.title)}</div>
-          <div class="artist">${esc(t.artist)}</div>
-          <div class="by">${by}</div>
-          ${why}
-          <div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div>
-          <div class="times"><span id="tElapsed">0:00</span><span>${fmt(n.durationSec)}</span></div>
-          ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
-          <div class="actions">
-            <button id="likeBtn" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>
-            <button id="skipBtn" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭ Скіп</button>
-            <button id="plBtn" title="Зберегти в плейлист">＋ плейлист</button>
-            ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
-            ${canBan ? `<button id="banBtn" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
-          </div>
-          <div class="reacts" title="Реакція, яку побачать усі">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
-        </div>`;
-      $('likeBtn').onclick = (e) => busy(e.currentTarget, '', () => api('POST', `/api/like/${t.id}`).catch(fail));
-      $('skipBtn').onclick = (e) => busy(e.currentTarget, 'скіп…', () => api('POST', '/api/skip').then(ok).catch(fail));
-      $('plBtn').onclick = () => openPlaylistPicker(t.id, t.title);
-      const ban = $('banBtn');
-      if (ban) ban.onclick = (e) => {
-        const ask = banPrice
-          ? `Забанити «${t.title}» назавжди за ${banPrice} 🏺?\nТрек скіпнеться і більше не заграє. Викупити його з бану теж коштуватиме черепки.`
-          : 'Забанити цей трек назавжди?';
-        if (!confirm(ask)) return;
-        busy(e.currentTarget, 'баню…', () => api('POST', `/api/ban/${t.id}`).then((r) => { ok(r); if (libTab === 'bans') loadLib(); }).catch(fail));
-      };
-      box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
-        if (!conn) return;
-        conn.invoke('React', b.dataset.e).catch(() => {});
-      });
-      tick();
-    } else {
-      const spot = n.spotifyLive;
-      box.innerHTML = `
-        <div class="coverwrap"><img class="cover dj" src="/static/glek.svg" alt=""></div>
-        <div>
-          <div class="title">${spot ? 'Spotify-резерв' : 'Тиша'}</div>
-          <div class="artist">${spot ? esc(n.spotifyTitle || '') : `${esc(dj())} шукає щось на полиці…`}</div>
-          <div class="by">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
-          <div class="reacts">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
-        </div>`;
-      box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => conn && conn.invoke('React', b.dataset.e).catch(() => {}));
-    }
+    paintNowInto($('now'), {});
+    paintNowInto($('nowMini'), { mini: true });
+
     const playingTrack = n.track && (n.source === 'user' || n.source === 'autodj');
-    document.title = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
+    baseTitle = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
+    paintTitle();
     if (playState !== 'idle') updateMediaSession();
+    tick();
   }
 
   function tick() {
     if (!state) return;
     const n = state.now;
-    if (n.source === 'user' || n.source === 'autodj') {
-      const bar = $('bar'), el = $('tElapsed');
-      if (bar) {
-        const elapsed = (Date.now() - new Date(n.startedAt).getTime()) / 1000 - (state.streamDelaySeconds || 0);
-        const d = n.durationSec || 0;
-        const e = Math.max(0, Math.min(elapsed, d || elapsed));
-        el.textContent = fmt(e);
-        bar.style.width = d ? Math.min(100, (e / d) * 100) + '%' : '0%';
-      }
+    const live = n.source === 'user' || n.source === 'autodj';
+    const d = live ? (n.durationSec || 0) : 0;
+    let elapsed = 0, pct = 0;
+    if (live) {
+      const raw = (Date.now() - new Date(n.startedAt).getTime()) / 1000 - (state.streamDelaySeconds || 0);
+      elapsed = Math.max(0, Math.min(raw, d || raw));
+      pct = d ? Math.min(100, (elapsed / d) * 100) : 0;
     }
+    const bar = $('bar'), el = $('tElapsed');
+    if (bar && el) { el.textContent = fmt(elapsed); bar.style.width = d ? pct + '%' : '0%'; }
+    // Смужка під шапкою: скільки лишилось треку видно з будь-якого розділу.
+    $('hdrBar').style.width = d ? pct + '%' : '0%';
+    $('hdrProg').classList.toggle('pending', !!n.skipPending);
     // ETAs in the queue: what is left of the current track plus everything queued before the item
     let acc = nowRemaining();
     document.querySelectorAll('[data-eta]').forEach((s) => {
@@ -338,12 +384,19 @@
     const ul = $('queue');
     const q = state.queue;
     queueDur = q.map((it) => it.track.durationSec || 0);
-    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName]);
+    const sug0 = (state.suggestions || [])[0];
+    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId]);
     if (sig === queueSig) { tick(); return; }
     queueSig = sig;
     $('queueCount').textContent = q.length ? `· ${q.length} · ${fmt(queueDur.reduce((a, b) => a + b, 0))}` : '';
     if (!q.length) {
-      ul.innerHTML = `<li class="empty">Порожньо. Закинь щось, або хай ${esc(dj())} крутить своє.</li>`;
+      // Порожня черга — привід не виправдовуватись, а запропонувати перше, що Глек уже підібрав.
+      ul.innerHTML = `<li class="empty queue-empty">
+        <img src="/static/glek.svg" alt="">
+        <div>Порожньо. Закинь щось, або хай ${esc(dj())} крутить своє.
+        ${sug0 ? `<div class="qe-btn"><button id="qTakeSug" class="primary" title="${esc(`${sug0.track.artist} — ${sug0.track.title}`)}">👍 Закинути перше з порад ${esc(djGen())}</button></div>` : ''}</div>
+      </li>`;
+      if (sug0) $('qTakeSug').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', `/api/suggest/${sug0.itemId}/add`).then(ok).catch(fail));
     } else {
       const now = Date.now();
       ul.innerHTML = q.map((it, i) => {
@@ -549,7 +602,7 @@
     renderSuggestions();
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
-      if (libTab === 'history' || libTab === 'bans' || libTab === 'ads') loadLib();
+      if (route === 'lib' && (libTab === 'history' || libTab === 'bans' || libTab === 'ads')) loadLib();
     }
   }
 
@@ -659,11 +712,21 @@
 
   // ---------- chat + log ----------
   const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
-  function chatVisible() { return chatTab === 'chat' && (!isMobile() || document.body.classList.contains('view-chat')) && !document.hidden; }
+  // Повідомлення справді видно, коли відкрита вкладка «Балачки», сама панель не згорнута
+  // (на телефоні — коли стоїмо на вкладці балачок) і вкладка браузера на передньому плані.
+  function chatVisible() {
+    if (chatTab !== 'chat' || document.hidden) return false;
+    return isMobile() ? route === 'chat' : chatOpen;
+  }
   function setUnread(n) {
     unread = n;
-    for (const id of ['chatBadge', 'mChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    for (const id of ['chatBadge', 'mChatBadge', 'hdrChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    paintTitle();
   }
+  /// Заголовок вкладки: трек плюс «(3)», поки непрочитане нікуди не поділось.
+  function paintTitle() { document.title = (unread ? `(${unread}) ` : '') + baseTitle; }
+  /// Кличуть на ім'я — навіть коли балачки згорнуті, це має долетіти.
+  const mentionsMe = (text) => !!me.nick && me.nick.length > 1 && String(text || '').toLowerCase().includes(me.nick.toLowerCase());
   function addMessage(m, scroll = true, live = false) {
     const isLog = m.kind === 'system';
     const box = isLog ? $('log') : $('messages');
@@ -706,7 +769,10 @@
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();
     if (scroll) box.scrollTop = box.scrollHeight;
-    if (!isLog && scroll && !mine && !chatVisible()) setUnread(unread + 1);
+    if (!isLog && scroll && !mine && !chatVisible()) {
+      setUnread(unread + 1);
+      if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
+    }
   }
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
@@ -728,25 +794,75 @@
   }
   $('chatTabs').querySelectorAll('button').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
-  // Ефір / Ігри / Балачки. На широкому екрані Ігри займають місце Ефіру, а балачки лишаються
-  // збоку, щоб було з ким перемовитись; на телефоні видно рівно одну колонку.
-  function setView(v) {
-    for (const name of ['main', 'games', 'chat']) document.body.classList.toggle('view-' + name, v === name);
-    $('mtabMain').classList.toggle('on', v === 'main');
-    $('mtabGames').classList.toggle('on', v === 'games');
-    $('mtabChat').classList.toggle('on', v === 'chat');
-    $('vsMain').classList.toggle('on', v !== 'games');
-    $('vsGames').classList.toggle('on', v === 'games');
-    if (v === 'games') HGames.show(); else HGames.hide();
-    if (v === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
+  // ---------- маршрути ----------
+  // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #chat (вкладка балачок на телефоні).
+  // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
+  const ROUTES = ['efir', 'lib', 'games', 'chat'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'rating', 'top', 'bans', 'ads'];
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', chat: 'Балачки' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', rating: 'Рейтинг', top: 'Хто скільки', bans: 'Бан-лист', ads: 'Реклама' };
+  // Вкладки зі списком рядків уміють шукати по собі; у плейлистах і «Хто скільки» шукати нічого.
+  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', rating: 'знайти трек', bans: 'знайти в бан-листі', ads: 'знайти рекламу' };
+  let libShown = null;    // яку вкладку бібліотеки вже намалювали: щоб не смикати API на кожен маршрут
+
+  function parseHash() {
+    const raw = String(location.hash || '').replace(/^#/, '');
+    const i = raw.indexOf('/');
+    return i < 0 ? { head: raw, tail: '' } : { head: raw.slice(0, i), tail: raw.slice(i + 1) };
+  }
+  const hashFor = (r) => (r === 'lib' ? '#lib/' + libTab : '#' + r);
+  function go(hash) {
+    if (location.hash === hash) applyRoute(); else location.hash = hash;
+  }
+
+  let lastHash = null;
+  function applyRoute() {
+    const { head, tail } = parseHash();
+    // Перейшов кудись — починаємо згори: інакше з довгого лобі потрапляєш на стіл уже прогорнутим.
+    if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
+    lastHash = location.hash;
+    let r = ROUTES.includes(head) ? head : 'efir';
+    // На широкому екрані балачки — панель збоку, а не розділ: #chat лише розгортає її.
+    if (r === 'chat' && !isMobile()) {
+      setChatOpen(true);
+      history.replaceState(null, '', hashFor('efir'));
+      r = 'efir';
+    }
+    if (r === 'lib') {
+      const want = decodeURIComponent(tail);
+      const next = LIB_TABS.includes(want) ? want : 'history';
+      if (next !== libTab) { libTab = next; $('libFind').value = ''; }
+      $('libTitle').textContent = LIB_TITLE[libTab];
+      $('libFind').hidden = !LIB_FIND[libTab];
+      $('libFind').placeholder = LIB_FIND[libTab] || '';
+    }
+    route = r;
+    $('hdrTitle').textContent = ROUTE_TITLE[r];    // на телефоні в шапці лишається сама назва розділу
+    for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
+    document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
+      b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
+    $('libTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === libTab));
+    if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
+    if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
+    if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
-  $('mtabMain').onclick = () => setView('main');
-  $('mtabGames').onclick = () => setView('games');
-  $('mtabChat').onclick = () => setView('chat');
-  $('vsMain').onclick = () => setView('main');
-  $('vsGames').onclick = () => setView('games');
+  window.addEventListener('hashchange', applyRoute);
+  document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.onclick = () => go(hashFor(b.dataset.route)));
   document.addEventListener('visibilitychange', () => { if (chatVisible()) setUnread(0); });
+
+  // ---------- балачки: згорнути / розгорнути ----------
+  function setChatOpen(on) {
+    chatOpen = on;
+    try { localStorage.setItem('chatOpen', on ? '1' : '0'); } catch { /* приватне вікно */ }
+    document.body.classList.toggle('chat-collapsed', !on);
+    if (on) { const box = chatTab === 'chat' ? $('messages') : $('log'); box.scrollTop = box.scrollHeight; }
+    if (chatVisible()) setUnread(0);
+  }
+  const toggleChat = () => (isMobile() ? go(route === 'chat' ? hashFor('efir') : '#chat') : setChatOpen(!chatOpen));
+  $('chatToggle').onclick = toggleChat;
+  $('chatClose').onclick = () => setChatOpen(false);
+  setChatOpen(chatOpen);
 
   // ---------- search / add ----------
   const q = $('q'), results = $('results');
@@ -791,8 +907,17 @@
   document.addEventListener('click', (e) => { if (!e.target.closest('.add')) results.innerHTML = ''; });
   q.addEventListener('focus', () => { if (lastResults.length && q.value.trim() === lastQuery) showResults(lastResults); });
   $('addBtn').onclick = (e) => busy(e.currentTarget, 'закидаю…', addFromInput);
+  // Каркас ігор слухає document раніше за нас (core.js підключений вище за app.js), тож клавішу,
+  // яку вже з'їла гра, він позначає preventDefault — і ми в неї не лізимо.
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) { e.preventDefault(); q.focus(); }
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable)) return;
+    if (e.key === '/') { e.preventDefault(); go(hashFor('efir')); q.focus(); return; }
+    if (e.key === ']') { e.preventDefault(); toggleChat(); return; }
+    if (e.key === '1') { e.preventDefault(); go(hashFor('efir')); }
+    else if (e.key === '2') { e.preventDefault(); go(hashFor('lib')); }
+    else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
   });
 
   async function addPick(r) {
@@ -1066,11 +1191,26 @@
   }
 
   // ---------- library: history / likes / playlists / stats ----------
-  $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => {
-    libTab = b.dataset.tab;
-    $('libTabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-    loadLib();
-  });
+  $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
+  /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
+  function filterLib() {
+    const box = $('lib');
+    const want = $('libFind').value.trim().toLowerCase();
+    const rows = box.querySelectorAll('.list > li');
+    let shown = 0;
+    rows.forEach((li) => {
+      const hit = !want || li.textContent.toLowerCase().includes(want);
+      li.hidden = !hit;
+      if (hit) shown++;
+    });
+    let none = box.querySelector('.findnone');
+    if (want && rows.length && !shown) {
+      if (!none) { none = document.createElement('div'); none.className = 'empty findnone'; box.appendChild(none); }
+      none.textContent = `Нічого схожого на «${$('libFind').value.trim()}» тут нема.`;
+    } else if (none) none.remove();
+  }
+  $('libFind').addEventListener('input', filterLib);
+
   const trackRow = (t, right, extra) => `<li>
       ${cover(t)}
       <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
@@ -1082,16 +1222,20 @@
     wireVoiceButtons(root);
   }
   async function loadLib() {
+    await drawLib();
+    filterLib();
+  }
+  async function drawLib() {
     const box = $('lib');
     try {
       if (libTab === 'history') {
         const list = await api('GET', '/api/history?n=80');
         box.innerHTML = `<ul class="list">${list.map((h) => trackRow(h.track,
           `${h.source === 'autodj' ? esc(dj()) : esc(h.requestedBy || '')}${h.via === 'suggestion' ? ' · порада' : ''}${h.likes ? ' · ❤' + h.likes : ''}${h.skipped ? ' · скіп' : ''} · ${tm(h.startedAt)}`,
-          { skipped: h.skipped })).join('') || '<li class="empty">ще нічого не грало</li>'}</ul>`;
+          { skipped: h.skipped })).join('') || '<li class="empty glek">Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.</li>'}</ul>`;
       } else if (libTab === 'likes') {
         const list = await api('GET', '/api/likes');
-        box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі.</li>'}</ul>`;
+        box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty glek">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.</li>'}</ul>`;
       } else if (libTab === 'rating') {
         await renderRating();
         return;
@@ -1139,7 +1283,7 @@
     box.querySelectorAll('.seg').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => {
       ratingOpt[s.dataset.key] = b.dataset.v;
       try { localStorage.setItem(s.dataset.key === 'days' ? 'ratingDays' : 'ratingSort', b.dataset.v); } catch { /* приватне вікно */ }
-      renderRating().catch((e) => { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+      loadLib();
     }));
     wireRows(box);
   }
@@ -1166,12 +1310,12 @@
         <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
       </li>`;
     box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
-      `<ul class="list">${r.items.map(row).join('') || '<li class="empty">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
+      `<ul class="list">${r.items.map(row).join('') || '<li class="empty glek">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
     box.querySelectorAll('button.unban').forEach((b) => b.onclick = (e) => {
       const ask = admin ? `Розбанити «${b.dataset.title}»?` : `Викупити «${b.dataset.title}» з бану за ${r.unbanPrice} 🏺?`;
       if (!confirm(ask)) return;
       busy(e.currentTarget, '…', () => api('DELETE', `/api/ban/${encodeURIComponent(b.dataset.id)}`)
-        .then((res) => { ok(res); return renderBans(); }).catch(fail));
+        .then((res) => { ok(res); return loadLib(); }).catch(fail));
     });
   }
 
@@ -1223,7 +1367,7 @@
       </li>`;
     box.innerHTML = head + `<ul class="list ads-list">${r.items.slice().reverse().map(row).join('') || '<li class="empty">Бібліотека порожня. Залий перший файл вище.</li>'}</ul>`;
 
-    const again = () => renderAds().catch((e) => fail(e));
+    const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
       { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
     $('adsNow').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
@@ -1270,7 +1414,7 @@
           ${p.thumbUrl ? `<img src="${esc(p.thumbUrl)}" alt="">` : '<div class="noimg">🎵</div>'}
           <div style="min-width:0"><div class="name" title="Показати треки">${esc(p.name)}</div><div class="r muted small">${p.count} трек${p.count % 10 === 1 && p.count % 100 !== 11 ? '' : (p.count % 10 >= 2 && p.count % 10 <= 4 && (p.count % 100 < 10 || p.count % 100 >= 20)) ? 'и' : 'ів'} · ${esc(p.createdBy)}</div></div>
           <div class="btns"><button class="primary go" title="Закинути весь плейлист у чергу впереміш">▶ у чергу</button>${(me.role === 'admin' || sameNick(p.createdBy, me.nick)) ? `<button class="ghost danger del" title="Видалити плейлист">✕</button>` : ''}</div>
-        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty">Плейлистів ще нема. Створи перший: назва вище, а треки додаються кнопкою «＋ плейлист» під тим, що грає, або «＋» в історії та улюбленому.</div>');
+        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty glek">Плейлистів ще нема. Створи перший: назва вище, а треки додаються кнопкою «＋ плейлист» під тим, що грає, або «＋» в історії та улюбленому.</div>');
     box.querySelector('#plCreate').onsubmit = async (e) => {
       e.preventDefault();
       const inp = e.target.querySelector('input');
@@ -1361,12 +1505,27 @@
     });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
     conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
-    conn.start().then(() => { if (listening) conn.invoke('SetListening', true).catch(() => {}); loadLib(); }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    conn.start().then(() => {
+      if (listening) conn.invoke('SetListening', true).catch(() => {});
+      // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на
+      // кімнати треба попросити заново — як після реконекту.
+      HGames.reconnected();
+      if (route === 'lib') { libShown = libTab; loadLib(); }
+    }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- boot ----------
   setPlayUi();
-  HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
-  api('GET', '/api/me').then((m) => { me.role = m.role; me.banPrice = m.banPrice || 0; $('adsTab').hidden = me.role !== 'admin'; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
+  HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go });
+  applyRoute();
+  api('GET', '/api/me').then((m) => {
+    me.role = m.role;
+    me.banPrice = m.banPrice || 0;
+    $('adsTab').hidden = me.role !== 'admin';
+    $('nickBtn').classList.toggle('admin', me.role === 'admin');
+    // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');
+    if (state) render();
+  }).catch(() => {});
   if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
 })();

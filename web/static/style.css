@@ -1,4 +1,19 @@
+/* Onest — свій шрифт заголовків (web/static/fonts, OFL, без Google Fonts). Тіло лишається
+   системним. Не сподобався — досить поставити --display: var(--font) нижче, і все повернеться. */
+@font-face {
+  font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('/static/fonts/onest-cyrillic-wght-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('/static/fonts/onest-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
+  --mini-h: 0px;
   --bg: #0f1f18;
   --bg2: #16291f;
   --panel: #1c3328;
@@ -15,7 +30,11 @@
   --clay: #c5763a;
   --radius: 14px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --display: 'Onest', var(--font);
   --tabs-h: 0px;
+  /* Ширина балачок і проміжок до них. Згорнули панель — обидва стають нулем, і зміст займає все. */
+  --rail: 360px;
+  --rail-gap: 18px;
 }
 
 * { box-sizing: border-box; }
@@ -65,34 +84,116 @@ input:focus { border-color: var(--accent2); }
 
 /* ---- header ---- */
 header {
-  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  display: flex; align-items: center; gap: 12px; padding: 8px 16px; min-height: 56px;
   border-bottom: 1px solid var(--line); background: rgba(15, 31, 24, .88); backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 5;
 }
-header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2em; letter-spacing: .3px; }
-header .brand img { width: 32px; height: 32px; }
-header .player { display: flex; align-items: center; gap: 10px; }
-header .player input[type=range] { width: 150px; accent-color: var(--accent); }
-header .spacer { flex: 1; }
-header .vswitch { display: flex; gap: 4px; }
-header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }
+header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15em; letter-spacing: .3px; flex: none; }
+header .brand img { width: 30px; height: 30px; }
+
+/* ---- міні-плеєр у шапці ----
+   #nowMini — display: contents, тому обкладинка, назва і ❤/⏭ стають прямими дітьми .mini
+   поряд із ▶, гучністю і 🎧, і весь рядок шикується одним order. Так перемальовування
+   треку не чіпає ні кнопку ▶ (у ній стан playState), ні повзунок гучності. */
+header .mini { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+header #nowMini { display: contents; }
+.mini-cv { order: 1; flex: none; width: 32px; height: 32px; border-radius: 6px; overflow: hidden; display: block; background: var(--bg2); }
+.mini-cv img, .mini-cv .noimg { width: 32px; height: 32px; object-fit: cover; display: block; }
+.mini-tt { order: 2; flex: 1 1 90px; min-width: 0; line-height: 1.15; color: var(--text); text-decoration: none; }
+.mini-tt b, .mini-tt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-tt b { font-weight: 600; font-size: .92em; }
+.mini-tt small { color: var(--muted); font-size: .78em; }
+.mini-tt:hover b { color: var(--accent); }
+.mini-acts { order: 4; flex: none; display: flex; gap: 4px; }
+.mini-acts button { padding: 5px 9px; font-size: .9em; }
+header #playBtn { order: 3; flex: none; }
+header #volume { order: 5; flex: none; width: 110px; accent-color: var(--accent); }
+header #listeners { order: 6; flex: none; }
+
+/* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу */
+.hdrprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg2); }
+.hdrprog > div { height: 100%; width: 0; background: var(--accent); transition: width 1s linear; }
+.hdrprog.pending { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
+.hdrprog.pending > div { background: transparent; }
+header .vswitch { display: flex; gap: 2px; background: var(--bg2); border-radius: 11px; padding: 2px; flex: none; }
+header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; border-radius: 9px; }
 header .vswitch button:hover { background: var(--panel2); color: var(--text); }
-header .vswitch button.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
-header .who { display: flex; align-items: center; gap: 8px; }
+header .vswitch button.on { background: var(--panel2); color: var(--text); }
+header .vswitch .ico { font-size: 1.05em; line-height: 1; }
+header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
+header .hdrtitle { display: none; font-weight: 700; font-size: 1.05em; }
+header .who { display: flex; align-items: center; gap: 8px; flex: none; }
+header .chip.wallet { background: var(--panel2); color: var(--accent); font-size: .9em; padding: 4px 10px; }
+header .chip.wallet b { font-variant-numeric: tabular-nums; }
+/* Кнопка балачок: бейдж непрочитаного сидить у ній же, тож ширина не стрибає на порожньому бейджі. */
+header .chat-toggle { position: relative; font-size: 1.05em; padding: 6px 9px; }
+body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); }
+header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 header .nick { cursor: pointer; padding: 5px 10px; border-radius: 999px; background: var(--panel2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header .nick:hover { background: var(--panel3); }
 header .nick.admin::after { content: " · адмін"; color: var(--accent); }
-#playBtn { min-width: 122px; justify-content: center; }
+#playBtn { min-width: 118px; justify-content: center; }
 #playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); }
 #playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
 @keyframes blink { 50% { opacity: .25; } }
 
+/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу підписи
+   розділів (лишаються іконки з title), потім гучність, потім виконавця в міні-плеєрі. */
+@media (max-width: 1300px) {
+  header .vswitch .lbl { display: none; }
+  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+}
+@media (max-width: 1150px) {
+  header #volume { display: none; }
+  header { gap: 10px; }
+  #playBtn { min-width: 0; }
+}
+@media (max-width: 1000px) {
+  .mini-tt small { display: none; }
+  header .brand span { display: none; }
+  header #listeners { max-width: 92px; }
+}
+
 /* ---- layout ---- */
-main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 18px; padding: 18px; max-width: 1400px; margin: 0 auto; }
-section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-h2 { font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-h2 .count { font-weight: 500; letter-spacing: 0; text-transform: none; }
+main {
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--rail-gap);
+  padding: 18px; max-width: 1500px; margin: 0 auto; align-items: start;
+  transition: grid-template-columns .2s ease, column-gap .2s ease;
+}
+body.chat-collapsed { --rail: 0px; --rail-gap: 0px; }
+/* Панель не зникає ривком, а з'їжджає разом із колонкою; після анімації йде і з обходу Tab. */
+#colChat { overflow: hidden; transition: padding .2s ease; }
+body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: padding .2s ease, visibility 0s .2s; }
+@media (prefers-reduced-motion: reduce) { main, #colChat { transition: none; } }
+/* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
+.view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
+body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames { display: flex; animation: fadein .15s ease-out; }
+/* Один рівень карток: секція — панель без рамки, з тонким світлом ізсередини;
+   усе, що всередині неї, сидить на bg2 без власних рамок. Подвійних рамок не лишилось. */
+section.panel { background: var(--panel); border: 0; border-radius: var(--radius); padding: 16px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); }
+h2 {
+  font-family: var(--display); font-size: 1.05em; color: var(--text); margin: 0 0 10px;
+  font-weight: 600; display: flex; align-items: center; gap: 8px; letter-spacing: 0;
+}
+h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
+.brand, .now .title, .drop-title, .modal h3, .hdrtitle, .libhead h2 { font-family: var(--display); }
 .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* Колонка змісту — контейнер для запитів усередині розділів: «широкий екран» для «Ефіру»
+   й «Бібліотеки» означає широкий ЗМІСТ, тож згорнуті балачки одразу дають другу колонку. */
+#colMain { min-width: 0; container-type: inline-size; }
+
+/* ---- Ефір: черга і поради Глека поруч, коли зміст широкий ----
+   Міряємо саме зміст (контейнер), а не вікно: згорнули балачки — колонки з'являються
+   раніше, розгорнули — пізніше, і це завжди чесно. */
+.efir-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+@container (min-width: 1000px) {
+  .efir-two { grid-template-columns: 3fr 2fr; align-items: start; }
+}
+/* рядок-посилання в Бібліотеку замість сімох вкладок унизу «Ефіру» */
+.libline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .9em; padding: 2px 4px; }
+.libline a { color: var(--muted); text-decoration: none; }
+.libline a:hover { color: var(--accent); }
+.libline .all { margin-left: auto; color: var(--accent); }
 
 /* ---- now playing ---- */
 .now { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
@@ -168,6 +269,16 @@ button.vplay { padding: 3px 8px; }
 .qitem .btns { display: flex; gap: 4px; }
 .qitem .btns button { padding: 4px 7px; }
 .empty { color: var(--muted); padding: 10px 4px; line-height: 1.4; }
+/* Порожньо — це не привід для сухого рядка: поруч стоїть Глек і каже, що робити далі. */
+.empty.glek { display: flex; gap: 12px; align-items: center; }
+.empty.glek::before {
+  content: ''; width: 40px; height: 40px; flex: none; opacity: .85;
+  background: url('/static/glek.svg') center / contain no-repeat;
+}
+/* порожня черга: Глек і одна кнопка, а не голий рядок тексту */
+.queue-empty { display: flex; gap: 12px; align-items: center; }
+.queue-empty img { width: 44px; height: 44px; flex: none; opacity: .85; }
+.queue-empty .qe-btn { margin-top: 8px; }
 /* the first suggestion card is the auto-DJ's actual next track */
 .sug.next { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .sug.next .btns { align-items: center; }
@@ -176,12 +287,15 @@ button.vplay { padding: 3px 8px; }
 .dj-panel { background: linear-gradient(135deg, #22381c 0%, var(--panel) 60%); }
 .dj-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
 .dj-head img { width: 56px; height: 56px; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
-.dj-head h2 { margin: 0; font-size: 1em; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 700; }
+/* display: block, бо в заголовку «Дядько Глек радить» ім'я — це span, і flex-проміжок робив би
+   між ним і словом «радить» подвійну щілину. */
+.dj-head h2 { display: block; margin: 0; font-size: 1.05em; color: var(--text); font-weight: 600; }
 .dj-head .sub { color: var(--muted); font-size: .85em; margin-top: 2px; }
+.dj-panel { container-type: inline-size; }
 .sug-cards { display: grid; grid-template-columns: 1fr; gap: 10px; }
-@media (min-width: 1100px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
+@container (min-width: 560px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
 /* every slot is the same height, so the panel never jumps when a card leaves or arrives */
-.sug { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 1fr auto; gap: 6px 12px; height: 118px; overflow: hidden; background: var(--bg2); border-radius: 12px; padding: 10px 12px; min-width: 0; border: 1px solid var(--line); }
+.sug { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 1fr auto; gap: 6px 12px; height: 118px; overflow: hidden; background: var(--bg2); border-radius: 12px; padding: 10px 12px; min-width: 0; border: 1px solid transparent; }
 .sug img, .sug .noimg { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--panel); grid-row: 1 / span 2; align-self: start; }
 .sug .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sug .a { color: var(--muted); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -189,6 +303,28 @@ button.vplay { padding: 3px 8px; }
 .sug .btns { display: flex; gap: 6px; grid-column: 2; align-self: end; }
 .sug .btns button { padding: 6px 12px; }
 .sug.empty { display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); padding: 14px 12px; border-style: dashed; opacity: .75; }
+
+/* ---- Бібліотека: бокове меню на широкому, рядок вкладок на вузькому ---- */
+.libmenu { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; scrollbar-width: none; }
+.libmenu::-webkit-scrollbar { display: none; }
+.libmenu .libgrp { display: none; }
+.libmenu button { flex: none; background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }
+.libmenu button:hover { background: var(--panel2); color: var(--text); }
+.libmenu button.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.libpage { min-width: 0; }
+.libhead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.libhead h2 { margin: 0; flex: none; }
+#libFind { max-width: 260px; margin-left: auto; padding: 6px 10px; font-size: .9em; }
+/* Списки в Бібліотеці тягнуться до низу екрана: це головне, по що сюди заходять. */
+.libpage .list { max-height: calc(100vh - 200px); }
+@container (min-width: 760px) {
+  /* селектор такий самий, як у правила маршруту вище, інакше display: flex переможе за вагою */
+  body.route-lib #viewLib { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .libmenu { flex-direction: column; position: sticky; top: 72px; overflow: visible; gap: 2px; }
+  .libmenu .libgrp { display: block; color: var(--muted); font-size: .72em; text-transform: uppercase; letter-spacing: 1.2px; padding: 12px 11px 4px; }
+  .libmenu .libgrp:first-child { padding-top: 2px; }
+  .libmenu button { justify-content: flex-start; width: 100%; }
+}
 
 /* ---- library (history / likes / playlists / stats) ---- */
 .tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -218,8 +354,10 @@ button.vplay { padding: 3px 8px; }
 .bar { height: 6px; background: var(--accent2); border-radius: 999px; grid-column: 1 / -1; opacity: .7; }
 
 /* ---- chat ---- */
-.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; }
-.chat .tabs { margin-bottom: 8px; }
+.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; min-width: 0; }
+.chat .tabs { margin-bottom: 8px; align-items: center; }
+.chat .chat-close { margin-left: auto; background: transparent; border-color: transparent; color: var(--muted); padding: 4px 7px; }
+.chat .chat-close:hover { background: var(--panel2); color: var(--text); }
 .messages { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 .msg { line-height: 1.35; overflow-wrap: anywhere; }
 .msg .n { font-weight: 700; color: var(--accent); margin-right: 6px; }
@@ -286,31 +424,56 @@ button.vplay { padding: 3px 8px; }
 #listeners.on { color: var(--accent); }
 
 /* ---- ігри ---- */
-/* Тут лишається тільки місце під вкладку: усе, що всередині неї, — у web/games/core.css. */
-#colGames { display: none; }
-body.view-games #colGames { display: block; }
-body.view-games #colMain { display: none; }
+/* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
+#colGames { min-width: 0; }
+/* Столу віддаємо більше ширини, ніж решті розділів: клікеру й дошкам є куди розгорнутись. */
+body.route-games main { max-width: 1600px; }
+/* ⛶ — стіл на весь екран: балачки згортаються, лишається лише шапка сайту. */
+body.gfull { --rail: 0px; --rail-gap: 0px; }
+body.gfull #colChat { display: none; }
+body.gfull main { max-width: none; padding: 10px 12px; }
 
 /* ---- mobile tabs ---- */
 .mtabs { display: none; }
 @media (max-width: 900px) {
-  :root { --tabs-h: 58px; }
-  header { gap: 8px; padding: 8px 12px; }
-  header .brand span { display: none; }
-  header .player input[type=range] { display: none; }
-  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + 12px); gap: 12px; }
+  :root { --tabs-h: 58px; --mini-h: 54px; }
+  header { gap: 8px; padding: 8px 12px; backdrop-filter: none; background: #101f18; }
+  header .brand span, header #volume { display: none; }
+  header .hdrtitle { display: block; }
+  /* Міні-плеєр переїздить униз, над вкладки: він потрібен на кожному екрані, а в шапці місця нема.
+     Це та сама розмітка й ті самі обробники — інша лише позиція. Фіксована позиція працює саме
+     тому, що backdrop-filter із шапки тут знято: інакше він робив би шапку контейнером. */
+  header .mini {
+    position: fixed; left: 0; right: 0; bottom: var(--tabs-h); z-index: 6; height: var(--mini-h);
+    gap: 8px; padding: 0 12px; background: #0b1712; border-top: 1px solid var(--line);
+  }
+  header #playBtn { min-width: 0; padding: 7px 11px; }
+  /* Унизу лишаємо найпотрібніше: обкладинка, назва з виконавцем, ▶ і ⏭.
+     Лайк і лічильник слухачів є на панелі «В ефірі», а тут вони з'їдали б назву. */
+  header #listeners, .mini-acts [data-act="like"] { display: none; }
+  .mini-tt small { display: block; }
+  /* Стіл на весь екран — плеєр не заважає грати. */
+  body.gfull { --mini-h: 0px; }
+  body.gfull header .mini { display: none; }
+  /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
+  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   section.panel { padding: 12px; }
-  .chat { height: calc(100vh - 60px - var(--tabs-h) - 24px); position: static; min-height: 0; }
-  body.view-main #colChat, body.view-main #colGames { display: none; }
-  body.view-chat #colMain, body.view-chat #colGames { display: none; }
-  body.view-games #colChat { display: none; }
-  header .vswitch { display: none; }
+  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px); position: static; min-height: 0; }
+  #colChat { display: none; }
+  body.route-chat #colChat { display: flex; }
+  body.route-chat #colMain { display: none; }
+  .chat .chat-close { display: none; }
+  header .vswitch, header .chat-toggle { display: none; }
   .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabs-h); z-index: 6; background: rgba(15, 31, 24, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-  .mtabs button { flex: 1; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .95em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 0; }
+  .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .82em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 2px; }
   .mtabs button .ico { font-size: 1.25em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
-  .toasts { bottom: calc(var(--tabs-h) + 12px); }
+  .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); }
   .sug .btns { grid-column: 1 / -1; }
+  /* бокове меню бібліотеки на телефоні — рядок, що гортається; заголовок і пошук один під одним */
+  .libhead { flex-wrap: wrap; gap: 8px; }
+  #libFind { margin-left: 0; max-width: none; flex: 1 1 140px; }
+  .libpage .list { max-height: calc(100vh - 260px); }
 }
 @media (max-width: 480px) {
   .qitem .btns { flex-direction: column; }
