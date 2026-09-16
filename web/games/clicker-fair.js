@@ -15,7 +15,8 @@
   Звуки: guest, coin, deal, refuse, event, rep-up.
 */
 (() => {
-  const CHRON_MS = 12000;                 // як часто змінюється рядок хроніки
+  const CHRON_MS = 60000;                 // хроніка — раз на хвилину, і лише коли стрічка вільна
+  const NOTE_MS = 7000;                   // скільки висить «відкрилось: …»
   const GRACE_MS = 2000;                  // той самий запас, що й на сервері (CatchGrace)
   const REACT_MS = 4500;                  // скільки висить реакція купця над замовленнями
 
@@ -206,83 +207,111 @@
   const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const ms = (t) => { const x = Date.parse(t); return Number.isFinite(x) ? x : 0; };
 
-  // ---------- плашка й бафи ----------
+  // ---------- стрічка подій: один рядок під смугою «Шлях виробу» ----------
 
-  function paintPlaque(st, api) {
+  /// Один рядок, одна подія за раз, за пріоритетом: пригода → баф → погода/свято → «відкрилось» → хроніка.
+  /// Шість каналів уваги (плашка, бафи, банер, дзвіночок, хроніка) звелись сюди — гравець читає одне місце.
+  function pickFeed(st, api) {
     const k = st.fair;
     const m = k.m;
-    if (!m) return;
-    const w = WEATHER[m.weather] || WEATHER.cloud;
-    let html = '<span class="clkf-chip season">' + (SEASON[m.season] || '') + '</span>'
-      + '<span class="clkf-chip weather ' + api.esc(st, m.weather) + '" title="сушіння ×' + api.dec(m.dry) + '">' + w.icon + ' ' + w.text + '</span>';
-    if (m.holiday) html += '<span class="clkf-chip holiday">' + api.esc(st, HOLIDAY[m.holiday.key] || m.holiday.name) + '</span>';
-    if (m.weekend) html += '<span class="clkf-chip weekend">🛍️ Вихідні: ціни +20 %</span>';
-    api.swap(k.plaque, html);
-    // Бафи — під сценою, поруч із ярмарком і розгоном: над сценою їхня поява зсувала б коло під пальцем.
     const sn = api.serverNow(st);
-    let buffs = '';
-    for (const b of k.buffs) {
-      if (b.until <= sn) continue;
-      const sign = b.mult < 1 ? '−' : '+';
-      buffs += '<span class="clkf-chip buff ' + (b.mult < 1 === (b.kind !== 'value') ? 'good' : 'bad') + '">' + (BUFF[b.src] || '✨')
-        + ': ' + KIND[b.kind] + ' ' + sign + pct(b.mult) + ' % · <i class="clkf-cd" data-at="' + b.until + '"></i></span>';
-    }
-    if (k.buffsEl.hidden !== !buffs) k.buffsEl.hidden = !buffs;
-    if (api.swap(k.buffsEl, buffs)) countdowns(st, api, k.buffsEl);
-  }
-
-  // ---------- пригода ----------
-
-  function paintEvent(st, api) {
-    const k = st.fair;
-    const m = k.m;
-    const el = k.eventEl;
-    const sn = api.serverNow(st);
-    const e = m && k.event;
     const c = cat(st);
+
+    // Підсумок щойно зробленого вибору — найсвіжіше, що є.
+    if (k.result && Date.now() - k.result.at < 6000) return { ico: '📜', text: k.result.text, cls: 'res' };
+
+    // 1. Пригода чекає — кнопка відкриває картку з двома відповідями.
+    const e = k.event;
     const def = e && c && c.events.find((x) => x.key === e.key);
-    let html = '';
-    if (k.result && Date.now() - k.result.at < 6000) {
-      html = '<div class="clkf-ev-result">' + api.esc(st, k.result.text) + '</div>';
-    } else if (def && st.mine && e.until > sn && !api.guardOn(st)) {
-      const choice = (ch, i) => {
-        const sure = e.sure ? ch.outcomes[Math.min(e.sure[i], ch.outcomes.length - 1)] : '';
-        return '<button type="button" class="clkf-ev-btn' + (i ? '' : ' primary') + '" data-pick="' + i + '">'
-          + '<b>' + api.esc(st, ch.label) + '</b>' + (sure ? '<span class="clkf-ev-sure">🔮 ' + api.esc(st, sure) + '</span>' : '') + '</button>';
-      };
-      html = '<div class="clkf-ev-head"><span class="clkf-ev-emoji">' + api.esc(st, def.emoji) + '</span><div><b>' + api.esc(st, def.title) + '</b>'
-        + '<span class="muted small">' + api.esc(st, def.text) + '</span></div>'
-        + '<span class="clkf-ev-left small muted">⏳ <i class="clkf-cd" data-at="' + e.until + '"></i></span></div>'
-        + '<div class="clkf-ev-btns">' + choice(def.a, 0) + choice(def.b, 1) + '</div>'
-        + (e.sure ? '' : '<div class="clkf-ev-hint small muted">Що з цього вийде — невідомо. Ворожка бачила б наперед…</div>');
+    if (def && st.mine && e.until > sn && !api.guardOn(st)) {
+      return { ico: def.emoji, text: def.title, cd: e.until, btn: 'Глянути', cls: 'ev', run: () => openEvent(st, api) };
     }
-    const show = !!html;
-    if (el.hidden === show) el.hidden = !show;
-    // Банер живе під сценою (щоб не зсувати коло), тож на самій сцені — дзвіночок, що до нього гортає.
-    const bell = !!(def && st.mine && e.until > sn && !api.guardOn(st) && !(k.result && Date.now() - k.result.at < 6000));
-    if (k.bellEl.hidden === bell) k.bellEl.hidden = !bell;
-    if (api.swap(el, html)) {
-      countdowns(st, api, el);
-      for (const b of el.querySelectorAll('[data-pick]')) {
-        b.onclick = (ev) => {
-          if (!ev.isTrusted || !e) return;
-          for (const x of el.querySelectorAll('[data-pick]')) x.disabled = true;
-          api.act(st, 'fair', { op: 'choose', id: e.id, pick: +b.dataset.pick }).then((r) => {
-            if (r && r.ok) {
-              k.result = { text: r.message || '', at: Date.now() };
-              api.sfx(/\(\+|шана|⭐/.test(r.message || '') ? 'coin' : 'deal');
-              api.sparks(st, st.fx, 10, true, 50, 30);
-            }
-            paintEvent(st, api);
-          });
-        };
+    // 2. Баф із відліком.
+    const b = k.buffs.filter((x) => x.until > sn).sort((x, y) => y.until - x.until)[0];
+    if (b) {
+      const good = (b.mult < 1) === (b.kind !== 'value');
+      return { ico: BUFF[b.src] || '✨', cd: b.until, cls: good ? 'good' : 'bad',
+        text: KIND[b.kind] + ' ' + (b.mult < 1 ? '−' : '+') + pct(b.mult) + ' %' };
+    }
+    // 3. Погода, свято, вихідні — лише коли вони щось міняють.
+    if (m) {
+      if (m.holiday) return { ico: '🎄', text: HOLIDAY[m.holiday.key] || m.holiday.name, cls: 'day' };
+      if (m.weekend) return { ico: '🛍️', text: 'Вихідні — на базарі платять більше', cls: 'day' };
+      const w = WEATHER[m.weather];
+      if (w && Math.abs((m.dry || 1) - 1) > 0.01) {
+        return { ico: w.icon, text: w.text + ' — сирці сохнуть ' + (m.dry > 1 ? 'повільніше' : 'швидше'), cls: 'day' };
       }
     }
-    // Нова пригода — дзвіночок, раз на неї.
-    if (e && k.eventSeen !== e.id && e.until > sn && st.mine) {
-      if (k.eventSeen != null) api.sfx('event');
-      k.eventSeen = e.id;
+    // 4. Щось відкрилось (вкладка, розділ) — ядро каже про це через api.feed.
+    if (k.note && Date.now() < k.note.until) return { ico: '🔓', text: k.note.text, cls: 'open' };
+    // 5. Хроніка — те, чим живе село, поки нічого не сталось.
+    if (k.chronText) return { ico: '📰', text: k.chronText, cls: 'chron' };
+    return null;
+  }
+
+  function paintFeed(st, api) {
+    const k = st.fair;
+    const el = k.feedEl;
+    if (!el) return;
+    const f = pickFeed(st, api);
+    const show = !!f;
+    if (el.hidden === show) el.hidden = !show;
+    if (!f) return;
+    const html = '<span class="clkf-fico">' + api.esc(st, f.ico || '·') + '</span>'
+      + '<span class="clkf-ftext">' + api.esc(st, f.text || '') + '</span>'
+      + (f.cd ? '<span class="clkf-fcd small muted"><i class="clkf-cd" data-at="' + f.cd + '"></i></span>' : '')
+      + (f.btn ? '<button type="button" class="ghost small clkf-fbtn">' + api.esc(st, f.btn) + '</button>' : '');
+    el.className = 'clkf-feed ' + (f.cls || '');
+    if (api.swap(el, html)) {
+      countdowns(st, api, el);
+      const btn = el.querySelector('.clkf-fbtn');
+      if (btn && f.run) btn.onclick = (ev) => { if (ev.isTrusted) f.run(); };
     }
+  }
+
+  // ---------- пригода: картка з двома відповідями ----------
+
+  function openEvent(st, api) {
+    const k = st.fair;
+    const e = k.event;
+    const c = cat(st);
+    const def = e && c && c.events.find((x) => x.key === e.key);
+    if (!def) return;
+    const esc = (x) => api.esc(st, x);
+    const choice = (ch, i) => {
+      const sure = e.sure ? ch.outcomes[Math.min(e.sure[i], ch.outcomes.length - 1)] : '';
+      return '<button type="button" class="clkf-ev-btn' + (i ? '' : ' primary') + '" data-pick="' + i + '">'
+        + '<b>' + esc(ch.label) + '</b>' + (sure ? '<span class="clkf-ev-sure">🔮 ' + esc(sure) + '</span>' : '') + '</button>';
+    };
+    const body = api.overlay(st, '<div class="clkf-evbox"><div class="clkf-ev-head"><span class="clkf-ev-emoji">' + esc(def.emoji) + '</span>'
+      + '<div><b>' + esc(def.title) + '</b><span class="muted small">' + esc(def.text) + '</span></div></div>'
+      + '<div class="clkf-ev-btns">' + choice(def.a, 0) + choice(def.b, 1) + '</div>'
+      + (e.sure ? '' : '<div class="clkf-ev-hint small muted">Що з цього вийде — невідомо. Ворожка бачила б наперед…</div>')
+      + '</div>', { cls: 'clkf-evov' });
+    for (const b of body.querySelectorAll('[data-pick]')) {
+      b.onclick = (ev) => {
+        if (!ev.isTrusted || !e) return;
+        for (const x of body.querySelectorAll('[data-pick]')) x.disabled = true;
+        api.act(st, 'fair', { op: 'choose', id: e.id, pick: +b.dataset.pick }).then((r) => {
+          api.closeOverlay(st);
+          if (r && r.ok) {
+            k.result = { text: r.message || '', at: Date.now() };
+            api.sfx(/\(\+|шана|⭐/.test(r.message || '') ? 'coin' : 'deal');
+            api.sparks(st, st.fx, 10, true, 50, 30);
+          }
+          paintFeed(st, api);
+        });
+      };
+    }
+  }
+
+  /// Нова пригода — один дзвіночок на неї (перший вид лише запам'ятовує).
+  function noticeEvent(st, api) {
+    const k = st.fair;
+    const e = k.event;
+    if (!e || k.eventSeen === e.id || e.until <= api.serverNow(st) || !st.mine) return;
+    if (k.eventSeen != null) api.sfx('event');
+    k.eventSeen = e.id;
   }
 
   // ---------- гості ----------
@@ -519,11 +548,6 @@
       k.chronRecent.push(text);
       if (k.chronRecent.length > 20) k.chronRecent.shift();
       k.chronText = text;
-      const el = k.chronEl;
-      el.classList.remove('in');
-      void el.offsetWidth;
-      el.textContent = '📰 ' + text;
-      el.classList.add('in');
       return;
     }
   }
@@ -538,39 +562,23 @@
       const k = st.fair = {
         m: null, orders: [], buffs: [], guest: null, nextOrderAt: 0, eventAt: 0,
         guestGone: 0, guestLooked: 0, guestSound: 0, eventSeen: null, eventLooked: 0, orderLooked: 0,
-        react: null, result: null, levels: null, chronAt: 0, chronText: '', chronRecent: [],
-        plaque: null, buffsEl: null, bellEl: null, eventEl: null, chronEl: null, guestEl: null, ordersEl: null, repEl: null,
+        react: null, result: null, levels: null, chronAt: 0, chronText: '', chronRecent: [], note: null,
+        feedEl: null, guestEl: null, ordersEl: null, repEl: null,
       };
-      k.plaque = document.createElement('div');
-      k.plaque.className = 'clkf-plaque';
-      st.stage.insertAdjacentElement('beforebegin', k.plaque);
-      // Під сценою: бафи (після бафів ядра), пригода, хроніка — усе перед прилавком.
+      // Одна стрічка подій під смугою «Шлях виробу»: пригода, баф, погода, «відкрилось», хроніка — по черзі.
       const sell = st.el.querySelector('.clk-sell');
-      const below = (el) => { if (sell) sell.insertAdjacentElement('beforebegin', el); else st.stage.insertAdjacentElement('afterend', el); };
-      k.buffsEl = document.createElement('div');
-      k.buffsEl.className = 'clkf-buffs';
-      k.buffsEl.hidden = true;
-      below(k.buffsEl);
-      k.eventEl = document.createElement('div');
-      k.eventEl.className = 'clkf-event';
-      k.eventEl.hidden = true;
-      below(k.eventEl);
-      k.chronEl = document.createElement('div');
-      k.chronEl.className = 'clkf-chron small';
-      below(k.chronEl);
-      const layer = api.layer(st, 'front', 'fair');
-      k.bellEl = document.createElement('button');
-      k.bellEl.type = 'button';
-      k.bellEl.className = 'clkf-bell';
-      k.bellEl.hidden = true;
-      k.bellEl.textContent = '🔔 Пригода!';
-      k.bellEl.onclick = () => {
-        k.eventEl.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
-        k.eventEl.classList.remove('ping');
-        void k.eventEl.offsetWidth;
-        k.eventEl.classList.add('ping');
+      k.feedEl = document.createElement('div');
+      k.feedEl.className = 'clkf-feed';
+      k.feedEl.hidden = true;
+      if (sell) sell.insertAdjacentElement('beforebegin', k.feedEl);
+      else st.stage.insertAdjacentElement('afterend', k.feedEl);
+      // Ядро каже стрічці, що щось відкрилось.
+      api.feed = (st2, text) => {
+        if (!st2 || !st2.fair || !st2.fair.feedEl) return;
+        st2.fair.note = { text, until: Date.now() + NOTE_MS };
+        paintFeed(st2, api);
       };
-      layer.appendChild(k.bellEl);
+      const layer = api.layer(st, 'front', 'fair');
       k.guestEl = document.createElement('button');
       k.guestEl.type = 'button';
       k.guestEl.className = 'clkf-guest';
@@ -617,8 +625,8 @@
       k.levels = levels;
       const ready = k.orders.filter((o) => o.have >= o.n).length;
       api.tabNote(st, 'craft', 'orders', ready ? '📜' + ready : '', 1);
-      paintPlaque(st, api);
-      paintEvent(st, api);
+      noticeEvent(st, api);
+      paintFeed(st, api);
       paintOrders(st, api);
     },
 
@@ -630,11 +638,8 @@
       const k = st.fair;
       if (!k || !k.m) return;
       ensureStore(st, api);
-      countdowns(st, api, k.buffsEl);
-      if (!k.eventEl.hidden) countdowns(st, api, k.eventEl);
-      // Бафи, пригода, замовлення спливли — перемалювати без нового виду.
-      if (k.buffs.some((b) => b.until <= sn && b.until > sn - 400)) paintPlaque(st, api);
-      paintEvent(st, api);
+      countdowns(st, api, k.feedEl);
+      paintFeed(st, api);
       if (st.tab === 'craft') {
         countdowns(st, api, k.ordersEl);
         if (k.orders.some((o) => o.until <= sn && o.until > sn - 400) || (k.react && Date.now() - k.react.at > REACT_MS && Date.now() - k.react.at < REACT_MS + 400)) paintOrders(st, api);
@@ -647,13 +652,14 @@
       if (Date.now() - k.chronAt >= CHRON_MS) {
         k.chronAt = Date.now();
         chronicle(st, api);
+        paintFeed(st, api);
       }
     },
 
     unmount(st) {
       const k = st.fair;
       if (!k) return;
-      for (const el of [k.plaque, k.buffsEl, k.bellEl, k.eventEl, k.chronEl, k.guestEl, k.ordersEl, k.repEl]) if (el) el.remove();
+      for (const el of [k.feedEl, k.guestEl, k.ordersEl, k.repEl]) if (el) el.remove();
       st.fairDeliver = null;
       st.fair = null;
     },

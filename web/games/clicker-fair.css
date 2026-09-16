@@ -1,52 +1,40 @@
-/* Ярмарок і люди Гончарного кола: плашка погоди, пригода, гості, замовлення, шана сіл, хроніка. */
+/* Ярмарок і люди Гончарного кола: стрічка подій, пригода, гості, замовлення, шана сіл. */
 
-/* ---- плашка над сценою ---- */
-.clkf-plaque { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; width: 100%; max-width: 360px; }
-.clkf-plaque:empty { display: none; }
-.clkf-buffs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; width: 100%; max-width: 360px; }
-.clkf-chip {
-  display: inline-flex; align-items: center; gap: 3px; font-size: .74em; padding: 1px 8px; border-radius: 999px;
-  background: var(--panel); border: 1px solid var(--line); color: var(--text); white-space: nowrap; max-width: 100%;
-  overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+/* ---- стрічка подій: один рядок під смугою «Шлях виробу» ---- */
+.clkf-feed {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  width: 100%; max-width: 520px; padding: 4px 10px; border-radius: 999px; font-size: .82em;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
 }
-.clkf-chip.season { color: var(--muted); }
-.clkf-chip.weather.sun { background: rgba(244, 197, 66, .12); border-color: rgba(244, 197, 66, .35); }
-.clkf-chip.weather.rain { background: rgba(111, 143, 224, .14); border-color: rgba(111, 143, 224, .4); }
-.clkf-chip.weather.frost { background: rgba(190, 225, 255, .12); border-color: rgba(190, 225, 255, .4); }
-.clkf-chip.holiday { background: #5a3d0a; border-color: var(--accent2); color: var(--accent); font-weight: 600; animation: clkfglow 1.8s ease-in-out infinite alternate; }
-.clkf-chip.weekend { background: rgba(123, 211, 137, .12); border-color: rgba(123, 211, 137, .4); }
-.clkf-chip.buff.good { background: #2e3c66; color: #cfe0ff; border-color: #6f8fe0; }
-.clkf-chip.buff.bad { background: #4a2612; color: #ffb27a; border-color: #8a4a2a; }
-.clkf-chip i { font-style: normal; }
-@keyframes clkfglow { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+.clkf-feed[hidden] { display: none; }
+.clkf-fico { font-size: 1.1em; line-height: 1; }
+.clkf-ftext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clkf-fcd { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clkf-fcd i { font-style: normal; }
+.clkf-fbtn { padding: 1px 9px; font-size: .95em; }
+.clkf-feed.chron { color: var(--muted); }
+.clkf-feed.day { background: rgba(244, 197, 66, .08); border-color: rgba(244, 197, 66, .3); }
+.clkf-feed.good { background: #2e3c66; color: #cfe0ff; border-color: #6f8fe0; }
+.clkf-feed.bad { background: #4a2612; color: #ffb27a; border-color: #8a4a2a; }
+.clkf-feed.open { border-color: var(--accent2); color: var(--accent); }
+.clkf-feed.res { color: var(--accent); border-color: var(--accent2); }
+/* Пригода чекає — рядок дзвенить, поки на нього не глянули. */
+.clkf-feed.ev {
+  background: linear-gradient(100deg, rgba(244, 197, 66, .2), var(--panel) 70%); border-color: var(--accent2);
+  animation: clkfglow 1.8s ease-in-out infinite alternate;
+}
+.clkf-feed.ev .clkf-fico { animation: clkfbob 2.4s ease-in-out infinite; display: inline-block; }
+@keyframes clkfglow { from { filter: brightness(1); } to { filter: brightness(1.2); } }
 
-/* ---- пригода з вибором ---- */
-.clkf-event {
-  width: 100%; max-width: 360px; padding: 8px 10px; border-radius: 14px; position: relative;
-  background: linear-gradient(160deg, #3b2a17 0%, #2a2014 100%); border: 1px solid var(--accent2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .35), inset 0 0 22px rgba(244, 197, 66, .08);
-  animation: clkfdrop .45s cubic-bezier(.2, 1.4, .4, 1);
-}
-.clkf-ev-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
-.clkf-ev-head > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.clkf-ev-emoji { font-size: 1.9em; line-height: 1; animation: clkfbob 2.4s ease-in-out infinite; }
-.clkf-ev-left { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.clkf-ev-left i { font-style: normal; }
-.clkf-ev-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
-.clkf-ev-btn { display: flex; flex-direction: column; gap: 2px; align-items: center; text-align: center; padding: 6px 8px; white-space: normal; }
+/* ---- пригода з вибором (вікно) ---- */
+.clkf-evbox { display: flex; flex-direction: column; gap: 8px; }
+.clkf-ev-head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.clkf-ev-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.clkf-ev-emoji { font-size: 2.2em; line-height: 1; }
+.clkf-ev-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.clkf-ev-btn { display: flex; flex-direction: column; gap: 2px; align-items: center; text-align: center; padding: 8px; white-space: normal; }
 .clkf-ev-sure { font-size: .74em; font-weight: 400; opacity: .9; font-style: italic; }
-.clkf-ev-hint { margin-top: 4px; text-align: center; }
-.clkf-ev-result { font-size: .88em; text-align: center; color: var(--accent); }
-.clkf-event.ping { animation: clkfping .9s ease-out; }
-@keyframes clkfping { 0% { box-shadow: 0 0 0 0 rgba(244, 197, 66, .7); } 100% { box-shadow: 0 0 0 16px rgba(244, 197, 66, 0); } }
-.clkf-bell {
-  position: absolute; left: 50%; top: 23%; transform: translateX(-50%); z-index: 7; padding: 2px 10px; border-radius: 999px;
-  font-size: .8em; font-weight: 700; color: #2a1a0c; background: var(--accent); border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
-  animation: clkfring 1.2s ease-in-out infinite; white-space: nowrap;
-}
-.clkf-bell:hover { background: #ffe28a; color: #2a1a0c; }
-@keyframes clkfring { 0%, 70%, 100% { transform: translateX(-50%) rotate(0); } 75% { transform: translateX(-50%) rotate(-8deg); } 85% { transform: translateX(-50%) rotate(8deg); } }
-@keyframes clkfdrop { from { transform: translateY(-10px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.clkf-ev-hint { text-align: center; }
 @keyframes clkfbob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-3px) rotate(4deg); } }
 
 /* ---- гість біля вікна чи дверей ---- */
@@ -150,22 +138,14 @@
 .clkf-rbar i { display: block; height: 100%; background: var(--accent2); }
 .clkf-perk { font-size: .68em; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* ---- хроніка ---- */
-.clkf-chron {
-  width: 100%; max-width: 360px; padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
-  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
-}
-.clkf-chron:empty { display: none; }
-.clkf-chron.in { animation: clkffade .7s ease-out; }
-@keyframes clkffade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 @container (max-width: 420px) {
   .clkf-orders { grid-template-columns: minmax(0, 1fr); }
-  .clkf-chron { white-space: normal; border-radius: 12px; }
+  .clkf-feed { grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 4px 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .clkf-chip.holiday, .clkf-event, .clkf-ev-emoji, .clkf-guest.run, .clkf-fig, .clkf-wave, .clkf-flap, .clkf-coin, .clkf-feather,
-  .clkf-strum, .clkf-note, .clkf-ball, .clkf-order.sour, .clkf-react, .clkf-remoji, .clkf-chron.in, .clkf-bell, .clkf-event.ping { animation: none; }
+  .clkf-feed.ev, .clkf-feed.ev .clkf-fico, .clkf-guest.run, .clkf-fig, .clkf-wave, .clkf-flap, .clkf-coin, .clkf-feather,
+  .clkf-strum, .clkf-note, .clkf-ball, .clkf-order.sour, .clkf-react, .clkf-remoji { animation: none; }
   .clkf-guest.run .clkf-ring circle { animation: clkring var(--clkf-left, 20s) linear forwards; }
 }
