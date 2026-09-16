@@ -114,7 +114,9 @@
 .gbtns { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
 
 /* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
-.board { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 7px; width: min(280px, 100%); margin: 0 auto; }
+/* Спільна дошка з клітинок (хрестики, чотири в ряд, сапер). Шахи, шашки й ерудит ставлять
+   свою стелю у власному css — кожна гра піднімає її в себе, коли захоче більше місця. */
+.board { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 7px; width: min(360px, 100%); margin: 0 auto; }
 .board .cell {
   aspect-ratio: 1; padding: 0; display: grid; place-items: center; font-size: 2.1em; font-weight: 700;
   background: var(--bg2); border-radius: 12px; justify-content: center;
@@ -127,7 +129,7 @@
 /* Зникаючі хрестики: мітка, яку наступний хід свого ж господаря змете з поля. */
 .board .cell.fading { animation: blink 1.4s infinite; }
 /* Чотири в ряд: поле ширше, клітинки круглі, фішка це заливка. */
-.board.discs { width: min(360px, 100%); gap: 5px; padding: 6px; background: var(--bg2); border-radius: 12px; }
+.board.discs { width: min(460px, 100%); gap: 5px; padding: 6px; background: var(--bg2); border-radius: 12px; }
 .board.discs .cell { border-radius: 50%; background: var(--panel); border-color: transparent; font-size: 0; }
 .board.discs .cell.x { background: var(--accent); }
 .board.discs .cell.o { background: var(--ok); }
@@ -136,7 +138,9 @@
 .board.discs .cell:not(:disabled):hover { background: var(--panel3); }
 
 /* ---- канвас реалтайму (змійка, понг, кривуля) ---- */
-.gcanvas { width: 100%; max-width: 416px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
+/* Стеля ширини реалтайм-канваса. На сторінці столу місця тепер вистачає, тож канвас більший;
+   логічний розмір у модулі не змінюється — розтягується лише картинка. */
+.gcanvas { width: 100%; max-width: 560px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
 .gscore { font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted); white-space: nowrap; }
 .gscore b { color: var(--text); }
 
@@ -248,6 +252,10 @@
 
 /* ---- телефон ---- */
 @media (max-width: 900px) {
+  /* Рядок столу тримаємо компактним: розпірка тут зайва, ⛶ і так стає праворуч. */
+  .grhead .grsp { display: none; }
+  .grhead .grfull { margin-left: auto; }
+  .grhead .grtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gdaily { grid-template-columns: 1fr; }
   .gsums { grid-template-columns: 1fr; }
   .gbar { gap: 6px; }
