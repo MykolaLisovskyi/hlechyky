@@ -24,8 +24,8 @@ public interface IMelodySource
 }
 
 /// <summary>
-/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Беремо те, що
-/// село слухало найчастіше (<see cref="Popular"/>). Голосові, забанені й коротші за 45 секунд не беремо; одного
+/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Беремо все, що
+/// хоч раз звучало на радіо (<see cref="Heard"/>). Голосові, забанені й коротші за 45 секунд не беремо; одного
 /// виконавця в партії намагаємось не повторювати.
 /// </summary>
 public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options) : IMelodySource
@@ -38,11 +38,10 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
         var all = db.With(c =>
         {
             using var cmd = c.CreateCommand();
-            // Скільки разів трек дограв до кінця (скіпнуте не рахується) і скільки в нього лайків.
+            // Скільки разів трек звучав на радіо — хай навіть його скіпнули: його чули.
             cmd.CommandText = """
                 SELECT t.id, t.title, t.artist, t.duration_sec, t.thumb_url, t.file_path,
-                       (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id AND p.skipped = 0) AS plays,
-                       (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id) AS likes
+                       (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id) AS plays
                 FROM tracks t
                 WHERE t.file_path IS NOT NULL AND t.id NOT LIKE $voice AND t.duration_sec >= $min
                   AND t.id NOT IN (SELECT track_id FROM bans)
@@ -50,27 +49,24 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
             cmd.Parameters.AddWithValue("$voice", VoiceService.Prefix + "%");
             cmd.Parameters.AddWithValue("$min", MinDuration);
             using var r = cmd.ExecuteReader();
-            var list = new List<(MelodyTrack Track, int Plays, int Likes)>();
+            var list = new List<(MelodyTrack Track, int Plays)>();
             while (r.Read())
                 list.Add((new MelodyTrack(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3),
-                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6), r.GetInt32(7)));
+                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6)));
             return list;
         });
-        return Choose(Popular(all.Where(x => File.Exists(x.Track.FilePath)).ToList(), count), count, rng);
+        return Choose(Heard(all.Where(x => File.Exists(x.Track.FilePath)).ToList(), count), count, rng);
     }, ct);
 
     /// <summary>
-    /// Найулюбленіше село: рахунок треку — скільки разів дограв плюс два за кожен лайк. Беремо верхівку, утричі
-    /// більшу за партію (але не менше 30), щоб у кожній партії були свої пісні, а не щоразу та сама десятка.
-    /// Треки, яких ніхто не дослухав і не лайкнув, ідуть лише тоді, коли популярних замало.
+    /// Усе, що хоч раз звучало на радіо, — рівноправно, без переваги частим чи лайкнутим: інакше партії
+    /// крутились би довкола тієї самої десятки. Лише коли таких замало, докидаємо решту кешу.
     /// </summary>
-    public static List<MelodyTrack> Popular(List<(MelodyTrack Track, int Plays, int Likes)> all, int count)
+    public static List<MelodyTrack> Heard(List<(MelodyTrack Track, int Plays)> all, int count)
     {
-        var pool = Math.Max(count * 3, 30);
-        var ranked = all.OrderByDescending(x => x.Plays + 2 * x.Likes).ThenBy(x => x.Track.Id, StringComparer.Ordinal).ToList();
-        var loved = ranked.Where(x => x.Plays + x.Likes > 0).Take(pool).Select(x => x.Track).ToList();
-        if (loved.Count >= count + 4) return loved;
-        return [.. ranked.Take(Math.Max(pool, count + 4)).Select(x => x.Track)];
+        var heard = all.Where(x => x.Plays > 0).Select(x => x.Track).ToList();
+        if (heard.Count >= count + 4) return heard;
+        return [.. heard, .. all.Where(x => x.Plays == 0).Select(x => x.Track)];
     }
 
     /// <summary>

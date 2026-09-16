@@ -298,24 +298,19 @@ public class MelodyTests
         Assert.Equal(hit, MelodyAnswer.Hits(guess, MelodyAnswer.Titles(T("x", artist, title))));
 
     [Fact]
-    public void The_most_played_and_liked_tracks_come_first()
+    public void Everything_that_was_played_counts_equally()
     {
-        var list = Enumerable.Range(0, 60)
-            .Select(i => (T($"t{i:00}", $"Виконавець {i}", $"Пісня {i}"), Plays: i < 50 ? i : 0, Likes: i == 3 ? 40 : 0))
-            .ToList();
-        var pool = MelodyLibrary.Popular(list, 10);
-
-        Assert.Equal(30, pool.Count);
-        Assert.Equal("t03", pool[0].Id);                                 // 3 прослуховування, але 40 лайків
-        Assert.Equal("t49", pool[1].Id);
-        Assert.DoesNotContain(pool, t => t.Id == "t00" || t.Id == "t55");  // ніхто не слухав — не беремо
+        var list = Enumerable.Range(0, 60).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 50 ? (i % 7) + 1 : 0)).ToList();
+        var pool = MelodyLibrary.Heard(list, 10);
+        Assert.Equal(50, pool.Count);                                   // усі, що звучали, а не верхівка
+        Assert.DoesNotContain(pool, t => t.Id == "t55");                // жодного разу не грав — не беремо
     }
 
     [Fact]
-    public void Too_few_loved_tracks_fall_back_to_the_rest_of_the_cache()
+    public void Too_few_played_tracks_fall_back_to_the_rest_of_the_cache()
     {
-        var list = Enumerable.Range(0, 20).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 3 ? 1 : 0, Likes: 0)).ToList();
-        var pool = MelodyLibrary.Popular(list, 10);
+        var list = Enumerable.Range(0, 20).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 3 ? 1 : 0)).ToList();
+        var pool = MelodyLibrary.Heard(list, 10);
         Assert.Equal(20, pool.Count);
         Assert.Equal(["t00", "t01", "t02"], pool.Take(3).Select(t => t.Id));
     }
