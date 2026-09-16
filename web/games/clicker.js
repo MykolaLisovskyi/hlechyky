@@ -477,7 +477,9 @@
     if (visible(st)) loadBoard(st);
     paintRival(st, liveTotal);
     if (st.tab === 'fire') paintFire(st, liveTotal);
-    if (st.tab === 'house' || st.tab === 'orders') paintCountdowns(st, sn, shown);
+    // Хата й дошка купців — розділи Майстерні (v8), а не свої вкладки: ціни глини, «замісити» й відліки
+    // малюються, поки відкрита Майстерня.
+    if (st.tab === 'shop') paintCountdowns(st, sn, shown);
     // Купець повернувся, а гончар нічого не робив: сервер рахує повернення лише при дії чи виді, тож питаємо вид
     // самі — раз на купця, з запасом у дві секунди й лише коли картку видно (як look для глеків).
     for (const t of st.taken) {
