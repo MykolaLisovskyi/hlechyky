@@ -109,7 +109,10 @@ public sealed class Melody : Game
         var seed = Ctx.Rng.Next();
         var ready = _ready;
         var ct = _cts.Token;
-        _ = Task.Run(() => PrepareAsync(ready, seed, ct), ct);
+        // Без Task.Run: справжнє джерело віддає керування на першому ж await (вибір треків іде в Task.Run, ffmpeg —
+        // окремий процес), тож під замком кімнати нічого важкого не робиться. А джерело, яке відповідає одразу
+        // (підробка в тестах), наріже все ще тут — без гонки між фоном і тиком, яку повільний CI програвав.
+        _ = PrepareAsync(ready, seed, ct);
     }
 
     DateTimeOffset Now => Ctx.Clock.UtcNow;
