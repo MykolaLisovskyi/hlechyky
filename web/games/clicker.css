@@ -16,16 +16,19 @@
 
 /* Картка кімнати — на всю ширину сітки столів: у половині стовпця коло, лічильник і три вкладки лягали б
    одним довгим стовпчиком. Клас ставить сам модуль на mount. */
-.gtable.clk-wide { grid-column: 1 / -1; }
-.clk { width: 100%; container-type: inline-size; }
+/* Підкручуємо стіл під шапку сайту (56 px), а не під неї — clicker.js кличе scrollIntoView на відкритті. */
+.gtable.clk-wide { grid-column: 1 / -1; scroll-margin-top: 62px; }
+/* Іменовані контейнери: clk — вся картка (від неї залежить компонування), clkside — полиця верстатів
+   (від неї — в один чи в два стовпці рядки). Без імен запит ізсередини полиці читав би тепер її, а не картку. */
+.clk { width: 100%; container: clk / inline-size; }
 .clk-lay { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
 .clk-scene { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.clk-side { width: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clk-side { width: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; container: clkside / inline-size; }
 
-@container (min-width: 640px) {
+@container clk (min-width: 640px) {
   /* Сцена — головне: до 55 % картки (але не ширше 620 px), праворуч лишається щонайменше 250 px на рядки верстатів. */
   .clk-lay {
-    display: grid; grid-template-columns: minmax(300px, min(620px, 55%)) minmax(250px, 1fr);
+    display: grid; grid-template-columns: minmax(300px, min(var(--clk-stage-w, 620px), 55%)) minmax(250px, 1fr);
     gap: 12px 18px; align-items: start; justify-items: stretch;
   }
   .clk-scene { gap: 8px; }
@@ -54,7 +57,7 @@
 /* ---- сцена 4:5: світ за хатою вгорі, під стріхою — полиця, коло внизу, між ними падає глек ---- */
 /* container-type: розміри речей на сцені (сирці на полиці) — у cqw, щоб на телефоні й на ПК сцена була та сама. */
 .clk-stage {
-  position: relative; width: 100%; max-width: 620px; aspect-ratio: 4 / 5; border-radius: 18px; isolation: isolate;
+  position: relative; width: 100%; max-width: var(--clk-stage-w, 620px); aspect-ratio: 4 / 5; border-radius: 18px; isolation: isolate;
   container-type: inline-size;
   background: radial-gradient(120% 70% at 50% 105%, #2b4838 0%, var(--bg2) 55%, #0d1a14 100%);
   box-shadow: inset 0 0 0 1px var(--line);
@@ -478,9 +481,40 @@
 
 /* Сторінка столу на широкому екрані: верстати стають у два стовпці — і картка читається
    як три колонки (сцена · верстати · верстати), а не як довгий стовпчик праворуч.
-   Наприкінці файла навмисно: вище .clk-shop оголошений флексом, і за вагою вони рівні. */
-@container (min-width: 1300px) {
+   Наприкінці файла навмисно: вище .clk-shop оголошений флексом, і за вагою вони рівні.
+   Міра — сама полиця (clkside), а не вся картка: на Full HD із балачками картка має ~1150 px
+   і до колишніх 1300 ніколи не дотягувалась, а місце на другий стовпець було. */
+@container clkside (min-width: 560px) {
   .clk-shop { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-content: start; }
   .clk-shop .clk-teaser { grid-column: 1 / -1; }
   .clk-marks { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+}
+
+/* ---- широкий екран (Full HD і ширші): стіл — один екран, а не стрічка ----
+   Було: сцена 620×775 плюс шапка й смуга «Шлях виробу» = 1110 px лише лівий стовпець, полиця верстатів
+   у ОДИН стовпець на 2400 px — на 1920×1080 картка виходила 2,5 екрана. Коло — те, по чому клацають, —
+   ховалося за згином, щойно гравець гортав до верстатів, а під сценою лишалося пів екрана порожнечі.
+   Стало: сцена міряється вільною висотою вікна (--clk-stage-w веде і ширину стовпця сітки, і саму сцену),
+   полиця верстатів гортається сама в собі, обидва стовпці липнуть під шапкою сайту (56 px).
+   Порогів два: картка від 900 px (є що ділити) і вікно від 700 px заввишки (є що обмежувати). */
+@container clk (min-width: 900px) {
+  .clk-lay {
+    /* 470 px — те, що з'їдають шапка сайту, рядок столу, лічильник, смуга «Шлях виробу» й прилавок.
+       Нижче 420 px сцену не тиснемо: на низькому екрані краще трохи прокрутити, ніж дивитись у сірник. */
+    --clk-stage-w: clamp(420px, calc((100vh - 470px) * .8), 620px);
+  }
+  .clk-scene, .clk-side { position: sticky; top: 62px; align-self: start; }
+  /* Смуга «Шлях виробу» і прилавок беруть усю ширину сцени: на широкому екрані обрізати їх до 520 px нема чого. */
+  .clk-path { max-width: none; }
+  /* 120 px — шапка сайту, рядок стола й відступи сторінки над карткою та під нею: з ними картка
+     стає рівно в екран і прокрутити вкладки під шапку вже нікуди. */
+  .clk-side { max-height: calc(100vh - 120px); }
+  /* Гортається лише полиця; min-height: 0 — щоб флекс дав їй стиснутись, інакше max-height вище не діє. */
+  .clk-pane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
+}
+/* Низьке вікно (ноутбук на 768 px) або зовсім високе — хай усе лишається як було: там прокрутка не образа. */
+@media (max-height: 699px) {
+  .clk-lay { --clk-stage-w: 620px; }
+  .clk-scene, .clk-side { position: static; max-height: none; }
+  .clk-pane { overflow: visible; }
 }
