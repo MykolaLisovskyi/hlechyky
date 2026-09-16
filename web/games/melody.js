@@ -8,8 +8,10 @@
       me: null | { artist, title, points },
       found: [{ seat, artist, title, points }],
       answer: null | { artist, title, thumb },     // лише після раунду
+      skip: seat[],                               // хто готовий пропустити цей трек
       scores[], left[], error, result }
-  Хід: Act('guess', { text }) — відповідь приходить тостом («🎤 виконавець +70» або «Мимо»).
+  Хід: Act('guess', { text }) — відповідь приходить тостом («🎤 виконавець +70» або «Мимо»);
+       Act('skip') — «готовий пропустити» (ще раз — передумав). Усі, хто не вгадав усе, готові — трек пропускається.
 
   Поки звучить уривок, радіо на сторінці глушимо (muted), а потім повертаємо як було.
 */
@@ -37,6 +39,50 @@
   }
 
   function player(root) { return root.querySelector('.mgaudio'); }
+
+  // Гучність уривків — своя, окремо від радіо. Повзунок іде по децибелах, як у плеєрі радіо (app.js):
+  // 0..100, крок 0.5 дБ, тож тихі рівні мають десятки кроків. У localStorage — сама гучність 0..1.
+  const VOL_DB = 50;
+  const VOL_KEY = 'melodyVolume';
+  const posToVol = (p) => (p <= 0 ? 0 : Math.pow(10, -VOL_DB * (1 - p / 100) / 20));
+  const volToPos = (v) => (v <= 0 ? 0 : Math.min(100, Math.max(1, Math.round(100 * (1 + 20 * Math.log10(v) / VOL_DB)))));
+
+  function savedVolume() {
+    const read = (k) => { try { return parseFloat(localStorage.getItem(k) ?? ''); } catch { return NaN; } };
+    const own = read(VOL_KEY);
+    if (Number.isFinite(own)) return own;
+    const radioVol = read('volume');                  // вперше — як у радіо, щоб не оглушити
+    return Number.isFinite(radioVol) ? radioVol : 0.5;
+  }
+
+  function setVolume(root, p, save) {
+    p = Math.min(100, Math.max(0, p));
+    const v = posToVol(p);
+    const a = player(root);
+    if (a) a.volume = v;
+    const range = root.querySelector('.mgvol input');
+    if (range && +range.value !== p) range.value = p;
+    const icon = root.querySelector('.mgvol button');
+    if (icon) icon.textContent = p === 0 ? '🔇' : p < 50 ? '🔈' : p < 85 ? '🔉' : '🔊';
+    if (save) { try { localStorage.setItem(VOL_KEY, String(v)); } catch { /* приватне вікно */ } }
+  }
+
+  function bindVolume(root) {
+    const box = root.querySelector('.mgvol');
+    const range = box.querySelector('input');
+    const icon = box.querySelector('button');
+    let before = 60;
+    setVolume(root, volToPos(savedVolume()), false);
+    range.oninput = () => setVolume(root, parseInt(range.value, 10), true);
+    icon.onclick = () => {
+      const p = parseInt(range.value, 10);
+      if (p > 0) { before = p; setVolume(root, 0, true); } else setVolume(root, before || 60, true);
+    };
+    range.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      setVolume(root, parseInt(range.value, 10) + (e.deltaY < 0 ? 2 : -2), true);
+    }, { passive: false });
+  }
 
   function play(root) {
     const a = player(root);
@@ -158,6 +204,34 @@
     };
   }
 
+  /// Кнопка «Пропустити» і хто вже готовий. Кнопки нема тому, хто вгадав усе: йому пропускати нема чого.
+  function skipBox(root, ctx, v) {
+    const el = root.querySelector('.mgskip');
+    const me = v.me || {};
+    const skip = v.skip || [];
+    const mineSkip = skip.indexOf(ctx.seat) >= 0;
+    const can = !!ctx.mine && !!ctx.playing && v.phase === 'play' && !(me.artist && me.title);
+    const waiting = [];
+    if (v.phase === 'play') {
+      for (let i = 0; i < seatsOf(ctx); i++) {
+        if (!ctx.nickOf(i) || (v.left || []).indexOf(i) >= 0) continue;
+        const f = (v.found || []).find((x) => x.seat === i);
+        if (f && f.artist && f.title) continue;
+        waiting.push(i);
+      }
+    }
+    const ready = skip.length ? '⏭ ' + skip.map((i) => ctx.esc(ctx.nickOf(i) || '')).join(', ') + ' — за пропуск' : '';
+    const html = v.phase !== 'play' ? ''
+      : (can ? '<button type="button" class="' + (mineSkip ? 'primary' : 'ghost') + ' mgskipbtn">'
+        + (mineSkip ? '⏭ Готовий пропустити (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
+        + (ready && !(can && mineSkip && skip.length === 1) ? '<span class="muted small">' + ready + '</span>' : '');
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+      const b = el.querySelector('.mgskipbtn');
+      if (b) b.onclick = () => { const c = root._ctx; if (c) c.act('skip'); };
+    }
+  }
+
   function scores(root, ctx, v) {
     const found = {};
     for (const f of v.found || []) found[f.seat] = f;
@@ -170,7 +244,8 @@
     const left = v.left || [];
     const html = rows.map((r) => '<div class="mgsc' + (r.i === ctx.seat ? ' me' : '') + (left.indexOf(r.i) >= 0 ? ' off' : '') + '">'
       + '<span class="mgn">' + ctx.esc(r.nick) + '</span>'
-      + '<span class="mgf">' + (r.f && r.f.artist ? '🎤' : '') + (r.f && r.f.title ? '🎵' : '') + '</span>'
+      + '<span class="mgf">' + (r.f && r.f.artist ? '🎤' : '') + (r.f && r.f.title ? '🎵' : '')
+      + (v.phase === 'play' && (v.skip || []).indexOf(r.i) >= 0 ? '⏭' : '') + '</span>'
       + (r.f && r.f.points && v.phase !== 'done' ? '<em>+' + r.f.points + '</em>' : '')
       + '<b>' + r.score + '</b></div>').join('');
     const el = root.querySelector('.mgscores');
@@ -186,6 +261,7 @@
     stage(root, ctx, v);
     audio(root, ctx, v);
     guessBox(root, ctx, v);
+    skipBox(root, ctx, v);
     scores(root, ctx, v);
     timer(root, ctx);
     paintPlay(root);
@@ -201,13 +277,17 @@
         + '<div class="mgtop"><div class="mghead muted small"></div><div class="mgtime"><i></i><span></span></div></div>'
         + '<div class="mgstage"></div>'
         + '<audio class="mgaudio" preload="auto"></audio>'
+        + '<div class="mgvol"><button type="button" class="ghost" title="Вимкнути звук">🔉</button>'
+        + '<input type="range" min="0" max="100" step="1" aria-label="Гучність уривка" title="Гучність уривка · колесо миші — по кроку"></div>'
         + '<div class="mgmarks"></div>'
+        + '<div class="mgskip"></div>'
         + '<form class="mgguess"><input type="text" maxlength="80" autocomplete="off" spellcheck="false" enterkeyhint="send">'
         + '<button class="primary" type="submit">➤</button></form>'
         + '<div class="mgscores"></div>'
         + '</div>';
       const s = st(root);
       const a = player(root);
+      bindVolume(root);
       const settle = () => { paintPlay(root); if (a.paused || a.ended) duck(s, false); };
       a.addEventListener('play', () => paintPlay(root));
       a.addEventListener('pause', settle);

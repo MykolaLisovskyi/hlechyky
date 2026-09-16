@@ -155,6 +155,47 @@ public class MelodyTests
     }
 
     [Fact]
+    public void When_everyone_still_guessing_is_ready_to_skip_the_track_is_skipped()
+    {
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5" }, "Оля", "Петро", "Ганна");
+        Until(h, "play");
+        Guess(h, 0, "океан ельзи обійми");            // Оля вгадала все — її голос не потрібен
+        Assert.True(h.Act(1, "skip").Ok);
+        h.Tick();
+        Assert.Equal("play", Phase(h));
+        Assert.Equal([1], h.View(null).GetProperty("skip").EnumerateArray().Select(e => e.GetInt32()));
+
+        Assert.True(h.Act(2, "skip").Ok);
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+    }
+
+    [Fact]
+    public void Skip_toggles_and_is_not_for_those_who_guessed_everything()
+    {
+        var h = Playing();
+        Assert.True(h.Act(1, "skip").Ok);
+        Assert.True(h.Act(1, "skip").Ok);   // передумав
+        Assert.Empty(h.View(null).GetProperty("skip").EnumerateArray());
+
+        Guess(h, 0, "океан ельзи обійми");
+        Assert.False(h.Act(0, "skip").Ok);
+    }
+
+    [Fact]
+    public void Skip_votes_reset_with_the_next_track()
+    {
+        var h = Playing(new { rounds = "5", clip = "10" });
+        h.Act(0, "skip");
+        h.Act(1, "skip");
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        h.Tick(Melody.RevealMs / Melody.TickMs + 1);
+        Until(h, "play");
+        Assert.Empty(h.View(null).GetProperty("skip").EnumerateArray());
+    }
+
+    [Fact]
     public void Time_runs_out_and_the_next_track_follows()
     {
         var h = Playing(new { rounds = "5", clip = "10" });
@@ -255,6 +296,29 @@ public class MelodyTests
     [InlineData("KALUSH", "Stefania", "Стефанія", true)]
     public void Title_matching(string artist, string title, string guess, bool hit) =>
         Assert.Equal(hit, MelodyAnswer.Hits(guess, MelodyAnswer.Titles(T("x", artist, title))));
+
+    [Fact]
+    public void The_most_played_and_liked_tracks_come_first()
+    {
+        var list = Enumerable.Range(0, 60)
+            .Select(i => (T($"t{i:00}", $"Виконавець {i}", $"Пісня {i}"), Plays: i < 50 ? i : 0, Likes: i == 3 ? 40 : 0))
+            .ToList();
+        var pool = MelodyLibrary.Popular(list, 10);
+
+        Assert.Equal(30, pool.Count);
+        Assert.Equal("t03", pool[0].Id);                                 // 3 прослуховування, але 40 лайків
+        Assert.Equal("t49", pool[1].Id);
+        Assert.DoesNotContain(pool, t => t.Id == "t00" || t.Id == "t55");  // ніхто не слухав — не беремо
+    }
+
+    [Fact]
+    public void Too_few_loved_tracks_fall_back_to_the_rest_of_the_cache()
+    {
+        var list = Enumerable.Range(0, 20).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 3 ? 1 : 0, Likes: 0)).ToList();
+        var pool = MelodyLibrary.Popular(list, 10);
+        Assert.Equal(20, pool.Count);
+        Assert.Equal(["t00", "t01", "t02"], pool.Take(3).Select(t => t.Id));
+    }
 
     [Fact]
     public void Picking_avoids_the_same_song_and_prefers_other_artists()

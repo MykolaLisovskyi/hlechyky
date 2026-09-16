@@ -69,6 +69,8 @@ public sealed class Melody : Game
     int _totalMs;
     readonly int[] _scores = new int[Seats];
     Dictionary<int, Found> _found = [];
+    /// <summary>Хто в цьому раунді готовий пропустити трек.</summary>
+    readonly HashSet<int> _skip = [];
     bool _artistTaken, _titleTaken;
     readonly HashSet<int> _left = [];
     readonly Dictionary<int, DateTimeOffset> _lastGuess = [];
@@ -153,7 +155,8 @@ public sealed class Melody : Game
                 break;
             case Play:
                 var players = Present().ToList();
-                if (now >= _until || players.Count > 0 && players.All(s => _found.TryGetValue(s, out var f) && f.Artist && f.Title))
+                // Раунд закінчується, коли кожен або вгадав усе, або готовий пропустити (а не всі вже вгадали — не чекати ж).
+                if (now >= _until || players.Count > 0 && players.All(s => Finished(s) || _skip.Contains(s)))
                     EndRound();
                 break;
             case Reveal:
@@ -173,8 +176,11 @@ public sealed class Melody : Game
 
     IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s));
 
+    bool Finished(int seat) => _found.TryGetValue(seat, out var f) && f.Artist && f.Title;
+
     void BeginRound()
     {
+        _skip.Clear();
         _round++;
         _found = [];
         _artistTaken = _titleTaken = false;
@@ -227,6 +233,7 @@ public sealed class Melody : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == "skip") return Skip(seat);
         if (action != "guess") return ActResult.Fail("Тут так не ходять");
         if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ще раз»" : "Зараз не вгадують");
         if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
@@ -271,6 +278,17 @@ public sealed class Melody : Game
         return ActResult.Accept(string.Join(", ", said));
     }
 
+    /// <summary>«Готовий пропустити» — перемикач: натиснув ще раз — передумав.</summary>
+    ActResult Skip(int seat)
+    {
+        if (_phase != Play) return ActResult.Fail("Зараз нема чого пропускати");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
+        if (Finished(seat)) return ActResult.Fail("Ти вже все вгадав — чекаємо інших");
+        if (!_skip.Remove(seat)) _skip.Add(seat);
+        _dirty = true;
+        return ActResult.Done;
+    }
+
     // =========================================================================================
     // Вид
     // =========================================================================================
@@ -292,6 +310,7 @@ public sealed class Melody : Game
             me = mine is null ? null : new { artist = mine.Artist, title = mine.Title, points = mine.Points },
             found = _found.Where(kv => kv.Value.Artist || kv.Value.Title)
                 .Select(kv => new { seat = kv.Key, artist = kv.Value.Artist, title = kv.Value.Title, points = kv.Value.Points }).ToArray(),
+            skip = _phase == Play ? _skip.Order().ToArray() : [],
             answer = open && prepared is not null ? new { artist = prepared.Track.Artist, title = prepared.Track.Title, thumb = prepared.Track.Thumb } : null,
             scores = (int[])_scores.Clone(),
             left = _left.Order().ToArray(),

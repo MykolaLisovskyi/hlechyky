@@ -24,8 +24,9 @@ public interface IMelodySource
 }
 
 /// <summary>
-/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Голосові,
-/// забанені й коротші за 45 секунд не беремо; одного виконавця в партії намагаємось не повторювати.
+/// Треки з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і уривки з них через ffmpeg. Беремо те, що
+/// село слухало найчастіше (<see cref="Popular"/>). Голосові, забанені й коротші за 45 секунд не беремо; одного
+/// виконавця в партії намагаємось не повторювати.
 /// </summary>
 public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options) : IMelodySource
 {
@@ -37,22 +38,40 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
         var all = db.With(c =>
         {
             using var cmd = c.CreateCommand();
+            // Скільки разів трек дограв до кінця (скіпнуте не рахується) і скільки в нього лайків.
             cmd.CommandText = """
-                SELECT id, title, artist, duration_sec, thumb_url, file_path FROM tracks
-                WHERE file_path IS NOT NULL AND id NOT LIKE $voice AND duration_sec >= $min
-                  AND id NOT IN (SELECT track_id FROM bans)
+                SELECT t.id, t.title, t.artist, t.duration_sec, t.thumb_url, t.file_path,
+                       (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id AND p.skipped = 0) AS plays,
+                       (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id) AS likes
+                FROM tracks t
+                WHERE t.file_path IS NOT NULL AND t.id NOT LIKE $voice AND t.duration_sec >= $min
+                  AND t.id NOT IN (SELECT track_id FROM bans)
                 """;
             cmd.Parameters.AddWithValue("$voice", VoiceService.Prefix + "%");
             cmd.Parameters.AddWithValue("$min", MinDuration);
             using var r = cmd.ExecuteReader();
-            var list = new List<MelodyTrack>();
+            var list = new List<(MelodyTrack Track, int Plays, int Likes)>();
             while (r.Read())
-                list.Add(new MelodyTrack(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3),
-                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)));
+                list.Add((new MelodyTrack(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3),
+                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6), r.GetInt32(7)));
             return list;
         });
-        return Choose(all.Where(t => File.Exists(t.FilePath)).ToList(), count, rng);
+        return Choose(Popular(all.Where(x => File.Exists(x.Track.FilePath)).ToList(), count), count, rng);
     }, ct);
+
+    /// <summary>
+    /// Найулюбленіше село: рахунок треку — скільки разів дограв плюс два за кожен лайк. Беремо верхівку, утричі
+    /// більшу за партію (але не менше 30), щоб у кожній партії були свої пісні, а не щоразу та сама десятка.
+    /// Треки, яких ніхто не дослухав і не лайкнув, ідуть лише тоді, коли популярних замало.
+    /// </summary>
+    public static List<MelodyTrack> Popular(List<(MelodyTrack Track, int Plays, int Likes)> all, int count)
+    {
+        var pool = Math.Max(count * 3, 30);
+        var ranked = all.OrderByDescending(x => x.Plays + 2 * x.Likes).ThenBy(x => x.Track.Id, StringComparer.Ordinal).ToList();
+        var loved = ranked.Where(x => x.Plays + x.Likes > 0).Take(pool).Select(x => x.Track).ToList();
+        if (loved.Count >= count + 4) return loved;
+        return [.. ranked.Take(Math.Max(pool, count + 4)).Select(x => x.Track)];
+    }
 
     /// <summary>
     /// Перемішати й узяти <paramref name="count"/>: спершу різні пісні різних виконавців, потім — якщо треків
@@ -96,7 +115,8 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
             "-i", track.FilePath,
             // -map_metadata -1: ні назви, ні виконавця, ні обкладинки в уривку — підглянути в «Властивостях» нічого
             "-vn", "-sn", "-map_metadata", "-1", "-ac", "2", "-ar", "44100", "-b:a", "128k",
-            "-af", $"afade=t=in:d=0.4,afade=t=out:st={fadeOut}:d=1.2",
+            // loudnorm: одні треки в кеші гучні, інші тихі — без вирівнювання кожен уривок довелось би крутити повзунком
+            "-af", $"loudnorm=I=-18:TP=-2:LRA=11,afade=t=in:d=0.4,afade=t=out:st={fadeOut}:d=1.2",
             "-f", "mp3", "pipe:1",
         ];
         try
