@@ -469,3 +469,9 @@
 }
 .clk-ov-x { position: absolute; top: 6px; right: 6px; padding: 2px 9px; }
 .clk-tabs button[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Нижче правил вкладок, бо медіазапит сам по собі ваги не додає: нова вкладка не пульсує,
+     а просто лишається обведеною — побачити її однаково можна. */
+  .clk-tabs button.fresh { animation: none; box-shadow: 0 0 0 1px var(--accent) inset; }
+}
