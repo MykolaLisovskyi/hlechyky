@@ -488,6 +488,56 @@
     if (ui.nxBar.style.width !== pct) ui.nxBar.style.width = pct;
   }
 
+  // ---------- підказки «перший раз» ----------
+
+  const TIP_MS = 8000;                    // стільки висить підказка, якщо гравець її не закрив
+  const TIP_OLD = 20;                     // обпалив стільки — уже не новачок, підказок не показуємо
+
+  /// П'ять підказок на всю гру, по одній, кожна раз у житті (clk.tip.<key> у localStorage). Вони пояснюють
+  /// саме те, що гравець бачить просто зараз, — і зникають самі.
+  const TIPS = [
+    { key: 'spin', text: 'Кожен клік ліпить горщик — дивись смужку на першому кроці',
+      when: (c) => c.formed === 0 && c.work > 0 },
+    { key: 'rack', text: 'Виріб сохне на сушарні півтори хвилини, а потім піде в горно',
+      when: (c) => c.rack.length > 0 },
+    { key: 'dry', text: 'Сирець висох — тисни «Обпалити», решту горно зробить саме',
+      when: (c, st, api) => dryNow(st, api) > 0 },
+    { key: 'fired', text: 'Виріб у коморі: продай його або притримай для замовлення',
+      when: (c) => c.items.length > 0 },
+    { key: 'craft', text: 'Усе ремесло тепер на вкладці «Ремесло» — горно, комора й замовлення',
+      when: (c, st) => c.fired > 0 && !!st.panes.craft },
+  ];
+
+  function maybeTip(st, api) {
+    const c = st.craft;
+    const ui = st.craftUi;
+    if (!c || !ui || !st.mine || c.fired >= TIP_OLD || ui.tip) return;
+    for (const t of TIPS) {
+      if (api.storeGet('clk.tip.' + t.key, '') === '1') continue;
+      let on = false;
+      try { on = !!t.when(c, st, api); } catch (e) { console.error('[clicker:craft] підказка ' + t.key, e); }
+      if (!on) continue;
+      api.storeSet('clk.tip.' + t.key, '1');
+      showTip(st, api, t.text);
+      return;
+    }
+  }
+
+  function showTip(st, api, text) {
+    const ui = st.craftUi;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'clk-tip';
+    el.innerHTML = '<span>💡 ' + api.esc(st, text) + '</span><i>✕</i>';
+    const close = () => { clearTimeout(ui.tipT); ui.tip = null; el.remove(); };
+    el.onclick = close;
+    ui.tip = el;
+    ui.el.appendChild(el);
+    // Кому анімації заважають, тому й підказка, що зникає сама, заважає: така лишається до дотику.
+    if (!smoothOk()) return;
+    ui.tipT = setTimeout(() => { el.classList.add('out'); setTimeout(close, 400); }, TIP_MS);
+  }
+
   function runNext(st, api, ev) {
     const ui = st.craftUi;
     const n = ui.next;
@@ -526,10 +576,10 @@
           : '<span class="muted small">відкриється на ' + api.short(w.unlock) + ' глеків за весь час</span>')
         + '</button>';
     }).join('');
-    const body = api.overlay(st, '<div class="clk-sub">Що ліпити на колі</div>'
-      + '<p class="muted small clk-note">Кожен зарахований клік — одна робота; підмайстри ліплять і без тебе. Готовий виріб сохне на '
-      + 'сушарні, а висохлий обпалюють у горні — тоді він з розписом і якістю ляже в комору. Дорожчий виріб довше ліпити, зате '
-      + 'він вартий більше. Ціна — простого звичайного, розпис і якість її множать.</p>'
+    const body = api.overlay(st, '<div class="clk-sub">Що ліпити на колі'
+      + api.info('Кожен зарахований клік — одна робота; підмайстри ліплять і без тебе. Готовий виріб сохне на сушарні, а '
+        + 'висохлий обпалюють у горні — тоді він з розписом і якістю ляже в комору. Дорожчий виріб довше ліпити, зате він '
+        + 'вартий більше. Ціна — простого звичайного, розпис і якість її множать.') + '</div>'
       + '<div class="clkw-grid">' + cards + '</div>', { cls: 'clkw-picker' });
     for (const b of body.querySelectorAll('[data-ware]')) {
       b.onclick = () => { api.order(st, 'form', { ware: b.dataset.ware }); api.closeOverlay(st); };
@@ -643,6 +693,8 @@
         nxIco: bar.querySelector('.clk-nxico'), nxText: bar.querySelector('.clk-nxtext'), nxSub: bar.querySelector('.clk-nxsub'),
         nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0 };
       st.craftUi.nxBtn.onclick = (ev) => runNext(st, api, ev);
+      st.craftUi.tip = null;
+      st.craftUi.tipT = 0;
       // «Ремесло» — одна вкладка на все ремесло: горно зверху, далі сушарня з коморою, знизу замовлення.
       // Місця (data-slot) наповнюють горно (clicker-kiln.js) і ярмарок (clicker-fair.js), кожен своїм.
       st.craftPane = api.tab(st, CRAFT_TAB, '🏺 Ремесло', 10);
@@ -688,6 +740,7 @@
     slow(st, api, now) {
       paintShelf(st, api);
       paintPath(st, api);
+      maybeTip(st, api);
       if (st.tab === CRAFT_TAB) {
         for (const el of st.storeCds) {
           const left = +el.dataset.at - now;
@@ -703,6 +756,7 @@
     },
 
     unmount(st) {
+      if (st.craftUi) clearTimeout(st.craftUi.tipT);
       st.craftUi = null;
       st.craftPane = null;
     },

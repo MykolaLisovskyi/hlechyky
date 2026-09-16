@@ -139,13 +139,15 @@
     const moveTiles = a.stove.length;
     const found = pc(a.finds);
     const lv = a.mastery.reduce((x, y) => x + y, 0);
-    const html = '<div class="clka-bonus"><b>+' + pct(api, a.bonus) + '</b><span class="muted small">до всього від альбому · обпал не спалює</span></div>'
+    // На першому екрані — одне число, яке справді щось каже; чотири кільця — за ▾ для тих, кому цікаво.
+    const html = '<div class="clka-bonus"><b>+' + pct(api, a.bonus) + '</b><span class="muted small">до всього від альбому · клейма його не спалюють</span></div>'
+      + '<details class="clka-ringsec"><summary>з чого це складається</summary>'
       + '<div class="clka-rings">'
       + '<div class="clka-rg">' + ring(a.open / a.size) + '<span><b>' + a.open + '/' + a.size + '</b><i class="muted">клітинок</i></span></div>'
       + '<div class="clka-rg">' + ring(moveTiles / 12, 'tile') + '<span><b>' + moveTiles + '/12</b><i class="muted">кахлів</i></span></div>'
       + '<div class="clka-rg">' + ring(found / 8, 'museum') + '<span><b>' + found + '/8</b><i class="muted">знахідок</i></span></div>'
       + '<div class="clka-rg">' + ring(lv / 120, 'mastery') + '<span><b>' + lv + '/120</b><i class="muted">майстерність</i></span></div>'
-      + '</div>';
+      + '</div></details>';
     api.swap(st.albumUi.head, html);
   }
 

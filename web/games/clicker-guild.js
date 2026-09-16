@@ -461,8 +461,7 @@
 
   // ---------- вкладка ----------
 
-  /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить.
-  const info = (text) => '<details class="clk-info"><summary>і</summary><p>' + text + '</p></details>';
+  const info = (text) => HClicker.api.info(text);
 
   function paint(st, api) {
     const v = st.guild;

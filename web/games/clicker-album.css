@@ -11,6 +11,11 @@
 }
 .clka-bonus { display: flex; flex-direction: column; }
 .clka-bonus b { font-size: 1.5em; color: var(--accent2); font-variant-numeric: tabular-nums; line-height: 1.1; }
+/* «З чого це складається» — чотири кільця за ▾: на першому екрані досить одного числа. */
+.clka-ringsec > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: .82em; padding: 3px 0; }
+.clka-ringsec > summary::-webkit-details-marker { display: none; }
+.clka-ringsec > summary::after { content: ' ▾'; }
+.clka-ringsec[open] > summary::after { content: ' ▴'; }
 .clka-rings { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .clka-rg { display: flex; align-items: center; gap: 5px; }
 .clka-rg span { display: flex; flex-direction: column; line-height: 1.15; font-size: .82em; }

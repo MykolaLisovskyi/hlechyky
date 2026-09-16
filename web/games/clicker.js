@@ -160,6 +160,9 @@
     return d + ' ' + plural(d, 'день', 'дні', 'днів');
   }
 
+  /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить. Тим самим користуються частини.
+  const info = (text) => '<details class="clk-info"><summary>і</summary><p>' + text + '</p></details>';
+
   const storeGet = (k, dflt) => { try { return localStorage.getItem(k) || dflt; } catch { return dflt; } };
   const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватне вікно — пам'ятати нема де */ } };
 
@@ -408,7 +411,7 @@
     if (st.all.disabled !== all) st.all.disabled = all;
     const pots = String(many * st.rateOf);
     if (st.all.dataset.pots !== pots) st.all.dataset.pots = pots;
-    const label = 'Усе (' + num(many) + ' 🏺)';
+    const label = 'Обміняти все (' + num(many) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
 
     paintWheel(st);
@@ -719,9 +722,9 @@
 
     const armed = st.fireArmed && Date.now() < st.fireArmed;
     if (!armed) st.fireArmed = 0;
-    const label = gain < 1 ? '🔥 Обпалити — ще рано'
+    const label = gain < 1 ? '🔥 Почати наново — ще рано'
       : armed ? 'Точно? Глеки й верстати згорять — ще раз'
-      : '🔥 Обпалити: +' + gain + ' ' + stampsWord(gain);
+      : '🔥 Почати наново: +' + gain + ' ' + stampsWord(gain);
     if (f._btn.textContent !== label) f._btn.textContent = label;
     const off = !st.mine || gain < 1;
     if (f._btn.disabled !== off) f._btn.disabled = off;
@@ -1123,11 +1126,11 @@
     const cap = v.stampCap || 0;
     const head = '<div class="clk-stamps"><b>🔖 ' + num(st.stamps) + ' ' + stampsWord(st.stamps) + '</b>'
       + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних для секретів: ' + num(st.stampsFree) + (v.firings ? ' · обпалів: ' + v.firings : '') + '</span></div>'
-      + '<p class="muted small clk-note">Обпал спалює глеки, верстати й віхи. Натомість — клейма майстра за все, що наліпив '
-      + 'за весь час: кожне дає +' + dec(st.stampBonus * 100) + ' % до всього назавжди. Розписи, секрети й таблиця лишаються. '
-      + 'Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
-      + (cap ? ' (зараз +' + cap + ')' : '') + '.</p>';
+      + '<span class="muted small">вільних для секретів: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
+        + 'за весь час: кожне дає +' + dec(st.stampBonus * 100) + ' % до всього назавжди. Розписи, секрети, альбом і таблиця '
+        + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
+        + (cap ? ' (зараз +' + cap + ')' : '') + '.');
     const secrets = '<div class="clk-sub">Родинні секрети<span class="muted small"> · за клейма, назавжди</span></div><div class="clk-secrets">'
       + st.secretList.map((s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
         + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
@@ -1172,7 +1175,7 @@
   function paintSections(st, ownedStyles) {
     const count = {
       house: st.tools.filter((t) => t.owned).length + st.clays.filter((c) => c.owned && c.price > 0).length,
-      styles: ownedStyles + '/' + (st.styleList.length || 8),
+      styles: ownedStyles ? ownedStyles + '/' + (st.styleList.length || 8) : '',
       orders: st.taken.length ? '🐴' + st.taken.length : '',
     };
     for (const x of SECTIONS) {
@@ -1226,7 +1229,11 @@
 
   function ordersPane(st, ctx) {
     const esc = ctx.esc;
-    const head = '<div class="clk-sub">Дошка купців<span class="muted small"> · нові купці через <span class="clk-cd" data-at="' + st.refreshAt + '" data-done="ось-ось"></span></span></div>';
+    const note = info('Купець у дорозі повертає більше, ніж узяв: що довша дорога, то щедріше (5 хв — ×1,4, 30 хв — ×2,2). '
+      + 'За розпис із колекції платить одразу ×1,6. Дошка оновлюється раз на 4 хвилини, кого не взяв — поїхав. '
+      + 'Клейма спалюють купців у дорозі разом із глеками.'
+      + (st.tools.some((t) => t.key === 'scales' && t.owned) ? ' Ваги купця: +20 % до кожної плати.' : ''));
+    const head = '<div class="clk-sub">Дошка купців<span class="muted small"> · нові купці через <span class="clk-cd" data-at="' + st.refreshAt + '" data-done="ось-ось"></span></span>' + note + '</div>';
     const board = st.orders.length
       ? '<div class="clk-orders">' + st.orders.map((o) => {
         const invest = o.kind === 'invest';
@@ -1245,10 +1252,7 @@
         + st.taken.map((t) => '<div class="clk-taken"><span>🐴 ' + esc(t.merchant) + '</span><span class="muted small">повернеться через <span class="clk-cd" data-at="'
           + t.payAt + '" data-done="уже на порозі"></span> з <b>' + short(t.pay) + '</b></span></div>').join('') + '</div>'
       : '';
-    const note = '<p class="muted small clk-note">Купець у дорозі повертає більше, ніж узяв: що довша дорога, то щедріше (5 хв — ×1,4, 30 хв — ×2,2). '
-      + 'За розпис із колекції платить одразу ×1,6. Дошка оновлюється раз на 4 хвилини, кого не взяв — поїхав. '
-      + 'Обпал спалює купців у дорозі разом із глеками.' + (st.tools.some((t) => t.key === 'scales' && t.owned) ? ' Ваги купця: +20 % до кожної плати.' : '') + '</p>';
-    if (swap(st.ordersPane, head + board + taken + note)) {
+    if (swap(st.ordersPane, head + board + taken)) {
       st.orderBtns = [...st.ordersPane.querySelectorAll('[data-take]')];
       for (const b of st.orderBtns) b.onclick = () => order(st, 'take', { id: +b.dataset.take });
       collectCountdowns(st);
@@ -1314,6 +1318,7 @@
     short, num, dec, big, span, plural, potsWord, potsShort, shards, mmss, jug, jugSvg, STYLE, swap, fleeting, serverNow, visible,
     storeGet, storeSet,
     guardOn: (st) => guardOn(st),
+    info,
     esc: (st, x) => ((st.ctx && st.ctx.esc) || ((y) => String(y)))(x),
     order: (st, action, payload) => order(st, action, payload),
     /// Дія з відповіддю (Promise): для мінігор, яким треба знати результат. Накопичені кліки летять першими.
@@ -1716,7 +1721,7 @@
         else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
         st.lastView = v;
       }
-      const one = 'Продати ' + num(st.rateOf) + ' → 🏺1';
+      const one = 'Обміняти ' + num(st.rateOf) + ' → 🏺1';
       if (st.one.textContent !== one) st.one.textContent = one;
       const left = st.canSell > 0
         ? 'сьогодні ще ' + num(st.canSell) + ' ' + shards(st.canSell) + ', по ' + num(st.rateOf) + ' глеків за черепок'
