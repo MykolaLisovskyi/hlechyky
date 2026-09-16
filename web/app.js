@@ -585,10 +585,11 @@
     chip.textContent = '🎧 ' + shown + (nicks.length ? ' · ' + nicks.join(', ') : '');
     chip.title = listenersText();
     chip.classList.toggle('on', shown > 0);
+    state.online.forEach(learnNick);
     const people = state.online.slice().sort((a, b) => listens(b) - listens(a));
     $('online').innerHTML = people.map((n) => listens(n)
-      ? `<span class="chip listening" title="${esc(n)} зараз слухає ефір">🎧 ${esc(n)}</span>`
-      : `<span class="chip" title="на сайті, але плеєр вимкнений">${esc(n)}</span>`).join('') || '<span class="muted small">нікого</span>';
+      ? `<span class="chip listening" title="${esc(n)} зараз слухає ефір">🎧 ${esc(n)}${crownOf(n)}</span>`
+      : `<span class="chip" title="на сайті, але плеєр вимкнений">${esc(n)}${crownOf(n)}</span>`).join('') || '<span class="muted small">нікого</span>';
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
 
@@ -728,6 +729,66 @@
   function paintTitle() { document.title = (unread ? `(${unread}) ` : '') + baseTitle; }
   /// Кличуть на ім'я — навіть коли балачки згорнуті, це має долетіти.
   const mentionsMe = (text) => !!me.nick && me.nick.length > 1 && String(text || '').toLowerCase().includes(me.nick.toLowerCase());
+  /// Тегнули саме через @ — це вже не просто згадка в розмові, а поклик: на нього й звук.
+  const taggedMe = (text) => !!me.nick && String(text || '').toLowerCase().includes('@' + me.nick.toLowerCase());
+  /// 👑 біля ніка чинного чемпіона турніру.
+  const crownOf = (nick) => (window.HTournament && HTournament.crowned(nick) ? '<span class="crown" title="Чемпіон турніру">👑</span>' : '');
+
+  /// Ніки, які сайт знає: хто зараз онлайн і хто писав у балачках. З них — підказка після @ і підсвітка.
+  const knownNicks = new Map();          // нижній регістр → як пишеться
+  function learnNick(n) { if (n && n.length > 1) knownNicks.set(n.toLowerCase(), n); }
+
+  /// @Нік у тексті — підсвітити. Працює по вже екранованому HTML: ніки теж екрануємо, довші спершу («Оля Петрівна» раніше «Оля»).
+  function highlightMentions(html) {
+    const nicks = [...knownNicks.values()].sort((a, b) => b.length - a.length);
+    if (!nicks.length || html.indexOf('@') < 0) return html;
+    const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('@(' + nicks.map((n) => escRe(esc(n))).join('|') + ')(?![\\p{L}\\p{N}_])', 'giu');
+    return html.replace(re, (m, n) => `<span class="mention${sameNick(n, esc(me.nick)) ? ' me' : ''}">${m}</span>`);
+  }
+
+  // ---------- звук на поклик ----------
+  // Коли тебе тегнули через @ або відповіли — коротке «дзінь» (два тони через WebAudio, без файлів). Вимикається 🔔.
+  let pingOn = localStorage.getItem('pingSound') !== '0';
+  let audioCtx = null;
+  function ping() {
+    if (!pingOn) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t0 = audioCtx.currentTime;
+      [[880, 0], [1320, 0.12]].forEach(([freq, at]) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t0 + at);
+        g.gain.exponentialRampToValueAtTime(0.18, t0 + at + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.35);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t0 + at);
+        o.stop(t0 + at + 0.4);
+      });
+    } catch { /* браузер без WebAudio — мовчки */ }
+  }
+  // Браузер дає звук лише після першого жесту на сторінці — будимо контекст на першому ж кліку/клавіші.
+  const wakeAudio = () => {
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch { /* нема — то й нема */ }
+  };
+  document.addEventListener('pointerdown', wakeAudio, { once: true });
+  document.addEventListener('keydown', wakeAudio, { once: true });
+  function paintPing() {
+    const b = $('pingBtn');
+    b.textContent = pingOn ? '🔔' : '🔕';
+    b.title = pingOn ? 'Звук, коли тебе тегнули чи відповіли — увімкнено' : 'Звук на @ і відповіді вимкнено';
+  }
+  $('pingBtn').onclick = () => {
+    pingOn = !pingOn;
+    try { localStorage.setItem('pingSound', pingOn ? '1' : '0'); } catch { /* приватне вікно */ }
+    paintPing();
+    if (pingOn) ping();
+  };
+  paintPing();
   /// Кнопка до столу біля рядка балачок: «Сісти», поки є куди, інакше «Дивитись». Столу вже нема —
   /// кнопки теж нема: мертве посилання гірше, ніж його відсутність. Що там за стіл, знає HGames.
   /// <c>named</c> — чи назвати гру на самій кнопці; у рядку Журналу вона вже названа в тексті.
@@ -805,7 +866,7 @@
       // Саме лише «🔥» — не рядок тексту, а жест: показуємо на весь зріст, поки їх не набралося багато.
       const big = emojiCount(m.text);
       if (big && big <= 3) el.classList.add('big');
-      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="t">${linkify(m.text)}</span><span class="time">${tm(m.at)}</span>`;
+      el.innerHTML = `<span class="n">${esc(m.nick)}${crownOf(m.nick)}</span><span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
     }
     if (!isLog && m.kind !== 'tables' && m.id > 0) decorateMessage(el, m);
     // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
@@ -820,11 +881,16 @@
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();
     if (scroll) box.scrollTop = box.scrollHeight;
-    const toMe = !mine && !isLog && sameNick(m.replyNick, me.nick);
-    if (toMe) el.classList.add('tome');
+    if (!isLog) learnNick(m.nick);
+    const repliedMe = !mine && !isLog && sameNick(m.replyNick, me.nick);
+    const tagged = !mine && !isLog && m.kind === 'chat' && taggedMe(m.text);
+    if (repliedMe || tagged) el.classList.add('tome');
+    // звук — лише на живе повідомлення, не на історію після F5
+    if (live && (repliedMe || tagged)) ping();
     if (!isLog && scroll && !mine && !chatVisible()) {
       setUnread(unread + 1);
-      if (toMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
+      if (repliedMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
+      else if (tagged) toast(`@ ${m.nick} кличе тебе: ${m.text}`.slice(0, 140));
       else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
     }
   }
@@ -868,6 +934,18 @@
     el.classList.toggle('liked', likes.some((n) => sameNick(n, me.nick)));
   }
 
+  /// Корона переїхала — перемалювати ніки у вже намальованих повідомленнях.
+  function repaintCrowns() {
+    $('messages').querySelectorAll('.msg .n').forEach((n) => {
+      const msg = n.closest('.msg');
+      const nick = msg && msg.dataset.nick;
+      if (!nick) return;
+      const old = n.querySelector('.crown');
+      if (old) old.remove();
+      if (window.HTournament && HTournament.crowned(nick)) n.insertAdjacentHTML('beforeend', crownOf(nick));
+    });
+  }
+
   function likeMessage(id) {
     if (!conn || !id) return;
     conn.invoke('LikeChat', id).then((err) => { if (err) toast(err, 'err'); }).catch(() => {});
@@ -897,6 +975,66 @@
   }
 
   $('replyCancel').onclick = () => { clearReply(); $('chatInput').focus(); };
+
+  // ---------- @: підказка ніків ----------
+  // Набираєш «@о» — випадає список тих, кого сайт знає (спершу онлайн). ↑↓ — вибір, Enter/Tab — вставити, Esc — закрити.
+  let mentionSel = 0;
+  function mentionQuery() {
+    const inp = $('chatInput');
+    const upto = inp.value.slice(0, inp.selectionStart ?? inp.value.length);
+    const hit = /(^|\s)@([^\s@]*)$/.exec(upto);
+    return hit ? { q: hit[2].toLowerCase(), start: upto.length - hit[2].length - 1 } : null;
+  }
+  function mentionList(q) {
+    const online = new Set(((state && state.online) || []).map((n) => n.toLowerCase()));
+    return [...knownNicks.values()]
+      .filter((n) => !sameNick(n, me.nick) && n.toLowerCase().startsWith(q))
+      .sort((a, b) => (online.has(b.toLowerCase()) - online.has(a.toLowerCase())) || a.localeCompare(b, 'uk'))
+      .slice(0, 6);
+  }
+  function hideMentions() { $('mentionPick').hidden = true; }
+  function showMentions() {
+    const m = mentionQuery();
+    const box = $('mentionPick');
+    const list = m ? mentionList(m.q) : [];
+    if (!list.length) { hideMentions(); return; }
+    mentionSel = Math.min(mentionSel, list.length - 1);
+    const online = new Set(((state && state.online) || []).map((n) => n.toLowerCase()));
+    box.innerHTML = list.map((n, i) => `<button type="button" class="${i === mentionSel ? 'on' : ''}" data-nick="${esc(n)}">`
+      + `@${esc(n)}${crownOf(n)}${online.has(n.toLowerCase()) ? ' <span class="dot" title="на сайті"></span>' : ''}</button>`).join('');
+    box.hidden = false;
+    box.querySelectorAll('button').forEach((b) => b.onmousedown = (e) => { e.preventDefault(); insertMention(b.dataset.nick); });
+  }
+  function insertMention(nick) {
+    const m = mentionQuery();
+    const inp = $('chatInput');
+    if (!m) return;
+    const caret = inp.selectionStart ?? inp.value.length;
+    inp.value = inp.value.slice(0, m.start) + '@' + nick + ' ' + inp.value.slice(caret);
+    const pos = m.start + nick.length + 2;
+    inp.setSelectionRange(pos, pos);
+    hideMentions();
+    inp.focus();
+  }
+  $('chatInput').addEventListener('input', () => { mentionSel = 0; showMentions(); });
+  $('chatInput').addEventListener('click', showMentions);
+  $('chatInput').addEventListener('blur', () => setTimeout(hideMentions, 150));
+  $('chatInput').addEventListener('keydown', (e) => {
+    if ($('mentionPick').hidden) return;
+    const buttons = [...$('mentionPick').querySelectorAll('button')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      mentionSel = (mentionSel + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      showMentions();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (buttons[mentionSel]) insertMention(buttons[mentionSel].dataset.nick);
+    } else if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      hideMentions();
+    }
+  });
   $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape' && replyTo) clearReply(); });
 
   $('messages').addEventListener('click', (e) => {
@@ -1646,6 +1784,24 @@
       .build();
     conn.on('state', (s) => { state = s; render(); });
     conn.on('chat', (m) => addMessage(m, true, true));
+    let tourRoom = null;
+    if (window.HTournament) HTournament.connect((...a) => conn.invoke(...a));
+    conn.on('tournament', (t) => {
+      if (!window.HTournament) return;
+      const hadCrown = JSON.stringify((HTournament.state || {}).crown || []);
+      HTournament.update(t);
+      if (hadCrown !== JSON.stringify((t && t.crown) || [])) { if (state) renderOnline(); repaintCrowns(); }
+      // Нова гра турніру, а я в ньому — одразу за стіл (якщо вже в «Іграх»), інакше — тост із підказкою.
+      const room = t && t.stage === 'playing' && t.room ? t.room.id : null;
+      const mineT = t && (t.players || []).some((p) => sameNick(p, me.nick));
+      if (room && room !== tourRoom && mineT) {
+        if (tourRoom !== null || route === 'games') {
+          if (route === 'games') go('#games/room/' + encodeURIComponent(room));
+          else toast('🏆 Турнір: наступна гра почалась — зазирни в «Ігри»', 'ok');
+        }
+      }
+      tourRoom = room || (tourRoom === null ? '' : tourRoom);
+    });
     conn.on('chatLikes', (x) => {
       const el = x && $('messages').querySelector(`.msg[data-id="${x.id}"]`);
       if (el) paintLikes(el, x.likes || []);

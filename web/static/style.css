@@ -396,6 +396,20 @@ button.vplay { padding: 3px 8px; }
 .msg.flash { animation: msgflash 1.2s ease-out; }
 @keyframes msgflash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); } 100% { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .msg.flash { animation: none; background: var(--panel2); } }
+/* ---- @згадки, корона, дзвоник ---- */
+.msg .mention { color: var(--accent2); font-weight: 600; }
+.msg .mention.me { color: var(--accent-ink, #1b1b1b); background: var(--accent); border-radius: 4px; padding: 0 3px; }
+.crown { margin-left: 3px; font-size: .9em; }
+.chat .chat-ping { margin-left: auto; background: transparent; border-color: transparent; padding: 4px 7px; }
+.chat .chat-ping + .chat-close { margin-left: 0; }
+.mentionpick {
+  display: flex; flex-direction: column; margin-top: 8px; padding: 4px; max-height: 30vh; overflow: auto;
+  border: 1px solid var(--line); background: var(--bg2); border-radius: 10px;
+}
+.mentionpick[hidden] { display: none; }
+.mentionpick button { text-align: left; background: transparent; border-color: transparent; padding: 5px 8px; display: flex; align-items: center; gap: 6px; }
+.mentionpick button.on, .mentionpick button:hover { background: var(--panel2); }
+.mentionpick .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .replybar {
   display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 4px 4px 4px 10px;
   border-left: 3px solid var(--accent2); background: var(--bg2); border-radius: 6px; font-size: .88em; color: var(--muted);

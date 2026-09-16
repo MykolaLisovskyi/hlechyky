@@ -27,6 +27,8 @@ public static class GamesSetup
         services.TryAddSingleton<IStakes, NoStakes>();
         services.TryAddSingleton<IGameStore, MemoryGameStore>();
         services.AddHostedService<TickEngine>();
+        services.AddSingleton<Tournament>();
+        services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
         return services;
     }

@@ -7,6 +7,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/games/core.css">
+<link rel="stylesheet" href="/games/tournament.css">
 </head>
 <body class="route-efir">
 <header>
@@ -122,6 +123,7 @@
     <div class="tabs" id="chatTabs">
       <button data-tab="chat" class="on">Балачки <span id="chatBadge" class="chip badge" hidden>0</span></button>
       <button data-tab="log">Журнал</button>
+      <button id="pingBtn" class="icon chat-ping" type="button">🔔</button>
       <button id="chatClose" class="icon chat-close" type="button" title="Згорнути балачки — клавіша ]" aria-label="Згорнути балачки">✕</button>
     </div>
     <div id="online" class="online"></div>
@@ -129,6 +131,7 @@
     <div id="log" class="messages" hidden></div>
     <div id="cmdHint" class="cmdhint" hidden></div>
     <div id="emojiPick" class="emojipick" hidden></div>
+    <div id="mentionPick" class="mentionpick" hidden></div>
     <div id="replyBar" class="replybar" hidden><span class="rb-text"></span><button id="replyCancel" class="ghost icon" type="button" title="Не відповідати (Esc)">✕</button></div>
     <form id="chatForm">
       <button id="cmdBtn" class="ghost icon" type="button" title="Команди чату">/</button>
@@ -184,6 +187,7 @@
 <script src="/static/signalr.min.js"></script>
 <!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
 <script src="/games/core.js"></script>
+<script src="/games/tournament.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

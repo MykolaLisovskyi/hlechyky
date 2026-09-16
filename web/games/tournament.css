@@ -1,0 +1,23 @@
+/* Турнір на вечір — панель у «Іграх». Кольори — змінними сайту. */
+.trbox { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+.trbox h3 { margin: 0; }
+.trcrown { font-size: 1.05em; }
+.trpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.trpick .gpick b { color: var(--accent); }
+.tract { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.trgames { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: tr; }
+.trgames li { counter-increment: tr; padding: 3px 10px; border-radius: 999px; background: var(--bg2); color: var(--muted); }
+.trgames li::before { content: counter(tr) ". "; }
+.trgames li.past { text-decoration: line-through; opacity: .7; }
+.trgames li.now { background: var(--accent); color: var(--accent-ink, #1b1b1b); font-weight: 700; }
+.trplayers { display: flex; flex-wrap: wrap; gap: 6px; }
+.trplayers .chip.on::before { content: "● "; color: var(--ok); }
+.trtable { display: flex; flex-direction: column; gap: 3px; max-width: 420px; }
+.trrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg2); border-radius: 8px; }
+.trrow.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.trplace { min-width: 2em; }
+.trnick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trrow b { font-variant-numeric: tabular-nums; }
+.trresults { display: flex; flex-direction: column; gap: 4px; }
+.trres { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.trchamp { font-size: 1.6em; font-weight: 800; color: var(--accent); }

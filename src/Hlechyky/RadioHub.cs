@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -25,6 +25,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         catch (Exception) { lobby = []; }
         await Clients.Caller.SendAsync("rooms", lobby);
         await Clients.All.SendAsync("state", engine.Snapshot());
+        try { await Clients.Caller.SendAsync("tournament", tournament.Snapshot()); } catch (Exception) { /* турнір — не привід не пустити */ }
+        tournament.PresenceChanged();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -36,6 +38,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
         if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
         await Clients.All.SendAsync("state", engine.Snapshot());
+        tournament.PresenceChanged();
     }
 
     /// <summary>Повертає текст помилки тому, хто писав (нікому більше), або null, якщо все гаразд.</summary>
@@ -118,6 +121,19 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
         if (old is not null && !presence.IsOnline(old)) await broadcaster.FlushAsync(rooms.DropNick(old));
     }
+
+    // ---------- турнір ----------
+    // Кожен метод повертає текст відмови тому, хто тиснув, або null; зміни всім розсилає сам Tournament.
+
+    public Task<string?> TournamentCreate(string[] games) => Lead(() => tournament.Create(Nick(), games));
+    public Task<string?> TournamentJoin() => Lead(() => tournament.Join(Nick()));
+    public Task<string?> TournamentLeave() => Lead(() => tournament.Leave(Nick()));
+    public Task<string?> TournamentNext() => Lead(() => tournament.Next(Nick()));
+    public Task<string?> TournamentSkip() => Lead(() => tournament.Skip(Nick()));
+    public Task<string?> TournamentCancel() => Lead(() => tournament.Cancel(Nick()));
+
+    Task<string?> Lead(Func<string?> action) =>
+        Task.FromResult(Allow(input: false) ? action() : Games.Say.TooFast);
 
     // ---------- ігри (PROTOCOL §1) ----------
 
