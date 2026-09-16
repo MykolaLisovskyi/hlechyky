@@ -1426,6 +1426,28 @@
 
   // ---------- модуль ----------
 
+  /// Стіл вищий за те, що лишається під лобі й рядком стола, тому перший вид після входу підкручує картку
+  /// під шапку сайту (scroll-margin-top у css): коло, смуга «Шлях виробу» і полиця верстатів стають
+  /// в один екран і гортати нічого не треба. Каркас монтує картку один раз і далі лише ховає її,
+  /// тому міра — не mount, а мить, коли картка знову стала видною.
+  function placeInView(st) {
+    const card = st.root && st.root.closest && st.root.closest('.gtable');
+    if (!card) return;
+    if (card.hidden || !card.isConnected) { st.inView = false; return; }
+    if (st.inView) return;
+    st.inView = true;
+    if (!window.matchMedia('(min-width: 1000px) and (min-height: 700px)').matches) return;
+    // Через кадр-другий: на першому виді полиця ще порожня (картка низька), а app.js на зміну адреси
+    // ще й скидає сторінку вгору — раніше міряти немає чого.
+    setTimeout(() => {
+      if (card.hidden || !card.isConnected) return;
+      const r = card.getBoundingClientRect();
+      if (r.bottom <= window.innerHeight) return;   // і так усе видно
+      if (r.top < 0) return;                        // гравець уже гортав сам — не смикаємо
+      card.scrollIntoView({ block: 'start', behavior: 'auto' });
+    }, 150);
+  }
+
   const MOD = {
     id: 'clicker',
     icon: ICON,
@@ -1635,6 +1657,7 @@
     update(root, ctx) {
       const st = state(root);
       if (!st.el) return;
+      placeInView(st);
       st.ctx = ctx;
       ctx.clk = st;
       st.mine = !!ctx.mine;

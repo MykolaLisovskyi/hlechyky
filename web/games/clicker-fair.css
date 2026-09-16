@@ -139,7 +139,8 @@
 .clkf-perk { font-size: .68em; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 
-@container (max-width: 420px) {
+/* Запит — до картки (clk), а не до полиці верстатів: дошка купців живе в clk-side, яка тепер теж контейнер. */
+@container clk (max-width: 420px) {
   .clkf-orders { grid-template-columns: minmax(0, 1fr); }
   .clkf-feed { grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 4px 8px; }
 }
