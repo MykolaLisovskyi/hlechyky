@@ -1,4 +1,5 @@
 :root {
+  --mini-h: 0px;
   --bg: #0f1f18;
   --bg2: #16291f;
   --panel: #1c3328;
@@ -105,6 +106,7 @@ header .vswitch button:hover { background: var(--panel2); color: var(--text); }
 header .vswitch button.on { background: var(--panel2); color: var(--text); }
 header .vswitch .ico { font-size: 1.05em; line-height: 1; }
 header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
+header .hdrtitle { display: none; font-weight: 700; font-size: 1.05em; }
 header .who { display: flex; align-items: center; gap: 8px; flex: none; }
 header .chip.wallet { background: var(--panel2); color: var(--accent); font-size: .9em; padding: 4px 10px; }
 header .chip.wallet b { font-variant-numeric: tabular-nums; }
@@ -398,14 +400,29 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 /* ---- mobile tabs ---- */
 .mtabs { display: none; }
 @media (max-width: 900px) {
-  :root { --tabs-h: 58px; }
-  header { gap: 8px; padding: 8px 12px; }
-  header .brand span { display: none; }
-  header #volume, .mini-cv, .mini-tt, .mini-acts { display: none; }
+  :root { --tabs-h: 58px; --mini-h: 54px; }
+  header { gap: 8px; padding: 8px 12px; backdrop-filter: none; background: #101f18; }
+  header .brand span, header #volume { display: none; }
+  header .hdrtitle { display: block; }
+  /* Міні-плеєр переїздить униз, над вкладки: він потрібен на кожному екрані, а в шапці місця нема.
+     Це та сама розмітка й ті самі обробники — інша лише позиція. Фіксована позиція працює саме
+     тому, що backdrop-filter із шапки тут знято: інакше він робив би шапку контейнером. */
+  header .mini {
+    position: fixed; left: 0; right: 0; bottom: var(--tabs-h); z-index: 6; height: var(--mini-h);
+    gap: 8px; padding: 0 12px; background: #0b1712; border-top: 1px solid var(--line);
+  }
+  header #playBtn { min-width: 0; padding: 7px 11px; }
+  /* Унизу лишаємо найпотрібніше: обкладинка, назва з виконавцем, ▶ і ⏭.
+     Лайк і лічильник слухачів є на панелі «В ефірі», а тут вони з'їдали б назву. */
+  header #listeners, .mini-acts [data-act="like"] { display: none; }
+  .mini-tt small { display: block; }
+  /* Стіл на весь екран — плеєр не заважає грати. */
+  body.gfull { --mini-h: 0px; }
+  body.gfull header .mini { display: none; }
   /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
-  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
+  main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   section.panel { padding: 12px; }
-  .chat { height: calc(100vh - 60px - var(--tabs-h) - 24px); position: static; min-height: 0; }
+  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px); position: static; min-height: 0; }
   #colChat { display: none; }
   body.route-chat #colChat { display: flex; }
   body.route-chat #colMain { display: none; }
@@ -415,8 +432,12 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .82em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 2px; }
   .mtabs button .ico { font-size: 1.25em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
-  .toasts { bottom: calc(var(--tabs-h) + 12px); }
+  .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); }
   .sug .btns { grid-column: 1 / -1; }
+  /* бокове меню бібліотеки на телефоні — рядок, що гортається; заголовок і пошук один під одним */
+  .libhead { flex-wrap: wrap; gap: 8px; }
+  #libFind { margin-left: 0; max-width: none; flex: 1 1 140px; }
+  .libpage .list { max-height: calc(100vh - 260px); }
 }
 @media (max-width: 480px) {
   .qitem .btns { flex-direction: column; }

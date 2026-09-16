@@ -799,6 +799,7 @@
   // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'chat'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'rating', 'top', 'bans', 'ads'];
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', chat: 'Балачки' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', rating: 'Рейтинг', top: 'Хто скільки', bans: 'Бан-лист', ads: 'Реклама' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах і «Хто скільки» шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', rating: 'знайти трек', bans: 'знайти в бан-листі', ads: 'знайти рекламу' };
@@ -836,6 +837,7 @@
       $('libFind').placeholder = LIB_FIND[libTab] || '';
     }
     route = r;
+    $('hdrTitle').textContent = ROUTE_TITLE[r];    // на телефоні в шапці лишається сама назва розділу
     for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
     document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
       b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
