@@ -542,10 +542,28 @@
 
   const PLATE = (fill, stroke) => '<circle cx="500" cy="500" r="470" fill="' + fill + '" stroke="' + stroke + '" stroke-width="14"/>';
 
+  /// Колір ангобу в ріжку для кожного розпису: на темному тілі — світла глина, на світлому — темна чи синя.
+  /// Без цього васильківська майоліка (тіло #f2e9d6) виходила білим по білому: ні пунктиру, ні власного сліду.
+  const SLIP = {
+    '': '#f4ead6', gavarets: '#b9b4c2', vasylkiv: '#2f5fa8', bubnivka: '#f4ead6', kosiv: '#6b3b1b',
+    opishnia: '#f6efe2', mezhyhirya: '#2b4f9e', petrykivka: '#f2c230', trypillia: '#2a1a12',
+  };
+
+  /// Яскравість кольору 0–1 — на випадок розпису, якого ще нема в SLIP (сервер додасть новий раніше за клієнт).
+  function lum(hex) {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return 0.5;
+    const n = parseInt(m[1], 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  }
+
+  const bodyOf = (st) => (st.kView.style ? (api0().STYLE[st.kView.style] || api0().STYLE['']).body : '#b8693f');
+  const slipOf = (st) => SLIP[st.kView.style || ''] || (lum(bodyOf(st)) > 0.55 ? '#5c2d12' : '#f4ead6');
+
   function paintScene2(p, st) {
     const s = p.shape;
-    const style = api0().STYLE[st.kView.style] || api0().STYLE[''];
-    const body = st.kView.style ? style.body : '#b8693f';
+    const body = bodyOf(st);
+    const slip = slipOf(st);
     switch (p.tech) {
       case 'rizh': {
         let d = '';
@@ -555,7 +573,7 @@
           d += (i ? 'L' : 'M') + (500 + r * Math.cos(th)).toFixed(1) + ' ' + (500 + r * Math.sin(th)).toFixed(1);
         }
         return '<g class="clkk-disc">' + PLATE(body, '#4a2615') + '<circle cx="500" cy="500" r="90" fill="rgba(0,0,0,.12)"/>'
-          + '<path d="' + d + '" class="clkk-guide"/><g class="clkk-trail"></g><circle cx="500" cy="60" r="10" fill="#f4ead6"/></g>'
+          + '<path d="' + d + '" class="clkk-guide"/><g class="clkk-trail"></g><circle cx="500" cy="60" r="10" fill="' + slip + '"/></g>'
           + '<g class="clkk-horn" transform="translate(500 ' + (500 - s.r0) + ')"><path d="M-12-150l24 0-6 120h-12z" fill="#e7d7b4" stroke="#6b4a2a" stroke-width="4"/>'
           + '<circle r="9" fill="#fff" opacity=".7"/></g>';
       }
@@ -570,10 +588,12 @@
           + '<path d="' + d + '" class="clkk-guide ryt"/><g class="clkk-trail"></g>';
       }
       case 'flyand': {
+        // Смуги ангобу обводимо тонким контуром: на світлому тілі (васильківська майоліка) кремова смуга інакше
+        // зливалася б із черепком, і гравець не бачив би, крізь що тягне гачок.
         const colors = ['#f1e4cc', '#2f5fa8', '#c62f25', '#3f7d3a', '#d99a2b', '#1e1c1d'];
         let bands = '<rect x="40" y="200" width="920" height="600" rx="40" fill="' + body + '"/>';
         const h = 400 / s.bands;
-        for (let i = 0; i < s.bands; i++) bands += '<rect x="40" y="' + (300 + i * h).toFixed(1) + '" width="920" height="' + (h * 0.62).toFixed(1) + '" fill="' + colors[i % colors.length] + '"/>';
+        for (let i = 0; i < s.bands; i++) bands += '<rect x="40" y="' + (300 + i * h).toFixed(1) + '" width="920" height="' + (h * 0.62).toFixed(1) + '" fill="' + colors[i % colors.length] + '" stroke="rgba(0,0,0,.28)" stroke-width="2"/>';
         const marks = s.marks.map((m) => '<g class="clkk-fmark" transform="translate(' + m[0] + ' ' + (m[1] === 1 ? 250 : 750) + ')">'
           + '<path d="' + (m[1] === 1 ? 'M-22-20h44L0 22z' : 'M-22 20h44L0-22z') + '" fill="#f4c542"/></g>'
           + '<path d="M' + m[0] + ' 290V710" class="clkk-fguide"/>').join('');
@@ -602,6 +622,14 @@
     losk: 'Натирай пунктирні смуги — водь пальцем туди-сюди, поки не заблищать. Поза смугами не три.',
   };
 
+  /// Скільки часу мінігра дає на роботу. Ріжкування — один оберт кола, решта — 14 с.
+  const limitOf = (p) => (p.tech === 'rizh' ? p.shape.period + 1200 : 14000);
+  /// Крок вибірки підбираємо під цей час: 480 точок мусять покрити ВСЮ мінігру, інакше вона обривалась на
+  /// одинадцятій секунді з повним ріжком — «не дало домалювати».
+  const sampleOf = (limit) => Math.max(SAMPLE_MS, Math.ceil((limit + 800) / (MAX_POINTS - 12)));
+  /// Серверу треба хоч 12 точок і півтори секунди роботи — менше він однаково не зарахує.
+  const ready = (g) => g.pts.length >= 12 && g.pts[g.pts.length - 1][0] - g.pts[0][0] >= 1600;
+
   function openPaint(st, api, p) {
     const info = techInfo(st, p.tech);
     const body = api.overlay(st, '<div class="clkk-paint">'
@@ -611,17 +639,25 @@
       + '<div class="clkk-pbar"><i></i></div>'
       + '<div class="clkk-prow"><span class="muted small clkk-pinfo"></span>'
       + '<button type="button" class="ghost clkk-again">Спочатку</button><button type="button" class="primary clkk-done" disabled>Готово</button></div>'
-      + '</div>', { cls: 'clkk-ov', onClose: () => { st.kPaint = null; } });
+      + '</div>', {
+      cls: 'clkk-ov',
+      onClose: () => { st.kPaint = null; },
+      // Поки палець уже водить по полотну, вікно не чіпаємо: Око майстра зачекає ті кілька секунд.
+      keep: () => { const g = st.kPaint; return !!(g && g.t0 && !g.sent); },
+    });
     const svg = body.querySelector('.clkk-canvas');
+    svg.style.setProperty('--clkk-slip', slipOf(st));
+    const limit = limitOf(p);
     const g = {
       p, svg, trail: svg.querySelector('.clkk-trail'), disc: svg.querySelector('.clkk-disc'), shine: svg.querySelector('.clkk-shine'),
       swirl: svg.querySelector('.clkk-swirl'), bar: body.querySelector('.clkk-pbar i'), info: body.querySelector('.clkk-pinfo'),
-      done: body.querySelector('.clkk-done'), pts: [], t0: 0, last: null, down: false, pointer: null, strokes: 0, sent: false,
-      brushAt: 0, len: new Map(), spun: false, limit: p.tech === 'rizh' ? p.shape.period + 1200 : 14000, curStroke: null,
+      done: body.querySelector('.clkk-done'), howto: body.querySelector('.clkk-howto'), pts: [], t0: 0, last: null, down: false,
+      pointer: null, strokes: 0, good: 0, drips: 0, sent: false, full: false, note: '',
+      brushAt: 0, len: new Map(), limit, sample: sampleOf(limit), curStroke: null, curFrom: 0, curExtra: null,
     };
     st.kPaint = g;
     body.querySelector('.clkk-again').onclick = () => startPaint(st, api, p.tech);
-    g.done.onclick = () => submitPaint(st, api);
+    g.done.onclick = () => submitPaint(st, api, true);
     const pos = (e) => {
       const r = svg.getBoundingClientRect();
       return [((e.clientX - r.left) / r.width) * 1000, ((e.clientY - r.top) / r.height) * 1000];
@@ -640,7 +676,7 @@
       e.preventDefault();
       const [x, y] = pos(e);
       g.lastPos = [x, y];
-      if (g.last && e.timeStamp - g.last[0] < SAMPLE_MS) return;
+      if (g.last && e.timeStamp - g.last[0] < g.sample) return;
       addPoint(st, api, g, e.timeStamp, x, y, false);
     });
     const up = (e) => {
@@ -654,18 +690,55 @@
     svg.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  /// Підказка під заголовком: чому мінігра щойно не зарахувала штрих або почалась наново.
+  function note(g, text) {
+    if (g.note === text) return;
+    g.note = text;
+    g.howto.textContent = text || HOWTO[g.p.tech] || '';
+    g.howto.classList.toggle('clkk-warn', !!text);
+  }
+
+  /// Почати цю саму мінігру наново, не питаючи сервер про новий візерунок: полотно чисте, годинник з нуля.
+  /// Без цього випадковий тик по полотну запускав відлік, а за кілька секунд вікно просто зникало.
+  function restartPaint(st, api, g, why) {
+    g.svg.innerHTML = paintScene2(g.p, st);
+    g.trail = g.svg.querySelector('.clkk-trail');
+    g.disc = g.svg.querySelector('.clkk-disc');
+    g.shine = g.svg.querySelector('.clkk-shine');
+    g.swirl = g.svg.querySelector('.clkk-swirl');
+    g.pts = [];
+    g.t0 = 0;
+    g.last = null;
+    g.lastPos = null;
+    g.down = false;
+    g.pointer = null;
+    g.strokes = 0;
+    g.good = 0;
+    g.drips = 0;
+    g.full = false;
+    g.len = new Map();
+    g.curStroke = null;
+    g.curExtra = null;
+    g.curFrom = 0;
+    g.done.disabled = true;
+    g.bar.style.width = '0%';
+    g.info.textContent = '';
+    note(g, why || '');
+  }
+
   function addPoint(st, api, g, ts, x, y, down) {
-    if (g.pts.length >= MAX_POINTS) return;
+    if (g.pts.length >= MAX_POINTS) { g.full = true; return; }
     if (!g.t0) g.t0 = ts;
     const ms = Math.max(0, ts - g.t0);
     if (g.last && ms < g.last[0]) return;
     x = Math.max(0, Math.min(1000, x));
     y = Math.max(0, Math.min(1000, y));
+    // Новий штрих — гравець уже зрозумів підказку: повертаємо звичайний текст «як грати».
+    if (down) { g.curFrom = g.pts.length; g.strokes++; note(g, ''); }
     g.pts.push([ms, x, y, down ? 1 : 0]);
     const prev = g.last;
     g.last = [ms, x, y];
-    if (down) g.strokes++;
-    g.done.disabled = g.pts.length < 12;
+    g.done.disabled = !ready(g);
     // Слід на полотні: у ріжкуванні — у системі кола (фарба крутиться разом із ним).
     let px = x;
     let py = y;
@@ -681,6 +754,7 @@
       g.curStroke.setAttribute('class', 'clkk-stroke');
       g.curStroke.setAttribute('points', '');
       g.trail.appendChild(g.curStroke);
+      g.curExtra = null;
       if (g.p.tech === 'marble') {
         const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('cx', px.toFixed(0));
@@ -688,12 +762,13 @@
         c.setAttribute('r', '34');
         c.setAttribute('class', 'clkk-blob b' + (g.strokes % 4));
         g.trail.appendChild(c);
+        g.curExtra = c;
       }
     }
     g.curStroke.setAttribute('points', g.curStroke.getAttribute('points') + ' ' + px.toFixed(0) + ',' + py.toFixed(0));
     if (g.p.tech === 'losk' && prev && !down) rub(g, prev[1], prev[2], x, y);
     if (Date.now() - g.brushAt > 260) { g.brushAt = Date.now(); api.sfx('brush'); }
-    if (g.pts.length >= MAX_POINTS) submitPaint(st, api);
+    if (g.pts.length >= MAX_POINTS) g.full = true;
   }
 
   /// Лощіння: той самий розклад шляху по клітинках 40×40, що й на сервері, — клітинка блищить від 100 одиниць.
@@ -723,26 +798,70 @@
     }
   }
 
+  /// Точки останнього штриха (той, що почався на g.curFrom).
+  const lastStroke = (g) => g.pts.slice(g.curFrom);
+
+  /// Забрати останній штрих із полотна й із того, що поїде на сервер: він стався ненароком.
+  function undoStroke(g) {
+    g.pts.length = g.curFrom;
+    if (g.curStroke) g.curStroke.remove();
+    if (g.curExtra) g.curExtra.remove();
+    g.curStroke = null;
+    g.curExtra = null;
+    g.strokes = Math.max(0, g.strokes - 1);
+    g.last = g.pts.length ? g.pts[g.pts.length - 1].slice(0, 3) : null;
+    g.curFrom = Math.max(0, g.pts.length - 1);
+    g.done.disabled = !ready(g);
+  }
+
   function afterStroke(st, api, g) {
     if (g.sent || !g.last) return;
     const p = g.p;
+    const s = lastStroke(g);
+    if (!s.length) return;
     if (p.tech === 'marble') {
-      // Закрутка: штрих, що обійшов центр хоч на пів оберта, — фарби розходяться, і розпис готовий.
-      const stroke = [];
-      for (let i = g.pts.length - 1; i >= 0; i--) { stroke.unshift(g.pts[i]); if (g.pts[i][3]) break; }
+      // Закрутка: штрих, що обійшов центр хоч на пів оберта, — фарби розходяться, і розпис готовий. Але тільки
+      // коли всі краплі вже накрапані: інакше кругла петля при накрапуванні обривала мінігру на першій же краплі.
       let tr = 0;
-      for (let i = 1; i < stroke.length; i++) {
-        let d = Math.atan2(stroke[i][2] - 500, stroke[i][1] - 500) - Math.atan2(stroke[i - 1][2] - 500, stroke[i - 1][1] - 500);
+      for (let i = 1; i < s.length; i++) {
+        let d = Math.atan2(s[i][2] - 500, s[i][1] - 500) - Math.atan2(s[i - 1][2] - 500, s[i - 1][1] - 500);
         if (d > Math.PI) d -= 2 * Math.PI;
         if (d < -Math.PI) d += 2 * Math.PI;
         tr += d;
       }
-      if (Math.abs(tr) >= Math.PI) {
+      const spin = Math.abs(tr) >= Math.PI;
+      // Крапля — короткий дотик: до 400 мс і до 50 одиниць руху (так само рахує сервер).
+      const span = s.length ? s[s.length - 1][0] - s[0][0] : 0;
+      const w = Math.max(...s.map((q) => q[1])) - Math.min(...s.map((q) => q[1]));
+      const h = Math.max(...s.map((q) => q[2])) - Math.min(...s.map((q) => q[2]));
+      const need = (p.shape.drops || []).length;
+      if (spin && g.drips < need) {
+        undoStroke(g);
+        note(g, 'Спершу накрапай усі краплі (' + g.drips + ' з ' + need + '), а вже тоді крути коло.');
+        return;
+      }
+      if (spin) {
         g.swirl.classList.add(tr > 0 ? 'spun' : 'spun-back');
-        setTimeout(() => submitPaint(st, api), reduced() ? 50 : 900);
+        setTimeout(() => submitPaint(st, api, true), reduced() ? 50 : 900);
+        return;
+      }
+      if (span <= 400 && w <= 50 && h <= 50) g.drips++;
+    }
+    // Фляндрування: рахуємо лише справжні штрихи через смуги (як сервер — від 120 одиниць по висоті).
+    // Випадковий тик по полотну більше не «з'їдає» позначку й не обриває мінігру достроково.
+    if (p.tech === 'flyand') {
+      const h = s.length ? Math.max(...s.map((q) => q[2])) - Math.min(...s.map((q) => q[2])) : 0;
+      if (s.length >= 3 && h >= 120) g.good++;
+      if (g.good >= p.shape.marks.length) {
+        // Позначки скінчились, а роботи менше за півтори секунди — сервер такого не зарахує. Не здаємо й не
+        // скидаємо полотно: просимо ще штрих, штрихи ж усе одно лягають на найкращий із них.
+        if (!ready(g)) { note(g, 'Ще один штрих — розпис це хоч півтори секунди роботи.'); return; }
+        setTimeout(() => submitPaint(st, api, false), 350);
+        return;
       }
     }
-    if (p.tech === 'flyand' && g.strokes >= p.shape.marks.length) setTimeout(() => submitPaint(st, api), 350);
+    // Фарба в ріжку скінчилась (уперлись у стелю точок) — домальовуємо цей штрих і здаємо роботу.
+    if (g.full) submitPaint(st, api, true);
   }
 
   function paintFrame(st, api) {
@@ -761,8 +880,8 @@
     g.bar.style.width = Math.min(100, (t / g.limit) * 100).toFixed(1) + '%';
     const info = g.t0 ? Math.max(0, Math.ceil((g.limit - t) / 1000)) + ' с' : 'чекаю на дотик';
     if (g.info.textContent !== info) g.info.textContent = info;
-    if (g.t0 && t >= g.limit && !g.down) submitPaint(st, api);
-    if (g.t0 && t >= g.limit + 3000) submitPaint(st, api);
+    if (g.t0 && t >= g.limit && !g.down) submitPaint(st, api, false);
+    if (g.t0 && t >= g.limit + 3000) submitPaint(st, api, false);
   }
 
   function encode(pts) {
@@ -776,17 +895,27 @@
     return out;
   }
 
-  function submitPaint(st, api) {
+  /// Здати роботу. Якщо на полотні ще нічого немає (випадковий тик, надто короткий слід) — не зачиняємо вікно
+  /// мовчки, а починаємо мінігру наново: гравець просив розпис, а не зникле вікно.
+  function submitPaint(st, api, byHand) {
     const g = st.kPaint;
     if (!g || g.sent) return;
-    if (g.pts.length < 12) { api.closeOverlay(st); return; }
+    if (!ready(g)) {
+      restartPaint(st, api, g, byHand && g.pts.length
+        ? 'Замало роботи — розпис це хоч півтори секунди. Спробуй ще раз.'
+        : 'Слід був заслабкий — полотно чисте, починай заново.');
+      return;
+    }
     g.sent = true;
     g.done.disabled = true;
-    api.act(st, 'kiln', { op: 'decor', path: encode(g.pts) }).then(() => {
-      if (st.kPaint === g) api.closeOverlay(st);
+    api.act(st, 'kiln', { op: 'decor', path: encode(g.pts) }).then((r) => {
+      if (st.kPaint !== g) return;
+      // Сервер не зарахував (надто рівна рука, розпис затягнувся) — причину він уже сказав тостом, а вікно
+      // лишаємо: візерунок живе п'ять хвилин, тож розпис можна перемалювати тут-таки.
+      if (r && r.ok === false) { g.sent = false; restartPaint(st, api, g, 'Не зарахувалось — полотно чисте, спробуй ще раз.'); return; }
+      api.closeOverlay(st);
     });
   }
-
   // ---------- відкриття горна ----------
 
   function maybeReveal(st, api) {

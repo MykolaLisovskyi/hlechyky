@@ -106,11 +106,12 @@
   width: min(100%, 420px, 58vh); aspect-ratio: 1; max-width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none;
   border-radius: 16px; background: radial-gradient(circle at 50% 40%, #3a2a22, #1b1310); cursor: crosshair;
 }
-.clkk-guide { fill: none; stroke: #f4ead6; stroke-width: 9; stroke-dasharray: 4 22; stroke-linecap: round; opacity: .85; }
+/* --clkk-slip — колір ангобу цього розпису (ставить openPaint): на темному черепку світлий, на світлому темний. */
+.clkk-guide { fill: none; stroke: var(--clkk-slip, #f4ead6); stroke-width: 9; stroke-dasharray: 4 22; stroke-linecap: round; opacity: .7; }
 .clkk-guide.ryt { stroke: #6b3b1b; stroke-width: 6; stroke-dasharray: 10 14; opacity: .6; }
-.clkk-stroke { fill: none; stroke: #f4ead6; stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; opacity: .92; }
+.clkk-stroke { fill: none; stroke: var(--clkk-slip, #f4ead6); stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; opacity: .92; }
 .t-ryt .clkk-stroke { stroke: #8b3a22; stroke-width: 10; }
-.t-flyand .clkk-stroke { stroke: #1e1c1d; stroke-width: 14; opacity: .75; }
+.t-flyand .clkk-stroke { stroke: var(--clkk-slip, #1e1c1d); stroke-width: 14; opacity: .8; }
 .t-marble .clkk-stroke { stroke: rgba(244, 234, 214, .25); stroke-width: 10; }
 .t-losk .clkk-stroke { stroke: rgba(210, 210, 220, .18); stroke-width: 26; }
 .clkk-fguide { stroke: rgba(244, 197, 66, .55); stroke-width: 6; stroke-dasharray: 8 16; }
@@ -126,6 +127,8 @@
 .clkk-cell.bad { fill: rgba(200, 120, 100, .35); }
 .clkk-pbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .clkk-pbar i { display: block; height: 100%; width: 0; background: var(--accent2); }
+/* Підказка мінігри, коли щось пішло не так (штрих не зарахувався, полотно почалось наново). */
+.clkk-howto.clkk-warn { color: var(--accent2); }
 .clkk-prow { display: flex; align-items: center; gap: 8px; }
 .clkk-prow .clkk-pinfo { flex: 1 1 auto; }
 

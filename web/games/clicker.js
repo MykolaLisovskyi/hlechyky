@@ -1302,12 +1302,15 @@
       return el;
     },
     /// Модальна панель поверх картки. Одна за раз: нова закриває попередню (з її onClose).
+    /// opts.keep — функція «зараз не на часі закривати» (мінігра в розпалі): Око майстра її перечекає.
     overlay(st, html, opts) {
       if (!st.ov.el.hidden) H.api.closeOverlay(st);
       freshBody(st);
+      st.ovDownBack = true;
       st.ov.body.innerHTML = html;
       st.ov.el.className = 'clk-overlay' + (opts && opts.cls ? ' ' + opts.cls : '');
       st.ov.onClose = (opts && opts.onClose) || null;
+      st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
       // Картка буває вища за екран: вікно стає там, куди гравець зараз дивиться, а не вгорі картки.
       const r = st.el.getBoundingClientRect();
@@ -1321,10 +1324,16 @@
       st.ov.el.hidden = true;
       const f = st.ov.onClose;
       st.ov.onClose = null;
+      st.ov.keep = null;
       freshBody(st);
       if (f) try { f(); } catch (e) { console.error(e); }
     },
     overlayOpen: (st) => !!st.ov && !st.ov.el.hidden,
+    /// Вікно просить не чіпати себе (мінігра, де вже водять пальцем).
+    overlayBusy(st) {
+      if (!st.ov || st.ov.el.hidden || !st.ov.keep) return false;
+      try { return !!st.ov.keep(); } catch (e) { console.error(e); return false; }
+    },
   };
 
   // ---------- модуль ----------
@@ -1505,7 +1514,11 @@
       st.ov.x.onclick = () => H.api.closeOverlay(st);
       // Закриваємо на click, а не на pointerdown: інакше на телефоні вікно зникало від дотику, а click того ж тапу
       // натискав кнопку, що була під затемненням (продати виріб, відкрити іншу клітинку).
-      st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el) H.api.closeOverlay(st); });
+      // Але click зринає на спільному предку натиснення й відпускання: штрих мінігри, що почався на полотні й
+      // з'їхав за край коробки, давав click саме на затемненні — і розпис обривався посеред роботи. Тож закриваємо
+      // лише тоді, коли палець і ліг на затемнення.
+      st.ov.el.addEventListener('pointerdown', (e) => { st.ovDownBack = e.target === st.ov.el; });
+      st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
@@ -1587,7 +1600,9 @@
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
         if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
         // Під вікном частини Око майстра було б невидиме, а кліки — не зараховані: майстер важливіший за вікно.
-        if (st.guard && H.api.overlayOpen(st)) H.api.closeOverlay(st);
+        // Виняток — мінігра розпису, де вже водять пальцем: вона однаково скінчиться за кілька секунд, а обірвати
+        // її посеред штриха означало б згаяти всю роботу. Майстер зачекає — кола ми в ці секунди й не крутимо.
+        if (st.guard && H.api.overlayOpen(st) && !H.api.overlayBusy(st)) H.api.closeOverlay(st);
         // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
         if (v.catalog) st.catalog = v.catalog;
         else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
