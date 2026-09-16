@@ -370,6 +370,40 @@ button.vplay { padding: 3px 8px; }
 .msg.system .n { display: none; }
 .msg.system .time { margin-left: 0; margin-right: 6px; }
 
+/* ---- ❤ і відповіді ---- */
+.msg[data-id] { position: relative; border-radius: 8px; transition: background .15s; }
+.msg[data-id]:hover, .msg[data-id].act { background: var(--panel2); }
+.msg .macts {
+  position: absolute; top: -12px; right: 4px; display: none; gap: 2px; padding: 2px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); z-index: 2;
+}
+.msg[data-id]:hover .macts, .msg[data-id].act .macts { display: inline-flex; }
+.msg .macts button { padding: 2px 8px; font-size: .85em; line-height: 1.2; border-radius: 999px; }
+.msg.liked .macts [data-a="like"] { color: #e53935; }
+.msg .mlikes {
+  display: inline-flex; align-items: center; margin-left: 6px; padding: 0 7px; font-size: .78em; line-height: 1.6;
+  border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); color: var(--muted); cursor: pointer; vertical-align: middle;
+}
+.msg .mlikes[hidden] { display: none; }
+.msg .mlikes.on { color: #e53935; border-color: #e5393566; }
+.msg .rq {
+  display: block; margin: 0 0 2px; padding: 1px 8px; border-left: 3px solid var(--accent2); border-radius: 4px;
+  font-size: .82em; color: var(--muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.msg .rq b { color: var(--text); font-weight: 600; }
+.msg .rq:hover { background: var(--bg2); }
+.msg.tome { box-shadow: inset 3px 0 0 var(--accent); padding-left: 6px; }
+.msg.flash { animation: msgflash 1.2s ease-out; }
+@keyframes msgflash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .msg.flash { animation: none; background: var(--panel2); } }
+.replybar {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 4px 4px 4px 10px;
+  border-left: 3px solid var(--accent2); background: var(--bg2); border-radius: 6px; font-size: .88em; color: var(--muted);
+}
+.replybar[hidden] { display: none; }
+.replybar .rb-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replybar .rb-text b { color: var(--text); }
+
 /* ---- столи в балачках ---- */
 /* Кнопка до столу в рядку Журналу і в картці /столи: іконка гри з назвою плюс дія. */
 .roomlink {

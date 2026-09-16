@@ -53,7 +53,12 @@ public sealed class NowPlaying
 /// Рядок балачок. <paramref name="RoomId"/> — жива кімната, про яку цей рядок: фронт малює біля нього
 /// кнопку «Сісти»/«Дивитись». null — звичайна репліка, ніякого столу за нею нема.
 /// </summary>
-public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind, string? RoomId = null);
+/// <remarks>
+/// <c>ReplyTo</c> — id повідомлення, на яке це відповідь; <c>ReplyNick</c>/<c>ReplyText</c> — хто й що там писав (уривок),
+/// щоб браузер намалював цитату, навіть коли оригінал уже випав з історії. <c>Likes</c> — ніки тих, хто поставив ❤.
+/// </remarks>
+public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind, string? RoomId = null,
+    long? ReplyTo = null, string? ReplyNick = null, string? ReplyText = null, string[]? Likes = null);
 
 public sealed record SearchResult(string Id, string Title, string Artist, string? Album, int DurationSec, string? ThumbUrl);
 

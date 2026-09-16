@@ -807,6 +807,7 @@
       if (big && big <= 3) el.classList.add('big');
       el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="t">${linkify(m.text)}</span><span class="time">${tm(m.at)}</span>`;
     }
+    if (!isLog && m.kind !== 'tables' && m.id > 0) decorateMessage(el, m);
     // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
     // слот під кнопку, щоб до столу можна було дійти прямо звідси (PLAN.md §7.4).
     if (m.roomId && m.kind !== 'tables') {
@@ -819,18 +820,125 @@
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();
     if (scroll) box.scrollTop = box.scrollHeight;
+    const toMe = !mine && !isLog && sameNick(m.replyNick, me.nick);
+    if (toMe) el.classList.add('tome');
     if (!isLog && scroll && !mine && !chatVisible()) {
       setUnread(unread + 1);
-      if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
+      if (toMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
+      else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
     }
   }
+
+  // ---------- ❤ і відповіді в балачках ----------
+  // Кожне повідомлення людини чи Глека (не рядок Журналу) можна лайкнути й на нього відповісти. Кнопки
+  // з'являються при наведенні (на телефоні — після тапу по повідомленню); подвійний клік — теж ❤.
+  let replyTo = null;               // { id, nick, text } — на що зараз відповідаємо
+
+  function decorateMessage(el, m) {
+    el.dataset.id = String(m.id);
+    el.dataset.nick = m.nick;
+    const host = el.querySelector(':scope > div') || el;     // у Глека текст живе у внутрішньому div
+    if (m.replyTo) {
+      const q = document.createElement('div');
+      q.className = 'rq';
+      q.dataset.to = String(m.replyTo);
+      q.title = 'До цього повідомлення';
+      q.innerHTML = `↪ <b>${esc(m.replyNick || '')}</b> ${esc(m.replyText || '')}`;
+      host.prepend(q);
+    }
+    const acts = document.createElement('span');
+    acts.className = 'macts';
+    acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ (подвійний клік — теж)">❤</button>'
+      + '<button type="button" class="ghost" data-a="reply" title="Відповісти">↩</button>';
+    el.appendChild(acts);
+    const likes = document.createElement('button');
+    likes.type = 'button';
+    likes.className = 'mlikes';
+    host.appendChild(likes);
+    paintLikes(el, m.likes || []);
+  }
+
+  function paintLikes(el, likes) {
+    const chip = el.querySelector('.mlikes');
+    if (!chip) return;
+    chip.hidden = !likes.length;
+    chip.textContent = '❤ ' + likes.length;
+    chip.title = likes.join(', ');
+    chip.classList.toggle('on', likes.some((n) => sameNick(n, me.nick)));
+    el.classList.toggle('liked', likes.some((n) => sameNick(n, me.nick)));
+  }
+
+  function likeMessage(id) {
+    if (!conn || !id) return;
+    conn.invoke('LikeChat', id).then((err) => { if (err) toast(err, 'err'); }).catch(() => {});
+  }
+
+  function setReply(el) {
+    const id = +el.dataset.id;
+    if (!id) return;
+    const t = el.querySelector('.t') || el.querySelector(':scope > div');
+    // текст без цитати й без кнопок: беремо лише саму репліку
+    let text = '';
+    if (t) {
+      const clone = t.cloneNode(true);
+      clone.querySelectorAll('.rq, .n, .time, .mlikes, .macts').forEach((x) => x.remove());
+      text = clone.textContent.trim();
+    }
+    replyTo = { id, nick: el.dataset.nick || '', text };
+    $('replyBar').hidden = false;
+    $('replyBar').querySelector('.rb-text').innerHTML = `↩ Відповідь <b>${esc(replyTo.nick)}</b>: ${esc(text.slice(0, 80))}`;
+    if (chatTab !== 'chat') setChatTab('chat');
+    $('chatInput').focus();
+  }
+
+  function clearReply() {
+    replyTo = null;
+    $('replyBar').hidden = true;
+  }
+
+  $('replyCancel').onclick = () => { clearReply(); $('chatInput').focus(); };
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape' && replyTo) clearReply(); });
+
+  $('messages').addEventListener('click', (e) => {
+    const el = e.target.closest('.msg[data-id]');
+    if (!el) return;
+    const btn = e.target.closest('[data-a], .mlikes');
+    if (btn) {
+      if (btn.classList.contains('mlikes') || btn.dataset.a === 'like') likeMessage(+el.dataset.id);
+      else if (btn.dataset.a === 'reply') setReply(el);
+      el.classList.remove('act');
+      return;
+    }
+    const quote = e.target.closest('.rq');
+    if (quote) {
+      const orig = $('messages').querySelector(`.msg[data-id="${quote.dataset.to}"]`);
+      if (orig) {
+        orig.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        orig.classList.remove('flash');
+        void orig.offsetWidth;
+        orig.classList.add('flash');
+      } else toast('Це повідомлення вже випало з історії');
+      return;
+    }
+    if (e.target.closest('a, button')) return;
+    // на телефоні наведення нема: тап по повідомленню показує кнопки, тап по іншому — ховає
+    $('messages').querySelectorAll('.msg.act').forEach((x) => { if (x !== el) x.classList.remove('act'); });
+    el.classList.toggle('act');
+  });
+  $('messages').addEventListener('dblclick', (e) => {
+    const el = e.target.closest('.msg[data-id]');
+    if (!el || e.target.closest('a, button, .rq')) return;
+    window.getSelection()?.removeAllRanges();
+    likeMessage(+el.dataset.id);
+  });
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
     const text = $('chatInput').value.trim();
     if (!text || !conn) return;
     if (chatTab !== 'chat') setChatTab('chat');
-    conn.invoke('SendChat', text)
-      .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); })
+    const call = replyTo ? conn.invoke('SendReply', text, replyTo.id) : conn.invoke('SendChat', text);
+    call
+      .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); clearReply(); })
       .catch((err) => toast('Не відправилось: ' + err.message, 'err'));
   };
   function setChatTab(tab) {
@@ -1538,6 +1646,10 @@
       .build();
     conn.on('state', (s) => { state = s; render(); });
     conn.on('chat', (m) => addMessage(m, true, true));
+    conn.on('chatLikes', (x) => {
+      const el = x && $('messages').querySelector(`.msg[data-id="${x.id}"]`);
+      if (el) paintLikes(el, x.likes || []);
+    });
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо

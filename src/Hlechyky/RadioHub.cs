@@ -11,6 +11,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
     static readonly ConcurrentDictionary<string, DateTime> LastCommand = new();
+    static readonly ConcurrentDictionary<string, DateTime> LastLike = new(StringComparer.OrdinalIgnoreCase);
 
     public override async Task OnConnectedAsync()
     {
@@ -38,7 +39,28 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     }
 
     /// <summary>Повертає текст помилки тому, хто писав (нікому більше), або null, якщо все гаразд.</summary>
-    public async Task<string?> SendChat(string text)
+    public Task<string?> SendChat(string text) => Say(text, null);
+
+    /// <summary>Відповідь на повідомлення <paramref name="replyTo"/>. Те саме, що SendChat, лише з цитатою.</summary>
+    public Task<string?> SendReply(string text, long replyTo) => Say(text, replyTo);
+
+    /// <summary>
+    /// ❤ на повідомленні (ще раз — зняти). Усі отримують «chatLikes» зі свіжим списком тих, хто лайкнув.
+    /// Повертає текст помилки тому, хто тиснув, або null.
+    /// </summary>
+    public async Task<string?> LikeChat(long id)
+    {
+        var nick = Nick();
+        var now = DateTime.UtcNow;
+        // подвійний клік і дрібний спам: одна зміна на ніка за 250 мс
+        if (LastLike.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 250) return null;
+        LastLike[nick] = now;
+        if (db.ToggleChatLike(id, nick) is not { } likes) return "Це повідомлення не лайкнути";
+        await Clients.All.SendAsync("chatLikes", new { id, likes });
+        return null;
+    }
+
+    async Task<string?> Say(string text, long? replyTo)
     {
         text = (text ?? "").Trim();
         if (text.Length == 0) return null;
@@ -63,7 +85,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
             }
             (chatText, kind) = (r.Text!, r.Kind);
         }
-        await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind));
+        // Відповідь має сенс лише для звичайної репліки: кубик чи монетка «у відповідь» — це вже просто кубик.
+        await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind, replyTo: kind == "chat" ? replyTo : null));
         if (kind == "chat") brain.OnChat(nick, chatText); // Глек вирішить сам, чи це до нього; кубик не його справа
         return null;
     }

@@ -109,6 +109,9 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE bans ADD COLUMN price INTEGER NOT NULL DEFAULT 0"); } catch (SqliteException) { /* exists */ }
         // id столу, про який цей рядок Журналу: фронт малює біля нього кнопку «Сісти»/«Дивитись»
         try { Exec(c, "ALTER TABLE chat ADD COLUMN room_id TEXT"); } catch (SqliteException) { /* exists */ }
+        // на яке повідомлення це відповідь, і хто яке лайкнув
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN reply_to INTEGER"); } catch (SqliteException) { /* exists */ }
+        Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
     }
@@ -711,14 +714,33 @@ public sealed class Db
     /// фронт малює біля нього кнопку до столу. Кімнати живуть у пам'яті й помирають із сервером, але id
     /// лежить у базі разом із рядком — інакше після F5 кнопка зникала б із історії ще за життя столу.
     /// </summary>
-    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null)
+    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null, long? replyTo = null)
     {
         var now = Now();
         using var c = Open();
-        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, created_at) VALUES($n, $t, $k, $r, $now); SELECT last_insert_rowid();",
-            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$now", now));
+        // Відповідають лише на живе повідомлення людини чи Глека; на рядок Журналу чи неіснуюче — ні, тоді це просто репліка.
+        (string Nick, string Text)? parent = null;
+        if (replyTo is { } pid)
+        {
+            using var pc = Cmd(c, "SELECT nick, text FROM chat WHERE id=$id AND kind <> 'system'", ("$id", pid));
+            using var pr = pc.ExecuteReader();
+            if (pr.Read()) parent = (pr.GetString(0), pr.GetString(1));
+            else replyTo = null;
+        }
+        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, reply_to, created_at) VALUES($n, $t, $k, $r, $p, $now); SELECT last_insert_rowid();",
+            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$p", replyTo), ("$now", now));
         var id = (long)cmd.ExecuteScalar()!;
-        return new ChatMessage(id, nick, text, Ts(now), kind, roomId);
+        return new ChatMessage(id, nick, text, Ts(now), kind, roomId, replyTo, parent?.Nick, Quote(parent?.Text), []);
+    }
+
+    /// <summary>Уривок повідомлення для цитати над відповіддю: весь текст не потрібен, лише щоб упізнати.</summary>
+    static string? Quote(string? text)
+    {
+        if (text is null) return null;
+        const int max = 120;
+        if (text.Length <= max) return text;
+        var cut = char.IsHighSurrogate(text[max - 1]) ? max - 1 : max;
+        return text[..cut].TrimEnd() + "…";
     }
 
     /// <summary>Last <paramref name="nChat"/> people/DJ messages plus last <paramref name="nLog"/> log lines, oldest first,
@@ -727,19 +749,72 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, """
-            SELECT id, nick, text, kind, created_at, room_id FROM (
-                SELECT * FROM chat WHERE kind <> 'system' ORDER BY id DESC LIMIT $nc)
-            UNION ALL
-            SELECT id, nick, text, kind, created_at, room_id FROM (
-                SELECT * FROM chat WHERE kind = 'system' ORDER BY id DESC LIMIT $nl)
-            ORDER BY id
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text FROM (
+                SELECT id, nick, text, kind, created_at, room_id, reply_to FROM (
+                    SELECT * FROM chat WHERE kind <> 'system' ORDER BY id DESC LIMIT $nc)
+                UNION ALL
+                SELECT id, nick, text, kind, created_at, room_id, reply_to FROM (
+                    SELECT * FROM chat WHERE kind = 'system' ORDER BY id DESC LIMIT $nl)
+            ) m
+            LEFT JOIN chat p ON p.id = m.reply_to
+            ORDER BY m.id
             """, ("$nc", nChat), ("$nl", nLog));
+        var rows = new List<(long Id, string Nick, string Text, string Kind, string At, string? Room, long? ReplyTo, string? PNick, string? PText)>();
+        using (var r = cmd.ExecuteReader())
+        {
+            while (r.Read())
+                rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
+                    r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6),
+                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : r.GetString(8)));
+        }
+        var likes = LikesFor(c, rows.Where(x => x.Kind != "system").Select(x => x.Id).ToList());
+        return [.. rows.Select(x => new ChatMessage(x.Id, x.Nick, x.Text, Ts(x.At), x.Kind, x.Room, x.ReplyTo, x.PNick, Quote(x.PText),
+            likes.TryGetValue(x.Id, out var l) ? [.. l] : []))];
+    }
+
+    /// <summary>Хто лайкнув кожне з повідомлень — у порядку лайків.</summary>
+    static Dictionary<long, List<string>> LikesFor(SqliteConnection c, List<long> ids)
+    {
+        var map = new Dictionary<long, List<string>>();
+        if (ids.Count == 0) return map;
+        using var cmd = Cmd(c, "SELECT chat_id, nick FROM chat_likes WHERE chat_id >= $lo AND chat_id <= $hi ORDER BY created_at",
+            ("$lo", ids.Min()), ("$hi", ids.Max()));
         using var r = cmd.ExecuteReader();
-        var list = new List<ChatMessage>();
+        var wanted = ids.ToHashSet();
         while (r.Read())
-            list.Add(new ChatMessage(r.GetInt64(0), r.GetString(1), r.GetString(2), Ts(r.GetString(4)), r.GetString(3),
-                r.IsDBNull(5) ? null : r.GetString(5)));
-        return list;
+        {
+            var id = r.GetInt64(0);
+            if (!wanted.Contains(id)) continue;
+            if (!map.TryGetValue(id, out var list)) map[id] = list = [];
+            list.Add(r.GetString(1));
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Поставити або зняти ❤ з повідомлення. null — такого повідомлення нема або це рядок Журналу (їх не лайкають).
+    /// Інакше — хто лайкнув після зміни.
+    /// </summary>
+    public List<string>? ToggleChatLike(long chatId, string nick)
+    {
+        using var c = Open();
+        using (var k = Cmd(c, "SELECT kind FROM chat WHERE id=$id", ("$id", chatId)))
+        {
+            if (k.ExecuteScalar() is not string kind || kind == "system") return null;
+        }
+        // Лайк прив'язаний до ніка без регістру: «Оля» і «оля» — одна людина, як і скрізь на сайті. Порівнюємо в C#:
+        // COLLATE NOCASE у SQLite знає лише латиницю.
+        using var tx = c.BeginTransaction();
+        var existing = LikesFor(c, [chatId]).GetValueOrDefault(chatId)?.FirstOrDefault(n => string.Equals(n, nick, StringComparison.OrdinalIgnoreCase));
+        using (var change = existing is not null
+            ? Cmd(c, "DELETE FROM chat_likes WHERE chat_id=$id AND nick=$n", ("$id", chatId), ("$n", existing))
+            : Cmd(c, "INSERT INTO chat_likes(chat_id, nick, created_at) VALUES($id, $n, $now)", ("$id", chatId), ("$n", nick), ("$now", Now())))
+        {
+            change.Transaction = tx;
+            change.ExecuteNonQuery();
+        }
+        tx.Commit();
+        return LikesFor(c, [chatId]).TryGetValue(chatId, out var l) ? l : [];
     }
 
     // ---- що кімнаті не зайшло з порад Глека ----
