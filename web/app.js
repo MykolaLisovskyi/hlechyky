@@ -814,8 +814,12 @@
     if (location.hash === hash) applyRoute(); else location.hash = hash;
   }
 
+  let lastHash = null;
   function applyRoute() {
     const { head, tail } = parseHash();
+    // Перейшов кудись — починаємо згори: інакше з довгого лобі потрапляєш на стіл уже прогорнутим.
+    if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
+    lastHash = location.hash;
     let r = ROUTES.includes(head) ? head : 'efir';
     // На широкому екрані балачки — панель збоку, а не розділ: #chat лише розгортає її.
     if (r === 'chat' && !isMobile()) {
@@ -836,7 +840,7 @@
     document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
       b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
     $('libTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === libTab));
-    if (r === 'games') HGames.show(); else HGames.hide();
+    if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -1499,12 +1503,18 @@
     });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
     conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
-    conn.start().then(() => { if (listening) conn.invoke('SetListening', true).catch(() => {}); if (route === 'lib') { libShown = libTab; loadLib(); } }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    conn.start().then(() => {
+      if (listening) conn.invoke('SetListening', true).catch(() => {});
+      // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на
+      // кімнати треба попросити заново — як після реконекту.
+      HGames.reconnected();
+      if (route === 'lib') { libShown = libTab; loadLib(); }
+    }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- boot ----------
   setPlayUi();
-  HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
+  HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go });
   applyRoute();
   api('GET', '/api/me').then((m) => {
     me.role = m.role;

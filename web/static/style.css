@@ -388,6 +388,12 @@ button.vplay { padding: 3px 8px; }
 /* ---- ігри ---- */
 /* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
 #colGames { min-width: 0; }
+/* Столу віддаємо більше ширини, ніж решті розділів: клікеру й дошкам є куди розгорнутись. */
+body.route-games main { max-width: 1600px; }
+/* ⛶ — стіл на весь екран: балачки згортаються, лишається лише шапка сайту. */
+body.gfull { --rail: 0px; --rail-gap: 0px; }
+body.gfull #colChat { display: none; }
+body.gfull main { max-width: none; padding: 10px 12px; }
 
 /* ---- mobile tabs ---- */
 .mtabs { display: none; }

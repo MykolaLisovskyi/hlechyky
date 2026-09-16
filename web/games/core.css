@@ -12,12 +12,54 @@
 }
 .games { display: flex; flex-direction: column; gap: 12px; }
 
-/* ---- шапка лобі: групи, панелі, гаманець ---- */
+/* ---- рядок підрозділів: Лобі · Профіль · Таблиця · Щоденний глек · панелі ігор ---- */
 .gbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.gbar .gtabs { margin-bottom: 0; }
-.gnav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
-.gnav button { padding: 5px 10px; font-size: .9em; background: transparent; border-color: transparent; color: var(--muted); }
+.gnav { display: flex; gap: 4px; flex-wrap: wrap; }
+.gnav button { padding: 5px 11px; font-size: .95em; background: transparent; border-color: transparent; color: var(--muted); }
+.gnav button:hover { background: var(--panel2); color: var(--text); }
 .gnav button.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
+
+/* ---- сторінка столу ---- */
+.groom { display: flex; flex-direction: column; gap: 12px; }
+.grhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grhead .grsp { flex: 1; }
+.grhead .grtitle { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 1.08em; }
+.grhead .grtitle .gico { width: 19px; height: 19px; }
+.grback, .grfull { color: var(--muted); }
+.grother { background: var(--panel2); color: var(--text); cursor: pointer; border: 1px solid var(--line); gap: 5px; }
+.grother .gico { width: 14px; height: 14px; }
+.grother.turn { color: var(--accent); border-color: var(--accent2); }
+/* Картка відкритого столу займає всю ширину змісту: клікер сам вмикає дві колонки від 1000px. */
+.grbox > .gtable { width: 100%; }
+
+/* ---- секції лобі ---- */
+.gpanel { display: flex; flex-direction: column; gap: 10px; }
+.gpanel h3 { margin: 0; font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.gfilters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.gchip { cursor: pointer; border: 1px solid transparent; padding: 4px 11px; font-size: .88em; }
+.gchip:hover { background: var(--panel3); color: var(--text); }
+.gchip.on { background: var(--panel3); color: var(--text); border-color: var(--line); }
+/* два класи, бо input[type=search] у style.css тягне width: 100% і виграє в одинарного класу */
+.gfilters .gfind {
+  margin-left: auto; width: 180px; font: inherit; font-size: .9em; color: var(--text);
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px; outline: none;
+}
+.gfilters .gfind:focus { border-color: var(--accent2); }
+
+/* ---- резюме столу в лобі: окремий елемент, а не копія картки ---- */
+.gsums { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; align-items: start; }
+.gsum {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.gsum.mine { border-color: var(--accent2); }
+.gs-head { display: flex; align-items: center; gap: 6px; }
+.gs-head .gtitle { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; flex: 1; min-width: 0; }
+.gs-head .gico { width: 16px; height: 16px; flex: none; }
+.gs-who { color: var(--muted); font-size: .88em; line-height: 1.35; overflow-wrap: anywhere; }
+.gs-who .turn { color: var(--accent); }
+.gs-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.gs-btns button { padding: 5px 11px; font-size: .9em; }
 .gemo { font-size: 1.05em; line-height: 1; }
 .gico { width: 15px; height: 15px; flex: none; }
 .gtabs button:not(.on) .gico { opacity: .6; }
@@ -30,7 +72,7 @@
 .games h4 { margin: 4px 0 0; font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
 
 /* ---- плитки ігор ---- */
-.gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 8px; }
 .gtile {
   background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 6px;
@@ -38,8 +80,11 @@
 .gtile:hover { border-color: var(--panel3); }
 .gt-head { display: flex; align-items: center; gap: 7px; font-size: 1.02em; }
 .gt-head .gico { width: 17px; height: 17px; }
-.gt-hint { line-height: 1.35; flex: 1; }
-.gt-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Підказку тримаємо в два рядки: повний текст усе одно в попапі столу. */
+.gt-hint { line-height: 1.3; flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gt-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.gt-btns .gt-pl { margin-right: auto; }
+.gt-btns button { padding: 5px 11px; font-size: .9em; }
 
 /* ---- картка кімнати ---- */
 .gtables { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; }
@@ -203,9 +248,20 @@
 
 /* ---- телефон ---- */
 @media (max-width: 900px) {
-  .gtables, .gtiles, .gdaily { grid-template-columns: 1fr; }
-  .gnav { margin-left: 0; width: 100%; }
+  .gdaily { grid-template-columns: 1fr; }
+  .gsums { grid-template-columns: 1fr; }
   .gbar { gap: 6px; }
+  .gnav { width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .gnav::-webkit-scrollbar { display: none; }
+  .gnav button { flex: none; }
+  .gfilters .gfind { margin-left: 0; width: 100%; }
+  /* Каталог на телефоні — компактний список, а не стіна плиток. */
+  .gtiles { grid-template-columns: 1fr; gap: 6px; }
+  .gtile { flex-direction: row; align-items: center; gap: 8px; padding: 7px 10px; }
+  .gtile .gt-head { flex: 1; min-width: 0; }
+  .gtile .gt-hint { display: none; }
+  .gtile .gt-btns { flex: none; }
+  .gtile .gt-pl { display: none; }
 }
 @media (max-width: 480px) {
   .gtable { padding: 8px 9px 10px; }
