@@ -597,6 +597,9 @@
 
     mount(st, api) {
       api.wareSvg = (ware, o) => wareSvg(api, ware, o);
+      // Головна кнопка горна й кнопка «Далі» роблять одне й те саме — тож і код один.
+      api.fireKiln = () => fireKiln(st, api);
+      api.kilnLoad = () => loadNow(st, api);
       st.craftWheel = true;
       st.craftShelf = true;
       if (st.jugBox) st.jugBox._wear = null;

@@ -85,8 +85,29 @@
 .clkk-beauty { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: 13px; }
 .clkk-beauty i { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--accent2) var(--b), rgba(255, 255, 255, .08) var(--b)); }
 .clkk-strawbtns { display: flex; align-items: center; gap: 8px; }
-.clkk-fire { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-.clkk-fire button { min-height: 44px; white-space: normal; }
+.clkk-fire { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.clkk-go { min-height: 46px; font-size: 1.05em; font-weight: 700; white-space: normal; }
+/* Хто палить: два чипи — типово підмайстер, «палю сам» вмикає мінігру. */
+.clkk-who { display: flex; gap: 4px; }
+.clkk-wbtn {
+  flex: 1 1 0; min-width: 0; padding: 5px 6px; font-size: .82em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+}
+.clkk-wbtn.on { color: var(--fg); border-color: var(--accent2); background: var(--panel3); }
+.clkk-whohint { line-height: 1.25; }
+
+/* Розпис — окремий рядок над кнопкою, згорнутий, поки не потрібен. */
+.clkk-paint { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.clkk-styles { flex: 1 1 200px; min-width: 0; }
+.clkk-styles > summary, .clkk-other > summary, .clkk-strawsec > summary { cursor: pointer; font-size: .92em; list-style: none; padding: 3px 0; }
+.clkk-styles > summary::-webkit-details-marker, .clkk-other > summary::-webkit-details-marker,
+.clkk-strawsec > summary::-webkit-details-marker { display: none; }
+.clkk-styles > summary::after, .clkk-other > summary::after, .clkk-strawsec > summary::after { content: ' ▾'; color: var(--muted); }
+.clkk-styles[open] > summary::after, .clkk-other[open] > summary::after, .clkk-strawsec[open] > summary::after { content: ' ▴'; }
+.clkk-other > summary, .clkk-strawsec > summary { color: var(--muted); font-size: .84em; }
+.clkk-other { margin-top: 6px; }
+.clkk-beautyn { color: var(--accent2); margin-left: 6px; }
+.clkk-decor { flex: none; align-self: center; }
 
 /* ---- останнє горно ---- */
 .clkk-lastbox { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }

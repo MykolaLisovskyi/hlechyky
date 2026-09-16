@@ -4,7 +4,8 @@
   Правила — на сервері (Impl/ClickerKiln.cs). Тут:
   1) вкладка «Горно»: велике SVG-горно (вироби в камері, полум'я, дим, заслінка), сухі сирці → горно (kiln/load),
      розпис партії, солома, «палити самому» / «хай підмайстер палить» (kiln/light);
-  2) мінігра жару: та сама модель, що й KilnHeat на сервері, крок 100 мс, рядок у рядок та сама арифметика (лише + − × ÷,
+  2) обпал в один дотик (v8): одна кнопка «🔥 Обпалити N» сама складає сухі й розпалює, а палить типово підмайстер;
+     «Палю сам» вмикає мінігру жару: та сама модель, що й KilnHeat на сервері, крок 100 мс, рядок у рядок та сама арифметика (лише + − × ÷,
      min/max; пориви й поліна — xorshift32 із зерна view.kiln.seed). Клієнт записує СВОЇ дії [мс від розпалу, дія] і після
      30 с шле їх разом на kiln/open — сервер проганяє модель сам. Таймлайн лежить у localStorage: F5 посеред обпалу не губить дій;
   3) мінігри розпису (overlay): ріжкування (коло крутиться), ритування (контур), фляндрування (штрихи через смуги),
@@ -27,6 +28,8 @@
   const MAX_POINTS = 480;                   // сервер бере до 500
   const SAMPLE_MS = 24;                     // не частіше за стільки — інакше за 12 с упремось у стелю точок
   const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨' };
+  /// Хто палить: підмайстер (типово, без мінігри) чи сам гончар. Пам'ятаємо між заходами.
+  const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
   const STARS = ['💥', '', '★', '★★★'];
   const QNAME = ['тріснув', 'звичайний', 'добрий', 'дзвінкий'];
   const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -214,11 +217,13 @@
       + '<div class="clkk-prep"></div>'
       + '<div class="clkk-last"></div>'
       + '<details class="clkk-help small"><summary>Як це працює</summary>'
-      + '<p>Виліплений виріб сохне на сушарні; сухий — у горно. Горно палиш сам (мінігра на пів хвилини: чим довше жар у зеленій смузі, '
-      + 'тим більше добрих і дзвінких виробів) або доручаєш підмайстрові — тоді всі звичайні, зате без тріщин. Перегрів тріскає глину, '
-      + 'солома в горні ділить цей ризик на чотири. Після відкриття горно холоне хвилину — завантажувати й розписувати можна й тоді.</p>'
-      + '<p>Розпис лягає на всю партію. Техніка-мінігра дає «красу» 0–100: вона підвищує шанс доброї й дзвінкої якості (але не множить ціну). '
-      + 'Дзвінкий виріб вартий ×2,6, добрий ×1,6. Косівське ритування й гаварецьке лощіння в «рідному» розписі дають +10 краси.</p></details>'
+      + '<p>Виліплений виріб сохне на сушарні; сухий — у горно. «Обпалити» саме складає сухі й розпалює. Палить '
+      + 'підмайстер — тоді всі звичайні, зате без тріщин; «Палю сам» — мінігра на пів хвилини: чим довше жар у зеленій '
+      + 'смузі, тим більше добрих і дзвінких. Перегрів тріскає глину, солома ділить цей ризик на чотири. Після '
+      + 'відкриття горно холоне хвилину.</p>'
+      + '<p>Розпис лягає на всю партію. Техніка-мінігра дає «красу» 0–100: вона підвищує шанс доброї й дзвінкої якості '
+      + '(але не множить ціну). Дзвінкий виріб вартий ×2,6, добрий ×1,6. Косівське ритування й гаварецьке лощіння '
+      + 'в «рідному» розписі дають +10 краси.</p></details>'
       + '</div>';
     const q = (s) => pane.querySelector(s);
     st.kUi = {
@@ -358,6 +363,16 @@
 
   // ---------- підготовка партії ----------
 
+  /// Техніка, яку беремо, коли гравець нічого не вибирав: рідна для цього розпису (косівський — ритування,
+  /// гаварецький — лощіння), інакше найпізніша з уже відкритих. Гравцеві не треба знати про це нічого.
+  function defaultTech(st) {
+    const k = st.kView;
+    const open = ((cat(st) && cat(st).techs) || []).filter((t) => k.techs.includes(t.key));
+    if (!open.length) return '';
+    const home = open.find((t) => t.home && t.home === k.style);
+    return (home || open[open.length - 1]).key;
+  }
+
   function paintPrep(st, api) {
     const k = st.kView;
     const ui = st.kUi;
@@ -367,61 +382,69 @@
     const burning = k.state === 'burning';
     const cooling = k.state === 'cooling';
     if (burning) { api.swap(ui.prep, ''); return; }
-    const free = k.slots - k.batch.length;
     const counts = {};
     for (const w of k.batch) counts[w] = (counts[w] || 0) + 1;
-    const batchText = k.batch.length
-      ? Object.keys(counts).map((w) => esc(wareName(st, w)).toLowerCase() + ' ×' + counts[w]).join(', ')
-      : 'порожнє';
-    const load = '<div class="clkk-row"><div><b>У горні ' + k.batch.length + ' з ' + k.slots + '</b><div class="muted small">' + batchText + '</div></div>'
-      + '<button type="button" class="ghost clkk-load"' + (mine && free > 0 && k.dry > 0 ? '' : ' disabled') + '>🧱 Скласти сухі'
-      + (k.dry > 0 ? ' · ' + Math.min(k.dry, Math.max(0, free)) : '') + '</button></div>'
-      + (k.dry === 0 && !k.batch.length ? '<div class="muted small clkk-hint">Сухих сирців нема: виліпи виріб на колі й дай йому висохнути на сушарні (півтори хвилини).</div>' : '');
+    const inKiln = Object.keys(counts).map((w) => esc(wareName(st, w)).toLowerCase() + ' ×' + counts[w]).join(', ');
+    // Розпис партії — окрема опція, і лише коли є що класти. Техніка типова; «інша техніка» — за ▾.
+    const owned = (st.styleList || []).filter((x) => x.owned);
+    let paint = '';
+    if (owned.length) {
+      const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((x) => '<button type="button" class="clkk-chip'
+        + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '"' + (mine ? '' : ' disabled') + '>'
+        + api.jugSvg(x.key, 'clkk-chipjug', 'kst-' + (x.key || 'plain')) + '<span>' + esc(x.name) + '</span></button>').join('') + '</div>';
+      const allTechs = (cat(st) && cat(st).techs) || [];
+      const techs = '<div class="clkk-techs">' + allTechs.map((t) => {
+        const on = k.techs.includes(t.key);
+        const home = t.home && t.home === k.style;
+        return '<button type="button" class="clkk-tech' + (on ? '' : ' locked') + (k.tech === t.key ? ' on' : '') + '" data-tech="' + esc(t.key) + '"'
+          + (on && mine ? '' : ' disabled') + ' title="' + esc(on ? t.desc : 'Відкриється ' + t.unlock) + '">'
+          + '<span class="clkk-ticon">' + (on ? TECH_ICON[t.key] || '🎨' : '🔒') + '</span><b>' + esc(t.name) + '</b>'
+          + '<span class="muted small">' + (on ? (home ? 'рідна техніка +10' : 'мінігра') : esc(t.unlock)) + '</span></button>';
+      }).join('') + '</div>';
+      const tech = defaultTech(st);
+      const beauty = k.beauty > 0 ? '<span class="clkk-beautyn small">краса ' + k.beauty + '</span>' : '';
+      paint = '<div class="clkk-paint"><details class="clkk-styles"><summary>🎨 Розпис: <b>' + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>'
+        + styles + '<details class="clkk-other"><summary>інша техніка</summary>' + techs + '</details></details>'
+        + (tech ? '<button type="button" class="ghost small clkk-decor"' + (mine ? '' : ' disabled') + '>🖌 Розписати</button>' : '')
+        + '</div>';
+    }
 
-    // Розпис: простий + колекція; техніки — відкриті й замкнені.
-    const owned = (st.styleList || []).filter((s) => s.owned);
-    const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((s) => '<button type="button" class="clkk-chip'
-      + (s.key === k.style ? ' on' : '') + '" data-style="' + esc(s.key) + '"' + (mine ? '' : ' disabled') + '>'
-      + api.jugSvg(s.key, 'clkk-chipjug', 'kst-' + (s.key || 'plain')) + '<span>' + esc(s.name) + '</span></button>').join('') + '</div>';
-    const allTechs = (cat(st) && cat(st).techs) || [];
-    const techs = '<div class="clkk-techs">' + allTechs.map((t) => {
-      const open = k.techs.includes(t.key);
-      const home = t.home && t.home === k.style;
-      return '<button type="button" class="clkk-tech' + (open ? '' : ' locked') + (k.tech === t.key ? ' on' : '') + '" data-tech="' + esc(t.key) + '"'
-        + (open && mine ? '' : ' disabled') + ' title="' + esc(open ? t.desc : 'Відкриється ' + t.unlock) + '">'
-        + '<span class="clkk-ticon">' + (open ? TECH_ICON[t.key] || '🎨' : '🔒') + '</span><b>' + esc(t.name) + '</b>'
-        + '<span class="muted small">' + (open ? (home ? 'рідна техніка +10' : 'мінігра') : esc(t.unlock)) + '</span></button>';
-    }).join('') + '</div>';
-    const beauty = k.beauty > 0
-      ? '<div class="clkk-beauty"><span>Краса розпису</span><i style="--b:' + k.beauty + '%"></i><b>' + k.beauty + '</b></div>'
-      : '<div class="muted small">Краса 0 — розпис ляже й так, але мінігра підвищує шанс добрих і дзвінких.</div>';
-    const paint = '<div class="clk-sub">🎨 Розпис партії · ' + esc(styleName(st, k.style)) + '</div>' + styles + techs + beauty;
+    // Головна кнопка: сама складає сухі й розпалює. Скільки саме — рахує ремесло (смуга «Шлях виробу»).
+    const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + Math.min(k.dry, Math.max(0, k.slots - k.batch.length));
+    const can = mine && !cooling && load > 0;
+    const mySelf = selfFire(api);
+    const batchText = k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry;
+    const fire = '<div class="clkk-fire">'
+      + '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>'
+      + '<div class="clkk-who"><button type="button" class="clkk-wbtn' + (mySelf ? '' : ' on') + '" data-self="0">👷 Палить підмайстер</button>'
+      + '<button type="button" class="clkk-wbtn' + (mySelf ? ' on' : '') + '" data-self="1">🔥 Палю сам</button></div>'
+      + '<div class="muted small clkk-whohint">' + (mySelf
+        ? 'мінігра на пів хвилини: тримай жар у смузі — буде більше добрих і дзвінких, але й тріщини можливі'
+        : 'без мінігри, усі звичайні й без тріщин; дзвінкий виріб вартий ×2,6 — їх дає лише уважний палій') + '</div>'
+      + '<div class="muted small">' + batchText + (cooling ? ' · горно ще гаряче — зачекай, поки вихолоне' : '') + '</div>'
+      + '</div>';
 
-    const price = k.strawPrice;
-    const strawOn = api.storeGet('clk.kiln.straw', '1') === '1';
-    const straw = '<div class="clkk-row"><div><b>🌾 Солома: ' + k.straw + '</b><div class="muted small">в\'язка в горні — тріщин учетверо менше</div></div>'
-      + '<div class="clkk-strawbtns"><label class="small"><input type="checkbox" class="clkk-strawon"' + (strawOn ? ' checked' : '') + (k.straw > 0 ? '' : ' disabled') + '> класти</label>'
-      + '<button type="button" class="ghost small clkk-buystraw"' + (mine && k.straw < 20 ? '' : ' disabled') + '>+1 · ' + esc(api.potsShort(price)) + '</button></div></div>';
+    // Солома — дрібниця для тих, хто палить сам: ховаємо за ▾, щоб не займала екран.
+    const straw = mySelf
+      ? '<details class="clkk-strawsec"><summary>🌾 Солома: ' + k.straw + '</summary>'
+        + '<div class="clkk-row"><div class="muted small">в\'язка в горні — тріщин учетверо менше</div>'
+        + '<div class="clkk-strawbtns"><label class="small"><input type="checkbox" class="clkk-strawon"'
+        + (api.storeGet('clk.kiln.straw', '1') === '1' ? ' checked' : '') + (k.straw > 0 ? '' : ' disabled') + '> класти</label>'
+        + '<button type="button" class="ghost small clkk-buystraw"' + (mine && k.straw < 20 ? '' : ' disabled') + '>+1 · '
+        + esc(api.potsShort(k.strawPrice)) + '</button></div></div></details>'
+      : '';
 
-    const can = mine && !cooling && (k.batch.length > 0 || k.dry > 0);
-    const light = '<div class="clkk-fire">'
-      + '<button type="button" class="primary clkk-light"' + (can ? '' : ' disabled') + '>🔥 Палити самому</button>'
-      + '<button type="button" class="ghost clkk-helper"' + (can ? '' : ' disabled') + '>🧑‍🏭 Хай підмайстер палить</button></div>'
-      + (cooling ? '<div class="muted small">Горно ще гаряче — розпалити можна, як вихолоне. Складати й розписувати — вже.</div>' : '');
-
-    const html = load + paint + '<div class="clk-sub">Обпал</div>' + straw + light;
-    if (!api.swap(ui.prep, html)) return;
-    const b = (s) => ui.prep.querySelector(s);
-    if (b('.clkk-load')) b('.clkk-load').onclick = () => api.order(st, 'kiln', { op: 'load' });
+    if (!api.swap(ui.prep, paint + fire + straw)) return;
+    const b = (sel) => ui.prep.querySelector(sel);
     for (const el of ui.prep.querySelectorAll('[data-style]')) el.onclick = () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style });
     for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => startPaint(st, api, el.dataset.tech);
-    b('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
-    b('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
-    b('.clkk-light').onclick = () => {
-      const useStraw = st.kView.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1';
-      api.act(st, 'kiln', { op: 'light', straw: useStraw }).then((r) => { if (r && r.ok) api.showTab(st, 'kiln'); });
-    };
-    b('.clkk-helper').onclick = () => api.order(st, 'kiln', { op: 'light', helper: true });
+    if (b('.clkk-decor')) b('.clkk-decor').onclick = () => startPaint(st, api, defaultTech(st));
+    if (b('.clkk-buystraw')) b('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
+    if (b('.clkk-strawon')) b('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
+    for (const el of ui.prep.querySelectorAll('[data-self]')) {
+      el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
+    }
+    b('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
   }
 
   function paintLast(st, api) {

@@ -263,11 +263,11 @@
 /* ---- вкладки ---- */
 /* Вкладок уже сім: один рядок із горизонтальною прокруткою (активну жива хата докручує в поле зору), а не два ряди. */
 .clk-tabs {
-  display: flex; flex-wrap: nowrap; gap: 4px; width: 100%; padding: 3px; border-radius: 12px; background: var(--panel);
-  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  display: flex; flex-wrap: wrap; gap: 3px; width: 100%; padding: 3px; border-radius: 12px; background: var(--panel);
+  scrollbar-width: none;
 }
 .clk-tabs::-webkit-scrollbar { display: none; }
-.clk-tabs button { flex: 1 1 auto; min-width: 0; padding: 6px 8px; font-size: .88em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-tabs button { flex: 1 1 auto; min-width: 0; padding: 6px 6px; font-size: .82em; white-space: nowrap; }
 /* Нова вкладка м'яко світиться, поки на неї вперше не глянули. */
 .clk-tabs button.fresh { box-shadow: 0 0 0 1px var(--accent) inset; animation: clk-fresh 1.8s ease-in-out infinite alternate; }
 .clk-tabs button[hidden] { display: none; }
@@ -438,7 +438,7 @@
   .clk-gold-jug { inset: 6px; width: 40px; height: 40px; }
   .clk-fall { width: 56px; height: 66px; margin-left: -28px; }
   .clk-tabs { gap: 2px; padding: 2px; }
-  .clk-tabs button { padding: 6px 3px; font-size: .74em; }
+  .clk-tabs button { padding: 6px 4px; font-size: .76em; }
   .clk-clays { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
   .clk-tools { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 6px; }
 }
