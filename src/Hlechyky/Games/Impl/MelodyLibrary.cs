@@ -16,8 +16,11 @@ public sealed record MelodyTrack(string Id, string Title, string Artist, int Dur
 /// </summary>
 public interface IMelodySource
 {
-    /// <summary>До <paramref name="count"/> різних треків, для яких є файл. Порожньо — грати нема в що.</summary>
-    Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, Random rng, CancellationToken ct);
+    /// <summary>
+    /// До <paramref name="count"/> різних треків, для яких є файл. <paramref name="ukrainianOnly"/> — лише українські
+    /// (<see cref="MelodyLanguage"/>). Порожньо — грати нема в що.
+    /// </summary>
+    Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, bool ukrainianOnly, Random rng, CancellationToken ct);
 
     /// <summary>Уривок у mp3 без жодних метаданих. null — не вийшло (файл зник, ffmpeg упав).</summary>
     Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct);
@@ -32,7 +35,7 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
 {
     const int MinDuration = 45;
 
-    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, Random rng, CancellationToken ct) => Task.Run(() =>
+    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, bool ukrainianOnly, Random rng, CancellationToken ct) => Task.Run(() =>
     {
         if (db is null) return (IReadOnlyList<MelodyTrack>)[];
         var all = db.With(c =>
@@ -55,7 +58,13 @@ public sealed class MelodyLibrary(Db? db, IOptionsMonitor<YtDlpOptions>? options
                     r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6)));
             return list;
         });
-        return Choose(Heard(all.Where(x => File.Exists(x.Track.FilePath)).ToList(), count), count, rng);
+        var cached = all.Where(x => File.Exists(x.Track.FilePath)).ToList();
+        if (ukrainianOnly)
+        {
+            var ua = MelodyLanguage.Default.Ukrainian(cached.Select(x => x.Track)).ToHashSet();
+            cached = [.. cached.Where(x => ua.Contains(x.Track))];
+        }
+        return Choose(Heard(cached, count), count, rng);
     }, ct);
 
     /// <summary>
@@ -339,4 +348,90 @@ public static class MelodyAnswer
         }
         return prev[b.Length];
     }
+}
+
+/// <summary>
+/// Чи пісня українська — без жодної бази мов, лише з того, що є в назві й імені виконавця:
+/// <list type="bullet">
+/// <item>ы, э, ъ, ё — не українська, і крапка (хай навіть виконавець зі списку);</item>
+/// <item>і, ї, є, ґ, апостроф або суто українське слово («ти», «що», «шо», «як», «двох»…) у назві чи в імені —
+/// українська (сполучник « і » між виконавцями не рахується: так база склеює кількох виконавців);</item>
+/// <item>виконавець, у якого знайшовся хоч один такий трек, вважається українським — і його «Teresa &amp; Maria» теж;</item>
+/// <item>виконавці зі списку <c>data/melody/ukrainian-artists.txt</c> — для тих, кого за літерами не впізнати
+/// («KALUSH», «БЕЗ ОБМЕЖЕНЬ»).</item>
+/// </list>
+/// </summary>
+public sealed partial class MelodyLanguage(IEnumerable<string> knownArtists)
+{
+    public const string FileName = "data/melody/ukrainian-artists.txt";
+
+    static readonly Lazy<MelodyLanguage> Cached = new(() => Load(Paths.Resolve(FileName)));
+    public static MelodyLanguage Default => Cached.Value;
+
+    readonly HashSet<string> _known = [.. knownArtists.Select(Norm).Where(k => k.Length > 0)];
+
+    public static MelodyLanguage Load(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return new([]);
+            return new(File.ReadAllLines(path).Select(l => l.Trim()).Where(l => l.Length > 0 && l[0] != '#'));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new([]); }
+    }
+
+    public IEnumerable<MelodyTrack> Ukrainian(IEnumerable<MelodyTrack> tracks)
+    {
+        var list = tracks.ToList();
+        var learned = new HashSet<string>(_known, StringComparer.Ordinal);
+        foreach (var t in list.Where(t => !Russian(t) && Marked(t)))
+            foreach (var part in Parts(t.Artist)) learned.Add(part);
+        return list.Where(t => !Russian(t) && (Marked(t) || Parts(t.Artist).Any(learned.Contains)));
+    }
+
+    static bool Russian(MelodyTrack t) => (t.Title + " " + t.Artist).Any(c => "ыэъёЫЭЪЁ".Contains(c));
+
+    static bool Marked(MelodyTrack t) => HasUa(t.Title) || HasUa(Joiner().Replace(t.Artist, ", "));
+
+    /// <summary>
+    /// Слова, яких у російській нема (там «ты», «что», «как», «это»…): вони видають українську назву навіть без
+    /// і/ї/є/ґ — «Кава на двох», «ШО ТИ, ШО ТИ».
+    /// </summary>
+    static readonly HashSet<string> UaWords = new(StringComparer.Ordinal)
+    {
+        "ти", "ми", "ви", "що", "шо", "як", "це", "чи", "вже", "щоб", "або", "дуже", "тобі", "мені", "він", "вона",
+        "воно", "вони", "мій", "твій", "двох", "коли", "зараз", "тільки", "завжди", "кохаю", "кохання", "кохана",
+        "серце", "дівчино", "мамо", "чорний", "чорна", "вибираю", "хлопці", "добре", "бачу", "бути", "треба",
+    };
+
+    static bool HasUa(string s)
+    {
+        foreach (var w in s.ToLowerInvariant().Split(Separators, StringSplitOptions.RemoveEmptyEntries))
+            if (UaWords.Contains(w)) return true;
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if ("іїєґІЇЄҐʼ".Contains(c)) return true;
+            // апостроф усередині кириличного слова: «п'яніли», «зв'язок»
+            if (c is '\'' or '’' && i > 0 && i + 1 < s.Length && Cyr(s[i - 1]) && Cyr(s[i + 1])) return true;
+        }
+        return false;
+    }
+
+    static readonly char[] Separators = [.. " ,.!?;:()[]{}\"«»—–-_/|#🇺🇦".ToCharArray()];
+
+    static bool Cyr(char c) => c is >= 'А' and <= 'я';
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\s+і\s+")]
+    private static partial System.Text.RegularExpressions.Regex Joiner();
+
+    static IEnumerable<string> Parts(string artist) =>
+        Joiner().Replace(artist, ", ")
+            .Split([",", "&", " feat.", " feat ", " ft.", " x ", " X ", " and "], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Append(artist)
+            .Select(Norm)
+            .Where(k => k.Length > 0);
+
+    /// <summary>Ключ виконавця: без регістру, розділових знаків і пробілів, зведений до латиниці.</summary>
+    static string Norm(string s) => MelodyAnswer.Latin(MelodyAnswer.Key(s)).Replace(" ", "");
 }

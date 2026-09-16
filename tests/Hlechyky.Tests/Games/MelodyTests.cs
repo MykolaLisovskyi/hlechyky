@@ -9,9 +9,13 @@ namespace Hlechyky.Tests.Games;
 sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null) : IMelodySource
 {
     public int Clips;
+    public bool? UkrainianOnly;
 
-    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, Random rng, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<MelodyTrack>>([.. tracks.Take(count)]);
+    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, bool ukrainianOnly, Random rng, CancellationToken ct)
+    {
+        UkrainianOnly = ukrainianOnly;
+        return Task.FromResult<IReadOnlyList<MelodyTrack>>([.. tracks.Take(count)]);
+    }
 
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
     {
@@ -235,7 +239,7 @@ public class MelodyTests
     [Fact]
     public void No_tracks_at_all_closes_the_table_with_a_reason()
     {
-        var h = Table(new FakeMelodySource([]));
+        var h = Table(new FakeMelodySource([]), new { lang = "all" });
         for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++) { h.Tick(); Thread.Sleep(2); }
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Contains("нема скачаних треків", h.Outbox.OfType<Journal>().Last().Text);
@@ -296,6 +300,71 @@ public class MelodyTests
     [InlineData("KALUSH", "Stefania", "Стефанія", true)]
     public void Title_matching(string artist, string title, string guess, bool hit) =>
         Assert.Equal(hit, MelodyAnswer.Hits(guess, MelodyAnswer.Titles(T("x", artist, title))));
+
+    [Fact]
+    public void Ukrainian_is_the_default_and_all_is_an_option()
+    {
+        var src = new FakeMelodySource(Songs);
+        var h = Table(src);
+        Until(h, "play");
+        Assert.True(src.UkrainianOnly);
+
+        var all = new FakeMelodySource(Songs);
+        var h2 = Table(all, new { lang = "all" });
+        Until(h2, "play");
+        Assert.False(all.UkrainianOnly);
+    }
+
+    [Fact]
+    public void No_ukrainian_tracks_says_so()
+    {
+        var h = Table(new FakeMelodySource([]));
+        for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Contains("Українських треків", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Theory]
+    [InlineData("Океан Ельзи", "Як ніколи", true)]                      // «і» в назві
+    [InlineData("Був'є", "Голова", true)]                               // апостроф в імені
+    [InlineData("FIЇNKA", "Афини", true)]                               // «Ї» в латинському імені
+    [InlineData("Alena Omargalieva", "Не Пʼяна - Закохана", true)]
+    [InlineData("Это Радио", "На мурмулях", false)]                     // «э»
+    [InlineData("Abbram", "Kavkazskaya Krov", false)]
+    [InlineData("AC/DC", "Highway to Hell", false)]
+    [InlineData("Cee-Lo і Jack Black", "Kung Fu Fighting", false)]      // « і » — лише сполучник між виконавцями
+    [InlineData("БЕЗ ОБМЕЖЕНЬ", "Якби", true)]                          // зі списку
+    [InlineData("Kalush", "Stefania", true)]                             // зі списку, регістр не важить
+    [InlineData("Нумер 482", "Триллер", true)]                          // виконавець уже має український трек
+    [InlineData("alyona alyona і Jerry Heil", "Teresa & Maria", true)]  // а тут — і список, і вивчений
+    [InlineData("DG Leos", "Блатата", false)]
+    [InlineData("MILA", "ШО ТИ, ШО ТИ", true)]                          // суто українські слова
+    [InlineData("ROMA", "Кава на двох", true)]
+    public void Language_detection(string artist, string title, bool ukrainian)
+    {
+        var lang = new MelodyLanguage(["БЕЗ ОБМЕЖЕНЬ", "KALUSH", "Jerry Heil"]);
+        var library = new[]
+        {
+            T("n1", "Нумер 482", "Добрий ранок, Україно"),
+            T("q", artist, title),
+        };
+        Assert.Equal(ukrainian, lang.Ukrainian(library).Any(t => t.Id == "q"));
+    }
+
+    [Fact]
+    public void A_russian_title_is_never_ukrainian_even_for_a_known_artist()
+    {
+        var lang = new MelodyLanguage(["Скрябін"]);
+        Assert.Empty(lang.Ukrainian([T("x", "Скрябін", "Мёртвые души")]));
+    }
+
+    [Fact]
+    public void The_real_artist_list_loads()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "liquidsoap", "radio.liq"))) dir = dir.Parent;
+        var lang = MelodyLanguage.Load(Path.Combine(dir!.FullName, MelodyLanguage.FileName));
+        Assert.Single(lang.Ukrainian([T("k", "Kalush Orchestra", "Stefania")]));
+    }
 
     [Fact]
     public void Everything_that_was_played_counts_equally()

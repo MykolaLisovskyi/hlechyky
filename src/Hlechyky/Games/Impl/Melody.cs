@@ -39,6 +39,7 @@ public sealed class Melody : Game
         [
             new GameOption("rounds", "Треків", [.. RoundChoices.Select(n => (n.ToString(), n.ToString()))], "10"),
             new GameOption("clip", "Звучить", [.. ClipChoices.Select(n => (n.ToString(), $"{n} с"))], "15"),
+            new GameOption("lang", "Пісні", [("ua", "Українські"), ("all", "Усі")], "ua"),
         ],
         Hint: "Звучить уривок пісні, яка вже грала на радіо. Пиши виконавця й назву — хто перший, той бере більше");
 
@@ -53,6 +54,7 @@ public sealed class Melody : Game
     IMelodySource _source = null!;
     int _rounds = 10;
     int _clipSec = 15;
+    bool _ukrainianOnly = true;
 
     // ---------- підготовка (фон) ----------
     CancellationTokenSource? _cts;
@@ -83,6 +85,7 @@ public sealed class Melody : Game
         _source = Ctx.Services.GetService<IMelodySource>()
             ?? new MelodyLibrary(Ctx.Services.GetService<Db>(), Ctx.Services.GetService<IOptionsMonitor<YtDlpOptions>>());
         if (options.TryGetValue("rounds", out var r) && int.TryParse(r, out var rn) && RoundChoices.Contains(rn)) _rounds = rn;
+        if (options.TryGetValue("lang", out var lang)) _ukrainianOnly = lang != "all";
         if (options.TryGetValue("clip", out var c) && int.TryParse(c, out var cn) && ClipChoices.Contains(cn)) _clipSec = cn;
     }
 
@@ -116,7 +119,7 @@ public sealed class Melody : Game
         try
         {
             var rng = new Random(seed);
-            var tracks = await _source.PickAsync(_rounds + Spare, rng, ct);
+            var tracks = await _source.PickAsync(_rounds + Spare, _ukrainianOnly, rng, ct);
             var round = 0;
             foreach (var t in tracks)
             {
@@ -150,7 +153,7 @@ public sealed class Melody : Game
         {
             case Loading:
                 if (_ready.ContainsKey(_round + 1)) BeginRound();
-                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? "На радіо ще нема скачаних треків — грати нема в що" : null);
+                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? (_ukrainianOnly ? "Українських треків у кеші радіо ще нема — грати нема в що" : "На радіо ще нема скачаних треків — грати нема в що") : null);
                 else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs) Over(_round == 0 ? "Уривки не нарізались — ffmpeg мовчить" : null);
                 break;
             case Play:

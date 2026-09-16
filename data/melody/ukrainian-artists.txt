@@ -1,0 +1,144 @@
+# Українські виконавці для «Вгадай мелодію» (режим «Українські»). Потрібні тим, у кого в назвах треків нема
+# ні «і/ї/є/ґ», ні апострофа, тобто гра сама їх не впізнає: латиниця («KALUSH», «Go_A») або слова без
+# характерних літер («БЕЗ ОБМЕЖЕНЬ», «Якби»). Написання не важить: регістр, пробіли, кирилиця/латиниця
+# зводяться самі. По виконавцю на рядок, «#» — коментар. Виконавця, у якого хоч один трек із «і/ї/є/ґ»,
+# гра впізнає й без цього списку.
+
+Океан Ельзи
+Скрябін
+Бумбокс
+Boombox
+Без Обмежень
+Воплі Відоплясова
+ВВ
+Олег Скрипка
+Антитіла
+Antytila
+Тартак
+Мандри
+Кому Вниз
+Плач Єремії
+Друга Ріка
+С.К.А.Й.
+СКАЙ
+Kozak System
+ТНМК
+Танок на Майдані Конго
+Гайдамаки
+ДахаБраха
+DakhaBrakha
+Onuka
+KALUSH
+Kalush Orchestra
+Go_A
+Jerry Heil
+alyona alyona
+The Hardkiss
+Hardkiss
+TVORCHI
+Monatik
+Монатік
+Tina Karol
+Тіна Кароль
+Jamala
+Джамала
+Wellboy
+Probass Hardi
+Klavdia Petrivna
+Клавдія Петрівна
+Артем Пивоваров
+Artem Pivovarov
+Dorofeeva
+KOLA
+Христина Соловій
+Khrystyna Soloviy
+Злата Огнєвіч
+Zlata Ognevich
+Mélovin
+Melovin
+Alyosha
+Верка Сердючка
+Андрій Данилко
+Руслана
+Ruslana
+Ірина Білик
+Святослав Вакарчук
+Сергій Бабкін
+Serhiy Babkin
+Pianoбой
+Pianoboy
+Latexfauna
+Vivienne Mort
+Kurgan & Agregat
+Курган & Агрегат
+Drevo
+Нумер 482
+Numer 482
+Жадан і Собаки
+Один в каное
+Odyn v kanoe
+Панчин
+Stasik
+Ziferblat
+Nazva
+YAKTAK
+DZIDZIO
+Дзідзьо
+Pyrih i Batih
+Пиріг і Батіг
+TAYANNA
+Таяна
+Julik
+Хамерман знищує віруси
+Мотор'ролла
+Motorrolla
+The Unsleeping
+Morphine Suffering
+Space of Variations
+Jinjer
+NAZVA
+Ptashkin
+SKYLERR
+TESLENKO
+DAMNITSKYI
+FIЇNKA
+MOTANA
+100лиця
+FEELO
+Ivan Liulenov
+Kolibri
+Zlata Ko
+Kavabanga Depo Kolibri
+YARMAK
+Ярмак
+VOZNYI
+Анна Трінчер
+Anna Trincher
+Нікіта Кісельов
+Шума
+SHUMEI
+LUKIANCHUK
+Сумнажурба
+Був'є
+AGROBOGER
+AI MOVA
+TANTSYURA
+MamaRika
+Маша Кондратенко
+KAZKA
+Казка
+Tember Blanche
+Parfeniuk
+Shumei
+Oleksandr Ponomariov
+Олександр Пономарьов
+Мила Нітіч
+Ліліт
+
+# Знайдені в кеші радіо, у назвах яких мова за літерами не видна
+Alexander Teslenko
+ROMANMUSIC
+Marisabele
+Kozak Muzon
+MILA PAZIK
+Banda UA
