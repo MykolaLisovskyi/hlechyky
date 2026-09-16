@@ -49,8 +49,13 @@ public class RoomsTests
         ttt.Join("Оля");
         ttt.Join("Петро");
         Assert.Equal(RoomStatus.Playing, ttt.Room.Status);
-        var journal = ttt.Outbox.OfType<Journal>().Single();
-        Assert.Equal("Оля і Петро сіли грати в хрестики-нолики", journal.Text);
+        // Два рядки: «Новий стіл» від Create і «сіли грати» від старту — і обидва з id столу, щоб у
+        // Журналі біля них була кнопка (docs/redesign/PLAN.md §7.4).
+        var journal = ttt.Outbox.OfType<Journal>().ToList();
+        Assert.Equal(2, journal.Count);
+        Assert.Equal("Новий стіл: Хрестики-нолики (2) · господар Оля", journal[0].Text);
+        Assert.Equal("Оля і Петро сіли грати в хрестики-нолики", journal[1].Text);
+        Assert.All(journal, line => Assert.Equal(ttt.RoomId, line.RoomId));
     }
 
     [Fact]
@@ -773,6 +778,72 @@ public class RoomsTests
         clock.Advance(TimeSpan.FromMinutes(31));
         rooms.Housekeeping(clock.UtcNow);
         Assert.Null(rooms.Find(id));
+    }
+
+    // ---------- щоб столи знаходились (PLAN.md §7.4) ----------
+
+    [Fact]
+    public void A_new_table_calls_everyone_with_a_journal_line_and_an_invite()
+    {
+        var h = new RoomHarness("t-party");
+        h.Join("Оля");
+
+        var line = Assert.Single(h.Outbox.OfType<Journal>());
+        Assert.Equal("Новий стіл: Тестова компанія (2–4) · господар Оля", line.Text);
+        Assert.Equal(h.RoomId, line.RoomId);
+
+        var invite = Assert.Single(h.Outbox.OfType<Invite>());
+        Assert.Equal(h.RoomId, invite.RoomId);
+        Assert.Equal("Оля", invite.By);
+        Assert.Equal("Оля кличе в тестову компанію", invite.Text);
+    }
+
+    [Fact]
+    public void A_private_table_calls_nobody()
+    {
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+
+        Assert.Empty(h.Outbox.OfType<Invite>());
+        Assert.Empty(h.Outbox.OfType<Journal>());
+    }
+
+    [Fact]
+    public void A_table_that_started_at_once_invites_nobody_to_sit()
+    {
+        // Соло-подібний стіл на одного (Immediate) сідати вже нікуди: кликати нема на що, і «Новий стіл»
+        // теж зайвий — про партію напише сам старт.
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        var outbox = rooms.Create("Оля", "t-now", null).Out;
+
+        Assert.Empty(outbox.OfType<Invite>());
+        Assert.DoesNotContain(outbox.OfType<Journal>(), l => l.Text.StartsWith("Новий стіл"));
+    }
+
+    [Fact]
+    public void Live_ids_put_the_tables_you_can_still_join_first()
+    {
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        var playing = rooms.Create("Оля", "ttt", null).Reply.RoomId!;
+        rooms.Join(playing, "Петро");                       // WhenFull → уже грають
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var waiting = rooms.Create("Ганна", "c4", null).Reply.RoomId!;
+
+        Assert.Equal([waiting, playing], rooms.LiveIds());
+    }
+
+    [Fact]
+    public void Live_ids_forget_a_finished_table()
+    {
+        var h = new RoomHarness("t-duel");
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Act(0, "win");
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Empty(h.Rooms.LiveIds());
     }
 
     // ---------- продуктивність ----------

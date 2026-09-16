@@ -285,11 +285,21 @@ public abstract record Outgoing;
 public sealed record LobbyChanged : Outgoing;
 public sealed record RoomViews(string RoomId) : Outgoing;
 public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
-public sealed record Journal(string Text) : Outgoing;
+/// <summary>
+/// Рядок у Журнал усім. <paramref name="RoomId"/> — живий стіл, про який цей рядок: браузер малює біля
+/// нього кнопку «Сісти»/«Дивитись» (PROTOCOL §2). null — просто рядок.
+/// </summary>
+public sealed record Journal(string Text, string? RoomId = null) : Outgoing;
 public sealed record DjSays(string Text) : Outgoing;
 public sealed record WalletChanged(string Nick, int Balance, int Delta, string Reason, string Text) : Outgoing;
 public sealed record AchievementUnlocked(string Nick, string Key, string Title, string Text, string Icon, int Reward) : Outgoing;
 public sealed record ToastFor(string Nick, string Text, string Kind) : Outgoing;
+/// <summary>
+/// «Влад кличе в Мафію» — заклик до столу всім, хто зараз на сайті. Летить усім разом із ніком того, хто
+/// кличе: свій же заклик браузер відкидає сам, бо хто кому кличе — видно лише в браузері (там є me.nick),
+/// а сервер про вкладки того самого ніка нічого корисного не знає.
+/// </summary>
+public sealed record Invite(string RoomId, string By, string Text) : Outgoing;
 
 /// <summary>Куди сервіси (WP1) кладуть свої повідомлення, коли щось нарахували поза межами дії каркаса (онлайн-хвилини, ачівка).</summary>
 public interface IOutbox

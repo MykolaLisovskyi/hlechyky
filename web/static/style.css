@@ -369,6 +369,21 @@ button.vplay { padding: 3px 8px; }
 .msg.system { color: var(--muted); font-size: .85em; }
 .msg.system .n { display: none; }
 .msg.system .time { margin-left: 0; margin-right: 6px; }
+
+/* ---- столи в балачках ---- */
+/* Кнопка до столу в рядку Журналу і в картці /столи: іконка гри з назвою плюс дія. */
+.roomlink {
+  display: inline-flex; align-items: center; gap: 6px; margin: 4px 6px 0 0; padding: 4px 10px;
+  border-radius: 999px; font-size: .95em; line-height: 1.2; min-height: 30px;
+}
+.roomlink .rl-go { color: var(--muted); font-weight: 700; }
+.roomlink.primary .rl-go { color: inherit; }
+.roomlink:hover { border-color: var(--accent2); }
+/* Відповідь на /столи — картка, яку бачить лише той, хто спитав. */
+.msg.tables { background: var(--bg2); border-radius: 10px; padding: 6px 8px; }
+.msg.tables .n { color: var(--clay); }
+.msg.tables .time { float: right; margin: 0; font-style: italic; }
+.msg.tables .tlist { display: flex; flex-wrap: wrap; gap: 0 4px; margin-top: 2px; }
 .chat form { display: flex; gap: 8px; margin-top: 10px; }
 #cmdBtn { font-weight: 700; color: var(--muted); }
 #cmdBtn:hover { color: var(--accent); }

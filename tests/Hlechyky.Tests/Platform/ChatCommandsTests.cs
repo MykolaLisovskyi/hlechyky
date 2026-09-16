@@ -192,13 +192,63 @@ public class ChatCommandsTests
         Assert.Equal("8ball", r.Kind);
     }
 
+    // ---------------------------------------------------------------------------- /столи
+
+    [Fact]
+    public void Tables_answers_with_the_ids_the_lobby_gave()
+    {
+        var r = ChatCommands.Run("/столи", () => ["aa11", "bb22"]);
+
+        Assert.Null(r.Error);
+        Assert.Equal("Живих столів: 2", r.Text);
+        Assert.Equal("tables", r.Kind);
+        Assert.Equal(["aa11", "bb22"], r.Rooms);
+    }
+
+    [Fact]
+    public void One_table_is_said_in_the_singular()
+    {
+        var r = ChatCommands.Run("/tables", () => ["aa11"]);
+
+        Assert.Equal("Живий стіл", r.Text);
+        Assert.Equal(["aa11"], r.Rooms);
+    }
+
+    [Fact]
+    public void An_empty_lobby_answers_only_the_one_who_asked()
+    {
+        var r = ChatCommands.Run("/столи", () => []);
+
+        Assert.Equal("Живих столів нема. Постав свій у розділі «Ігри»", r.Error);
+        Assert.Null(r.Rooms);
+    }
+
+    [Fact]
+    public void Without_a_lobby_the_command_says_so_instead_of_lying_about_empty()
+    {
+        // Так /столи виглядає для агента: столи в нього свої, через list_rooms.
+        var r = ChatCommands.Run("/столи");
+
+        Assert.Equal("Звідси столів не видно", r.Error);
+    }
+
+    [Fact]
+    public void A_crowded_lobby_is_cut_to_what_fits_one_card()
+    {
+        var many = Enumerable.Range(0, ChatCommands.MaxTables + 5).Select(i => "id" + i).ToList();
+        var r = ChatCommands.Run("/столи", () => many);
+
+        Assert.Equal(ChatCommands.MaxTables, r.Rooms!.Count);
+        Assert.Equal($"Живих столів: {many.Count}", r.Text);   // рахуємо всі, показуємо скільки влізло
+    }
+
     // ---------------------------------------------------------------------------- решта
 
     [Fact]
     public void An_unknown_command_names_the_ones_that_exist()
     {
         var r = ChatCommands.Run("/фігня");
-        Assert.Equal("Команди /фігня нема. Є /roll, /coin, /choose і /8ball", r.Error);
+        Assert.Equal("Команди /фігня нема. Є /roll, /coin, /choose, /8ball і /столи", r.Error);
         Assert.Null(r.Text);
     }
 

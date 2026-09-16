@@ -613,6 +613,7 @@
     { cmd: '/coin', args: '', help: 'монетка: орел чи решка. Аліас — /монетка' },
     { cmd: '/choose', args: 'а | б | в', help: 'обрати за тебе: /choose чай | кава | компот. Аліаси — /обери, /вибери' },
     { cmd: '/8ball', args: 'питання', help: 'спитати Дядька Глека: /8ball чи буде дощ? Аліаси — /куля, /глек' },
+    { cmd: '/столи', args: '', help: 'які столи зараз живі — з кнопками. Бачиш лише ти. Аліас — /tables' },
   ];
   // Грані малюємо крапками самі: юнікодні ⚀⚁⚂ у кожному шрифті сидять у своєму квадраті по-своєму
   // і в плитці стоять криво. Індекси — клітинки сітки 3×3 зліва направо.
@@ -727,6 +728,36 @@
   function paintTitle() { document.title = (unread ? `(${unread}) ` : '') + baseTitle; }
   /// Кличуть на ім'я — навіть коли балачки згорнуті, це має долетіти.
   const mentionsMe = (text) => !!me.nick && me.nick.length > 1 && String(text || '').toLowerCase().includes(me.nick.toLowerCase());
+  /// Кнопка до столу біля рядка балачок: «Сісти», поки є куди, інакше «Дивитись». Столу вже нема —
+  /// кнопки теж нема: мертве посилання гірше, ніж його відсутність. Що там за стіл, знає HGames.
+  /// <c>named</c> — чи назвати гру на самій кнопці; у рядку Журналу вона вже названа в тексті.
+  function roomBtn(id, named) {
+    const link = window.HGames && HGames.roomLink && HGames.roomLink(id);
+    if (!link) return null;
+    const b = document.createElement('button');
+    b.className = 'roomlink' + (link.canSit ? ' primary' : '');
+    b.title = link.who;
+    const paint = () => {
+      const now = HGames.roomLink(id) || link;
+      b.innerHTML = (named ? now.title : now.icon) + '<span class="rl-go">' + esc(now.label) + '</span>';
+    };
+    paint();
+    // Іконка гри приходить із її модулем, а він міг ще не завантажитись: домалюємо, щойно прилетить.
+    if (HGames.ensureIcon) HGames.ensureIcon(link.game, paint);
+    b.onclick = () => ((HGames.roomLink(id) || link).canSit
+      ? busy(b, 'сідаю…', () => HGames.sitAt(id))
+      : HGames.openAt(id));
+    return b;
+  }
+  /// Кнопки до столів у вже намальованих рядках. Слот у рядку стоїть завжди, кнопка в ньому —
+  /// поки стіл живий: стіл заповнився чи його прибрали — рядок міняється разом із ним, а не бреше.
+  function paintRoomSlots(root) {
+    for (const slot of (root || document).querySelectorAll('.roomslot')) {
+      const b = roomBtn(slot.dataset.room, slot.dataset.named === '1');
+      slot.textContent = '';
+      if (b) slot.appendChild(b);
+    }
+  }
   function addMessage(m, scroll = true, live = false) {
     const isLog = m.kind === 'system';
     const box = isLog ? $('log') : $('messages');
@@ -735,8 +766,18 @@
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
-      : m.kind === 'dice' ? 'dice' : m.kind === 'coin' ? 'dice coin' : mine ? 'mine' : '');
-    if (m.kind === 'coin') {
+      : m.kind === 'dice' ? 'dice' : m.kind === 'coin' ? 'dice coin'
+        : m.kind === 'tables' ? 'tables' : mine ? 'mine' : '');
+    if (m.kind === 'tables') {
+      // Відповідь на /столи бачить лише той, хто спитав: це погляд у лобі, не виходячи з балачок,
+      // а не репліка. Тому вона й у базу не лягає — після F5 її не буде, і це правильно.
+      el.innerHTML = '<span class="n">🎲 ' + esc(m.text) + '</span><span class="time">лише тобі</span>'
+        + '<div class="tlist">'
+        + (m.rooms || []).map((id) => '<span class="roomslot" data-named="1" data-room="' + esc(id) + '"></span>').join('')
+        + '</div>';
+      paintRoomSlots(el);
+      if (!el.querySelector('.roomlink')) el.querySelector('.tlist').innerHTML = '<span class="muted small">Столи щойно розібрали.</span>';
+    } else if (m.kind === 'coin') {
       // Бік читаємо хвостом рядка, а не першим словом: боків колись може стати більше («Стало ребром»),
       // і двослівний не має лишити порожню плитку. Формат не впізнали — малюємо текст як є.
       const hit = /🪙\s+(.+)$/.exec(m.text || '');
@@ -765,6 +806,15 @@
       const big = emojiCount(m.text);
       if (big && big <= 3) el.classList.add('big');
       el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="t">${linkify(m.text)}</span><span class="time">${tm(m.at)}</span>`;
+    }
+    // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
+    // слот під кнопку, щоб до столу можна було дійти прямо звідси (PLAN.md §7.4).
+    if (m.roomId && m.kind !== 'tables') {
+      const slot = document.createElement('span');
+      slot.className = 'roomslot';
+      slot.dataset.room = m.roomId;
+      el.appendChild(slot);
+      paintRoomSlots(el);
     }
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();
@@ -1490,6 +1540,10 @@
     conn.on('chat', (m) => addMessage(m, true, true));
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
+    // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
+    // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
+    // лишався б без кнопки аж до наступної новини з лобі.
+    conn.on('rooms', () => paintRoomSlots());
     conn.on('chatHistory', (list) => {
       $('messages').innerHTML = '';
       $('log').innerHTML = '';

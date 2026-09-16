@@ -7,10 +7,17 @@ namespace Hlechyky;
 /// </summary>
 public static class ChatCommands
 {
-    /// <summary>Error бачить лише той, хто набрав; Text іде в чат усім.</summary>
-    public sealed record Result(string? Error = null, string? Text = null, string Kind = "chat");
+    /// <summary>
+    /// Error бачить лише той, хто набрав; Text іде в чат усім. Непорожній <see cref="Rooms"/> — відповідь
+    /// особиста (/столи): хаб шле її самому питальнику й у базу не кладе.
+    /// </summary>
+    public sealed record Result(string? Error = null, string? Text = null, string Kind = "chat", IReadOnlyList<string>? Rooms = null);
 
-    public static Result Run(string text)
+    /// <summary>
+    /// <paramref name="live"/> — id живих столів (спершу ті, куди ще можна сісти). Null — звідси столів не
+    /// видно: так /столи виглядає для агента, у якого для цього є свій list_rooms.
+    /// </summary>
+    public static Result Run(string text, Func<IReadOnlyList<string>>? live = null)
     {
         var space = text.IndexOf(' ');
         var name = (space < 0 ? text : text[..space]).ToLowerInvariant();
@@ -21,8 +28,26 @@ public static class ChatCommands
             "/coin" or "/монетка" => Coin(),
             "/choose" or "/обери" or "/вибери" => Choose(args),
             "/8ball" or "/куля" or "/глек" => Ball(args),
-            _ => new(Error: $"Команди {name} нема. Є /roll, /coin, /choose і /8ball"),
+            "/tables" or "/столи" or "/стіл" => Tables(live),
+            _ => new(Error: $"Команди {name} нема. Є /roll, /coin, /choose, /8ball і /столи"),
         };
+    }
+
+    /// <summary>Більше живих столів за раз і не буває (Rooms.MaxRooms), але межа тут своя — картка не гумова.</summary>
+    public const int MaxTables = 12;
+
+    /// <summary>
+    /// /столи — які столи зараз живі, з кнопками до кожного. Відповідь особиста: у базу не лягає й іншим не
+    /// летить, бо це не репліка, а погляд у лобі, не виходячи з балачок. Самі столи браузер уже знає з
+    /// події <c>rooms</c>, тож звідси йдуть лише id — щоб картка не показувала вчорашній склад.
+    /// </summary>
+    static Result Tables(Func<IReadOnlyList<string>>? live)
+    {
+        if (live is null) return new(Error: "Звідси столів не видно");
+        var ids = live();
+        if (ids.Count == 0) return new(Error: "Живих столів нема. Постав свій у розділі «Ігри»");
+        return new(Text: ids.Count == 1 ? "Живий стіл" : $"Живих столів: {ids.Count}", Kind: "tables",
+            Rooms: [.. ids.Take(MaxTables)]);
     }
 
     /// <summary>/roll — 1–6, /roll 100 — 1–100, /roll 2-12 — свої межі (включно).</summary>
