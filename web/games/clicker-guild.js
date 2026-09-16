@@ -128,8 +128,9 @@
     const goal = Math.max(1, w.goal);
     const pct = Math.min(100, (w.total / (goal * 2)) * 100);
     const mine = Math.min(pct, (w.mine / (goal * 2)) * 100);
+    // Відсотки під порогами прибрано: гравцеві досить бачити, де бронза, срібло й золото.
     const marks = [1, 2, 3].map((t) => '<span class="clkg-mark t' + t + (w.tier >= t ? ' on' : '') + '" style="left:' + ([0, 50, 75, 100][t]) + '%">'
-      + '<b>' + TIER_ICON[t] + '</b><i>' + [0, 100, 150, 200][t] + '%</i></span>').join('');
+      + '<b>' + TIER_ICON[t] + '</b></span>').join('');
     return '<div class="clkg-bar"><div class="clkg-fill" style="width:' + pct.toFixed(1) + '%"></div>'
       + '<div class="clkg-mine" style="width:' + mine.toFixed(1) + '%"></div>' + marks + '</div>';
   }
@@ -156,14 +157,15 @@
       ? '<div class="muted small">Минулого тижня: ' + (v.prev.tier ? TIER_ICON[v.prev.tier] + ' ' + TIER[v.prev.tier] : 'до бронзи не дотягли — не біда') + ', разом ' + v.prev.total + '</div>'
       : '';
     return '<section class="clkg-card clkg-week">'
-      + '<div class="clk-sub">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span></div>'
+      + '<div class="clk-sub">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
+      + info('Село — це всі гончарі сайту разом: один віз на тиждень, дарунки одне одному, хати в гості. Бронза — ціль і всі '
+        + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю гончарів минулого тижня (' + w.potters + '). '
+        + 'Пропущений тиждень нічого не забирає.') + '</div>'
       + wagonSvg(st, api, w)
-      + '<div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small">· ' + Math.floor(w.pct) + ' % · '
+      + '<div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small">· '
       + (w.tier ? TIER_ICON[w.tier] + ' ' + TIER[w.tier] : 'ще до бронзи') + '</span></div>'
       + barHtml(w)
       + '<div class="clkg-subs">' + subs + '</div>'
-      + '<div class="muted small">Бронза — ціль і всі підцілі; срібло — 150 %; золото — 200 %. Ціль росте з кількістю гончарів минулого тижня ('
-      + w.potters + ').</div>'
       + givers
       + '<div class="clkg-btns"><button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Покласти на віз</button>'
       + claims + '</div>'
@@ -183,14 +185,15 @@
         + ' · ' + styleName(st, g.style) + ' · від ' + g.from) + '">'
         + api.wareSvg(g.ware, { style: g.style, quality: g.q, cls: 'clkg-mid', slot: 'gsh-' + i })
         + '<i>від ' + esc(g.from) + '</i></span>').join('') + '</div>'
-      : '<div class="muted small">Полиця дарунків порожня. Дарунок від друга стане тут із підписом — продати його не можна, це пам\'ять.</div>';
+      : '<div class="muted small">Полиця дарунків порожня.</div>';
     return '<section class="clkg-card">'
       + '<div class="clk-sub">🎁 Дарунки <span class="muted small">· сьогодні ще ' + v.gifts.left + ' з ' + per + ' · подаровано ' + v.gifts.sent
       + ' · отримано ' + v.gifts.got + '</span></div>'
       + '<div class="clkg-btns"><button type="button" class="ghost clkg-gifting"' + (st.mine && v.gifts.left > 0 && itemsOf(st).length ? '' : ' disabled') + '>🎁 Подарувати виріб другові</button>'
       + '<button type="button" class="ghost clkg-bragging"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🏺 Похвалитись</button>'
       + '<span class="muted small clkg-bragcd" data-at="' + (Date.parse(v.bragAt) || 0) + '"></span></div>'
-      + '<div class="clk-sub small">Полиця дарунків</div>' + shelf
+      + '<div class="clk-sub small">Полиця дарунків'
+      + info('Дарунок від друга стане тут із підписом — продати його не можна, це пам\'ять.') + '</div>' + shelf
       + '</section>';
   }
 
@@ -201,27 +204,6 @@
     const c = cat(st);
     const path = RANKS.map((_, r) => '<span class="clkg-step' + (v.rank === r ? ' on' : v.rank > r ? ' done' : '') + '">'
       + '<b>' + RANK_ICON[r] + '</b><i>' + esc(rankName(st, r)) + '</i></span>').join('<span class="clkg-dash"></span>');
-    let next = '<div class="clkg-top">🎖️ Ти цехмістр — вище в цеху лише небо. Нагорода воза ×1,5, титул у похвалах і в хаті.</div>';
-    if (v.next) {
-      const n = v.next;
-      const row = (label, have, need) => '<div class="clkg-req' + (have >= need ? ' ok' : '') + '"><span>' + label + '</span>'
-        + '<div class="clkg-rbar"><i style="width:' + (need > 0 ? Math.min(100, (have / need) * 100) : 100).toFixed(1) + '%"></i></div>'
-        + '<b>' + api.short(Math.min(have, need)) + '/' + api.short(need) + '</b></div>';
-      const p = n.piece;
-      const pieceText = 'дзвінк' + (['bowl', 'makitra', 'tile'].includes(p.ware) ? 'а' : p.ware === 'barrel' ? 'е' : 'ий') + ' '
-        + wareName(st, p.ware).toLowerCase() + (p.style ? ' — ' + ((c && c.styleWords && c.styleWords[p.style]) || styleName(st, p.style).toLowerCase()) : ' у будь-якому розписі');
-      const perk = c && c.ranks && c.ranks[n.rank] ? c.ranks[n.rank].perk : '';
-      next = '<div class="clk-sub small">До рангу «' + esc(rankName(st, n.rank)) + '»</div>'
-        + row('обпалено виробів', n.fired.have, n.fired.need)
-        + row('покладено на вози', n.given.have, n.given.need)
-        + (n.styles.need ? row('розписів у колекції', n.styles.have, n.styles.need) : '')
-        + '<div class="clkg-piece' + (p.have ? ' have' : '') + '">'
-        + api.wareSvg(p.ware, { style: p.style || 'kosiv', quality: 3, cls: 'clkg-big', slot: 'piece' })
-        + '<div><b>Майстерштук</b><span class="small">' + esc(pieceText) + '</span>'
-        + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали дзвінким — і принеси цехові') + '</span></div></div>'
-        + (perk ? '<div class="muted small">Перк: ' + esc(perk) + '</div>' : '')
-        + '<button type="button" class="primary clkg-master"' + (st.mine && n.ready && p.have ? '' : ' disabled') + '>🎓 Здати майстерштук</button>';
-    }
     const perks = [];
     if (v.rank >= 1) {
       perks.push('<label class="clkg-auto"><input type="checkbox" class="clkg-autobox"' + (v.autoOff ? '' : ' checked') + (st.mine ? '' : ' disabled') + '> '
@@ -229,11 +211,51 @@
     }
     if (v.rank >= 2) perks.push('<div class="small">🏺 +' + v.kilnSlots + ' місця в горні · наступний виріб відкривається на щабель раніше</div>');
     if (v.rank >= 3) perks.push('<div class="small">🐴 Нагорода воза ×1,5 · титул «Цехмістр» у похвалах і в хаті</div>');
+    const perkBox = perks.length ? '<div class="clkg-perks">' + perks.join('') + '</div>' : '';
+
+    // Цехмістр: вище нема куди — самий рядок і перки.
+    if (!v.next) {
+      return '<section class="clkg-card">'
+        + '<div class="clk-sub">' + RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank)) + '</div>'
+        + '<div class="muted small">🎖️ Вище в селі лише небо.</div>' + perkBox + '</section>';
+    }
+
+    const n = v.next;
+    const p = n.piece;
+    const share = (have, need) => (need > 0 ? Math.min(1, have / need) : 1);
+    // Смужка — по найвідсталішій умові: саме вона й тримає ранг.
+    const done = Math.min(share(n.fired.have, n.fired.need), share(n.given.have, n.given.need),
+      n.styles.need ? share(n.styles.have, n.styles.need) : 1, p.have ? 1 : 0.999);
+    const row = (label, have, need) => '<div class="clkg-req' + (have >= need ? ' ok' : '') + '"><span>' + label + '</span>'
+      + '<div class="clkg-rbar"><i style="width:' + (share(have, need) * 100).toFixed(1) + '%"></i></div>'
+      + '<b>' + api.short(Math.min(have, need)) + '/' + api.short(need) + '</b></div>';
+    const pieceText = 'дзвінк' + (['bowl', 'makitra', 'tile'].includes(p.ware) ? 'а' : p.ware === 'barrel' ? 'е' : 'ий') + ' '
+      + wareName(st, p.ware).toLowerCase() + (p.style ? ' — ' + ((c && c.styleWords && c.styleWords[p.style]) || styleName(st, p.style).toLowerCase()) : ' у будь-якому розписі');
+    const perk = c && c.ranks && c.ranks[n.rank] ? c.ranks[n.rank].perk : '';
+    const ready = n.ready && p.have;
+    // Одним рядком: хто ти зараз, куди йдеш і як далеко зайшов. Умови — за «що потрібно ▾».
     return '<section class="clkg-card">'
-      + '<div class="clk-sub">' + RANK_ICON[v.rank] + ' Ранг у цеху: ' + esc(rankName(st, v.rank)) + '</div>'
+      + '<div class="clk-sub">' + RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank))
+      + '<span class="muted small"> · далі «' + esc(rankName(st, n.rank)) + '»</span>'
+      + info('Ранг у селі росте від роботи: обпалені вироби, покладене на віз, розписи в колекції — і майстерштук, '
+        + 'який треба виліпити, обпалити дзвінким і принести. Кожен ранг дає перк назавжди.') + '</div>'
+      + '<div class="clkg-bar sm"><div class="clkg-fill" style="width:' + (done * 100).toFixed(1) + '%"></div></div>'
+      + (ready
+        ? '<button type="button" class="primary clkg-master">🎓 Здати майстерштук — ти готовий(а)</button>'
+        : '<div class="muted small">' + (p.have ? 'майстерштук уже в коморі — лишились умови' : 'треба ще ' + esc(pieceText)) + '</div>')
+      + '<details class="clkg-need"><summary>що потрібно</summary>'
       + '<div class="clkg-path">' + path + '</div>'
-      + (perks.length ? '<div class="clkg-perks">' + perks.join('') + '</div>' : '')
-      + next
+      + row('обпалено виробів', n.fired.have, n.fired.need)
+      + row('покладено на вози', n.given.have, n.given.need)
+      + (n.styles.need ? row('розписів у колекції', n.styles.have, n.styles.need) : '')
+      + '<div class="clkg-piece' + (p.have ? ' have' : '') + '">'
+      + api.wareSvg(p.ware, { style: p.style || 'kosiv', quality: 3, cls: 'clkg-big', slot: 'piece' })
+      + '<div><b>Майстерштук</b><span class="small">' + esc(pieceText) + '</span>'
+      + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали дзвінким — і принеси селу') + '</span></div></div>'
+      + (perk ? '<div class="muted small">Перк: ' + esc(perk) + '</div>' : '')
+      + (ready ? '' : '<button type="button" class="ghost clkg-master" disabled>🎓 Здати майстерштук</button>')
+      + '</details>'
+      + perkBox
       + '</section>';
   }
 
@@ -439,6 +461,9 @@
 
   // ---------- вкладка ----------
 
+  /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить.
+  const info = (text) => '<details class="clk-info"><summary>і</summary><p>' + text + '</p></details>';
+
   function paint(st, api) {
     const v = st.guild;
     if (!st.guildBody || !v) return;
@@ -446,9 +471,7 @@
       api.swap(st.guildBody, '<div class="clk-teaser muted">🔒 Цех зараз зачинений. Твій ранг — ' + api.esc(st, rankName(st, v.rank || 0)) + '.</div>');
       return;
     }
-    const html = '<div class="muted small clkg-intro">Цех — це всі гончарі сайту разом: один віз на тиждень, дарунки одне одному, хати в гості. '
-      + 'Тут ніхто не перший і не останній — пропущений тиждень нічого не забирає.</div>'
-      + wagonHtml(st, api, v) + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
+    const html = wagonHtml(st, api, v) + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
     if (!api.swap(st.guildBody, html)) return;
     const q = (sel) => st.guildBody.querySelector(sel);
     const give = q('.clkg-give');
@@ -467,8 +490,10 @@
     if (gifting) gifting.onclick = () => { loadRoster(st, api, true); openPicker(st, api, 'gift'); };
     const bragging = q('.clkg-bragging');
     if (bragging) bragging.onclick = () => openPicker(st, api, 'brag');
-    const master = q('.clkg-master');
-    if (master) master.onclick = (e) => { if (e.isTrusted) act(st, api, { op: 'masterpiece' }, null); };
+    // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
+    for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
+      master.onclick = (e) => { if (e.isTrusted) act(st, api, { op: 'masterpiece' }, null); };
+    }
     const auto = q('.clkg-autobox');
     if (auto) auto.onchange = () => act(st, api, { op: 'auto', on: auto.checked }, null);
     for (const b of st.guildBody.querySelectorAll('[data-house]')) b.onclick = () => openHouse(st, api, b.dataset.house);

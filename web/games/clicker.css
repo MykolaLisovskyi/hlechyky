@@ -282,6 +282,17 @@
 .clk-sec[open] > summary::before { content: '▾ '; }
 .clk-secbody { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; }
 
+/* ---- ⓘ: довгий абзац згортається в один значок, а не займає екран ---- */
+.clk-info { display: inline-block; vertical-align: middle; margin-left: 4px; }
+.clk-info > summary {
+  cursor: pointer; list-style: none; color: var(--muted); font-size: .8em; line-height: 1;
+  border: 1px solid var(--line); border-radius: 999px; width: 16px; height: 16px; display: grid; place-items: center;
+}
+.clk-info > summary::-webkit-details-marker { display: none; }
+.clk-info[open] > summary { color: var(--accent2); border-color: var(--accent2); }
+.clk-info p { margin: 6px 0 0; font-size: .8em; color: var(--muted); line-height: 1.35; }
+.clk-info[open] { display: block; margin-left: 0; }
+
 /* ---- «Ремесло»: горно, комора й замовлення одне під одним ---- */
 .clkc-slot { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .clkc-slot:empty { display: none; }

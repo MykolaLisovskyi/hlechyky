@@ -20,14 +20,21 @@
 
 .clkg-line { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .clkg-line b { font-size: 1.3em; color: var(--accent); }
-.clkg-bar { position: relative; height: 12px; margin: 4px 10px 22px 2px; border-radius: 6px; background: rgba(255, 255, 255, .08); }
+.clkg-bar { position: relative; height: 12px; margin: 4px 10px 18px 2px; border-radius: 6px; background: rgba(255, 255, 255, .08); }
+/* Смужка рангу — без порогів, тож і місця під ними не треба. */
+.clkg-bar.sm { height: 8px; margin: 2px 0 4px; }
+/* «Що потрібно» — за ▾: умови рангу читають раз, а місце вони займають щоразу. */
+.clkg-need > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: .84em; padding: 3px 0; }
+.clkg-need > summary::-webkit-details-marker { display: none; }
+.clkg-need > summary::after { content: ' ▾'; }
+.clkg-need[open] > summary::after { content: ' ▴'; }
+.clkg-need { display: flex; flex-direction: column; gap: 6px; }
 .clkg-fill, .clkg-mine { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; transition: width .5s; }
 .clkg-fill { background: linear-gradient(90deg, #8a5a2b, var(--clay), var(--accent2)); }
 .clkg-mine { background: rgba(255, 255, 255, .22); }
 .clkg-mark { position: absolute; top: -3px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 .clkg-mark b { font-size: 13px; line-height: 18px; filter: grayscale(1) opacity(.55); }
 .clkg-mark.on b { filter: none; }
-.clkg-mark i { font-style: normal; font-size: 10px; color: var(--muted); }
 .clkg-mark::before { content: ''; position: absolute; top: 3px; width: 2px; height: 12px; background: rgba(0, 0, 0, .35); }
 
 .clkg-subs { display: flex; flex-wrap: wrap; gap: 6px; }
