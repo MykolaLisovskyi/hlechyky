@@ -1,0 +1,175 @@
+/*
+  Позивні. Стіл — п'ять на п'ять слів, і він мусить лишатись читабельним на 380 px: плитки не квадратні,
+  а такі, щоб уміщалось слово. Кольори — тільки змінними, свої оголошуємо тут, на :root.
+
+  Плитка — об'ємна кнопка: світліший верх, темніший низ і тверда нижня грань (тінь без розмиття). Закрите
+  слово стоїть «на столі», відкрите — втоплене всередину. Тому капітан, який бачить свій розклад залитим,
+  і будь-хто, хто дивиться на вже відкриті слова, не плутаються, хоч кольори команд ті самі.
+*/
+:root {
+  /* Кольори команд для чіпів, підписів і рамок */
+  --pz-red: #e08a6a;
+  --pz-blue: #7ab0da;
+  --pz-sand: #c2ad86;       /* нейтральне слово: піщане, а не сіре — під глиняну тему сайту */
+  --pz-dark: #12120d;       /* чорне слово */
+
+  /* Грані плиток: верх → низ → тверда нижня грань */
+  --pz-face-top: #2d5040;
+  --pz-face-bot: #23402f;
+  --pz-edge: #13251b;
+}
+
+.pz { display: flex; flex-direction: column; gap: 11px; width: 100%; }
+
+/* ---- шапка ---- */
+.pz-top { display: flex; align-items: center; gap: 10px; width: 100%; }
+.pz-arc { flex: none; }
+.pz-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.pz-head b { font-size: 1.1em; font-family: var(--display, inherit); }
+.pz-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- склад: хто з ким і хто ведучий ---- */
+.pz-teams { display: flex; flex-wrap: wrap; gap: 9px; width: 100%; }
+.pz-col {
+  flex: 1 1 240px; display: flex; flex-direction: column; gap: 7px;
+  padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  box-shadow: 0 3px 0 var(--bg2), inset 0 1px 0 rgba(255, 255, 255, .06);
+  transition: border-color .15s, box-shadow .15s;
+}
+.pz-colhead { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.pz-colhead b { font-family: var(--display, inherit); font-size: 1.02em; }
+.pz-left { font-size: .8em; color: var(--muted); white-space: nowrap; }
+.pz-mates { display: flex; flex-wrap: wrap; gap: 5px; }
+.pz-mate {
+  display: inline-flex; align-items: center; gap: 5px; font-size: .86em;
+  padding: 3px 9px; border-radius: 999px; background: var(--bg2); border: 1px solid transparent;
+}
+.pz-mate.me { border-color: var(--accent2); font-weight: 700; }
+.pz-mate.boss { background: var(--panel3); }
+.pz-mic { font-style: normal; font-size: .95em; }
+.pz-role { font-style: normal; font-size: .76em; color: var(--muted); }
+.pz-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.pz-acts .ghost { padding: 4px 9px; font-size: .82em; }
+.pz-col.red { border-color: rgba(224, 138, 106, .5); }
+.pz-col.red b { color: var(--pz-red); }
+.pz-col.blue { border-color: rgba(122, 176, 218, .5); }
+.pz-col.blue b { color: var(--pz-blue); }
+/* Команда, що ходить, світиться — щоб не шукати чергу очима по шапці. */
+.pz-col.now.red { box-shadow: 0 3px 0 var(--bg2), 0 0 0 2px rgba(224, 138, 106, .55), inset 0 1px 0 rgba(255, 255, 255, .06); }
+.pz-col.now.blue { box-shadow: 0 3px 0 var(--bg2), 0 0 0 2px rgba(122, 176, 218, .55), inset 0 1px 0 rgba(255, 255, 255, .06); }
+.pz-go { width: 100%; }
+
+/* ---- підказка: табличка на всю ширину ---- */
+.pz-clue {
+  text-align: center; padding: 9px 12px; border-radius: 12px;
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.pz-clue b { font-size: 1.35em; letter-spacing: .06em; color: var(--accent); font-family: var(--display, inherit); }
+.pz-clue span { margin-left: 8px; letter-spacing: 0; }
+
+/* ---- стіл ---- */
+.pz-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; }
+.pz-card {
+  position: relative; padding: 8px 6px; display: grid; place-items: center;
+  /* Стіл росте разом із карткою: у режимі ⛶ плитки стають більшими, на телефоні — дрібнішими. */
+  min-height: clamp(54px, 6.4vw, 104px);
+  text-align: center; font-size: clamp(.78em, .92vw, 1.1em); line-height: 1.16; font-weight: 600; color: var(--text);
+  border: 1px solid rgba(0, 0, 0, .34); border-radius: 11px;
+  background: linear-gradient(180deg, var(--pz-face-top), var(--pz-face-bot));
+  box-shadow: 0 3px 0 var(--pz-edge), 0 5px 9px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .08);
+  /* Кнопки на сайті типово в один рядок (style.css) — словам на столі це зайве. */
+  white-space: normal; overflow: hidden; hyphens: auto;
+  transition: transform .09s ease, box-shadow .09s ease, filter .15s ease;
+}
+.pz-card > span { display: block; max-width: 100%; overflow-wrap: anywhere; }
+/* Коли на слові є пальці, текст трохи вище — щоб чипи не лягли на літери. */
+.pz-card:has(.pz-hands) > span { transform: translateY(-7px); }
+.pz-card.xlong { font-size: .8em; line-height: 1.08; }
+.pz-card:disabled { opacity: 1; }
+/* Клікабельна плитка піднімається під курсором і по-справжньому втискається під пальцем. */
+.pz-card:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 5px 0 var(--pz-edge), 0 9px 14px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .12); }
+.pz-card:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--pz-edge), inset 0 2px 5px rgba(0, 0, 0, .4); }
+.pz-card:not(:disabled):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Пальці: хто на що показує. Видно всім — за живим столом підняті руки теж ні від кого не сховаєш. */
+.pz-hands {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; gap: 3px;
+  justify-content: center; flex-wrap: wrap; pointer-events: none;
+}
+.pz-hands i {
+  font-style: normal; font-size: 9px; line-height: 1; font-weight: 700; letter-spacing: .02em;
+  padding: 2px 4px; border-radius: 999px; background: rgba(0, 0, 0, .45); color: #f2efe6;
+  border: 1px solid rgba(255, 255, 255, .25);
+}
+/* Слово, на яке показую я: золота рамка, щоб свій палець було видно навіть краєм ока. */
+.pz-card.pointed { border-color: var(--accent); box-shadow: 0 3px 0 var(--pz-edge), 0 0 0 2px rgba(244, 197, 66, .55), inset 0 1px 0 rgba(255, 255, 255, .1); }
+.pz-card.pointed .pz-hands i { background: rgba(244, 197, 66, .9); color: var(--accent-ink); border-color: transparent; }
+
+/* Розклад капітана: плитка залита кольором команди, з крапкою в кутку для тих, кому кольори не помічники.
+   Польовим гравцям цього нема в даних, не лише в стилях. */
+.pz-card.key::after {
+  content: ''; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255, 255, 255, .5);
+}
+.pz-k-red { --pz-face-top: #9a5240; --pz-face-bot: #7d3f30; --pz-edge: #45201a; }
+.pz-k-blue { --pz-face-top: #3d6b8d; --pz-face-bot: #2f5473; --pz-edge: #1b3145; }
+.pz-k-grey { --pz-face-top: #6f6a55; --pz-face-bot: #585444; --pz-edge: #322f26; }
+.pz-k-black {
+  --pz-face-top: #23231c; --pz-face-bot: #131310; --pz-edge: #000;
+  border-color: rgba(244, 197, 66, .45);
+}
+.pz-k-black::after { background: var(--accent); }
+
+/* Відкрита плитка втоплена в стіл: колір на повну, слово ще читається, але вже не грає. */
+.pz-card.open {
+  color: #17170f; font-weight: 700; transform: translateY(2px);
+  border-color: rgba(0, 0, 0, .4);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .38), inset 0 -1px 0 rgba(255, 255, 255, .12);
+}
+.pz-card.open::after { display: none; }
+.pz-card.pz-red { background: linear-gradient(180deg, #d9805f, #c3644a); }
+.pz-card.pz-blue { background: linear-gradient(180deg, #7fb4de, #5a93c2); }
+.pz-card.pz-grey { background: linear-gradient(180deg, #c6b28d, #ab9673); }
+.pz-card.pz-black {
+  background: linear-gradient(180deg, #1a1a14, #0b0b07); color: var(--accent);
+  border-color: rgba(244, 197, 66, .5);
+}
+
+/* ---- керування ---- */
+.pz-panel { display: flex; flex-direction: column; gap: 9px; align-items: center; width: 100%; }
+.pz-give { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; width: 100%; }
+.pz-word { flex: 1 1 150px; min-width: 120px; }
+.pz-counts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.pz-n {
+  padding: 5px 10px; font-size: .85em; min-width: 32px; border-radius: 9px;
+  background: linear-gradient(180deg, var(--panel3), var(--panel2));
+  box-shadow: 0 2px 0 var(--bg2); transition: transform .09s, box-shadow .09s;
+}
+.pz-n:hover { transform: translateY(-1px); box-shadow: 0 3px 0 var(--bg2); }
+.pz-n.on {
+  background: linear-gradient(180deg, var(--accent), var(--accent2)); color: var(--accent-ink);
+  border-color: transparent; font-weight: 700; box-shadow: 0 2px 0 #8a6a14;
+}
+.pz-do { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; text-align: center; }
+.pz-do .ghost { padding: 5px 10px; font-size: .85em; }
+
+/* Вільні місця в шапці столу: для гри на дванадцятьох це три рядки «червоні вільно», а хто з ким —
+   однаково видно нижче, у складі. Ховаємо їх лише над своєю карткою, чужих столів це не стосується. */
+.gtable:has(.pz) .gseat.free { display: none; }
+
+/* Поки стіл у лобі, сітки нема зовсім: порожні плитки лише обіцяли б те, чого ще нема. */
+.pz-lobby .pz-grid, .pz-lobby .pz-clue { display: none; }
+
+/* ---- хроніка ---- */
+.pz-log { max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; font-size: .86em; }
+
+@media (max-width: 480px) {
+  .pz-grid { gap: 4px; }
+  .pz-card { min-height: 50px; padding: 5px 3px; font-size: .74em; border-radius: 8px; box-shadow: 0 2px 0 var(--pz-edge), 0 3px 6px rgba(0, 0, 0, .3); }
+  .pz-card.xlong { font-size: .62em; }
+  .pz-teams { gap: 6px; }
+  .pz-col { flex: 1 1 100%; padding: 7px 9px; }
+  .pz-clue b { font-size: 1.15em; }
+}

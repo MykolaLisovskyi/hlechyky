@@ -39,6 +39,7 @@
 | specs/melody.md | — | Вгадай мелодію |
 | specs/tournament.md | — | Турнір на вечір (кілька ігор, 👑 чемпіону) |
 | specs/mafia.md | 46 | Мафія |
+| specs/pozyvni.md | — | Позивні (кодові імена) |
 | specs/ad-contest.md | 73 | Озвуч рекламу |
 | specs/clicker.md | 82 | Гончарне коло |
 | ARCHITECTURE §6–8 | 78, 80 | Черепки, ачівки, таблиці |
