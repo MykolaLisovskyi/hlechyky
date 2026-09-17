@@ -11,6 +11,7 @@ public static class Endpoints
     public sealed record TrackRequest(string? TrackId);
     public sealed record SayRequest(string? Text);
     public sealed record QueueAllRequest(bool Shuffle);
+    public sealed record AccountRequest(string? Nick, string? Password);
 
     static IResult Reply((bool Ok, string Message) r) =>
         r.Ok ? Results.Ok(new { ok = true, message = r.Message }) : Results.BadRequest(new { ok = false, message = r.Message });
@@ -21,7 +22,42 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/me", (HttpContext c, TrackBans bans) => new { nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice });
+        api.MapGet("/me", (HttpContext c, TrackBans bans) => new { nick = Auth.Nick(c), role = Auth.Role(c), account = Auth.IsUser(c), banPrice = bans.BanPrice });
+
+        // ---- акаунти: нік займають один раз разом із паролем; гість — усе те ж, але як «гість Вася» ----
+
+        api.MapPost("/account/register", (HttpContext c, AccountRequest req, Db db, IOptionsMonitor<SiteOptions> site) =>
+        {
+            var nick = Auth.CleanNick(req.Nick);
+            if (Auth.NickProblem(nick, site.CurrentValue) is { } why) return Fail(why);
+            if ((req.Password ?? "").Length < Auth.PasswordMin) return Fail($"Пароль — хоча б {Auth.PasswordMin} символів");
+            var hash = Auth.HashPassword(req.Password!, out var salt);
+            if (!db.AddAccount(nick, hash, salt)) return Results.Conflict(new { ok = false, message = $"Нік «{nick}» уже зайнятий" });
+            var a = db.FindAccount(nick)!;
+            Auth.SignIn(c, a);
+            return Results.Ok(new { ok = true, nick = a.Nick, role = Auth.Role(c) });
+        });
+
+        api.MapPost("/account/login", (HttpContext c, AccountRequest req, Db db) =>
+        {
+            if (Auth.TooManyTries(c)) return Fail("Забагато спроб — зачекай п'ять хвилин");
+            var a = db.FindAccount(Auth.CleanNick(req.Nick));
+            if (a is null || !Auth.VerifyPassword(req.Password ?? "", a.PassHash, a.PassSalt))
+            {
+                Auth.CountMiss(c);
+                return Results.Json(new { ok = false, message = "Не той нік або пароль" }, statusCode: 401);
+            }
+            Auth.ForgetMisses(c);
+            Auth.SignIn(c, a);
+            db.TouchAccount(a.Nick);
+            return Results.Ok(new { ok = true, nick = a.Nick, role = Auth.Role(c) });
+        });
+
+        api.MapPost("/account/logout", (HttpContext c) =>
+        {
+            Auth.SignOut(c);
+            return Results.Ok(new { ok = true });
+        });
 
         api.MapGet("/state", (RadioEngine e, Db db) => new { state = e.Snapshot(), chat = db.RecentChat(100) });
 

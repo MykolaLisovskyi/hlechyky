@@ -64,7 +64,7 @@ button.danger { color: var(--danger); }
 button.active { background: #4a3a06; border-color: var(--accent2); color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; transform: none; }
 button.busy { opacity: .7; cursor: progress; }
-input[type=text], input[type=search] {
+input[type=text], input[type=search], input[type=password] {
   font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line);
   border-radius: 10px; padding: 10px 12px; width: 100%; outline: none; min-width: 0;
 }
@@ -132,6 +132,7 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 header .nick { cursor: pointer; padding: 5px 10px; border-radius: 999px; background: var(--panel2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header .nick:hover { background: var(--panel3); }
 header .nick.admin::after { content: " · адмін"; color: var(--accent); }
+header .nick.guest { color: var(--muted); }
 #playBtn { min-width: 118px; justify-content: center; }
 #playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); }
 #playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
@@ -555,6 +556,9 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 .modal .pick { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; }
 .modal .pick button { justify-content: space-between; }
 .modal .row { display: flex; gap: 8px; }
+.modal .tabs { margin-bottom: 0; }
+.modal p { margin: 0; }
+.modal .nickerr { color: var(--danger); }
 
 
 /* ---- scrollbars: slim, rounded, in the panel palette ---- */

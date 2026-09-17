@@ -40,7 +40,7 @@ public sealed class NoFlush : IAgentFlush
 /// Головне правило те саме, що й для браузера: агент не бачить нічого, чого йому не дав <c>Game.View</c>.
 /// Ролі, нічний чат і таємні голоси приходять рівно так, як людині за тим самим місцем.
 /// </summary>
-public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, IAgentFlush flush)
+public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, IAgentFlush flush, Db? db = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -73,7 +73,9 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     public async Task<object> SetNick(AgentSession s, string? nick)
     {
         var clean = Auth.SanitizeNick(nick);
-        if (clean == "гість") return Fail("Таке ім'я нічого не означає — вигадай своє");
+        if (clean == Auth.Guest) return Fail("Таке ім'я нічого не означає — вигадай своє");
+        // Зареєстроване людиною ім'я — її, з паролем; агентові під ним не сісти.
+        if (db?.FindAccount(clean) is not null) return Fail("Це ім'я вже зайняла людина — вигадай інше");
         // Нік — це те саме, що встати з-за столу: старе місце за старим ім'ям лишати не можна.
         if (!string.IsNullOrEmpty(s.Nick) && !string.Equals(s.Nick, clean, StringComparison.OrdinalIgnoreCase))
             await flush.FlushAsync(rooms.DropNick(s.Nick)).ConfigureAwait(false);

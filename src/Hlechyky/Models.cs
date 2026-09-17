@@ -101,3 +101,6 @@ public sealed class StateSnapshot
     /// <summary>Скільки секунд можна писати голосове; 0 — голосові вимкнені.</summary>
     public required int VoiceMaxSeconds { get; init; }
 }
+
+/// <summary>Акаунт: нік як зареєстрували (з регістром), пароль як PBKDF2 і роль (member чи admin).</summary>
+public sealed record Account(string Nick, string PassHash, string PassSalt, string Role);

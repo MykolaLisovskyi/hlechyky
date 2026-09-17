@@ -151,11 +151,24 @@
 
 <div id="toasts" class="toasts"></div>
 
+<!-- Хто прийшов: зайти в акаунт, зареєструвати нік або піти гостем (тоді нік буде «гість Вася»).
+     Для того, хто вже в акаунті, ця ж картка — «Ти — Влад» і кнопка «Вийти». -->
 <div id="nickModal" class="modal" hidden>
   <form id="nickForm" class="card">
-    <h3><img src="/static/glek.svg" alt="">Хто прийшов?</h3>
+    <h3><img src="/static/glek.svg" alt=""><span id="nickTitle">Хто прийшов?</span></h3>
+    <div class="tabs seg" id="nickTabs">
+      <button type="button" data-mode="login">Зайти</button>
+      <button type="button" data-mode="register">Новий нік</button>
+      <button type="button" data-mode="guest">Як гість</button>
+    </div>
     <input id="nickInput" type="text" maxlength="24" placeholder="як тебе кликати" autocomplete="nickname">
-    <button id="nickSave" class="primary" type="submit">Заходжу</button>
+    <input id="passInput" type="password" minlength="6" maxlength="200" placeholder="пароль" autocomplete="current-password">
+    <p id="nickHint" class="muted small"></p>
+    <p id="nickErr" class="nickerr small" hidden></p>
+    <div class="row">
+      <button id="nickSave" class="primary" type="submit">Заходжу</button>
+      <button id="nickLater" class="ghost" type="button" hidden>Не зараз</button>
+    </div>
   </form>
 </div>
 

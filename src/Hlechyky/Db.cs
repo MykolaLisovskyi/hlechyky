@@ -114,6 +114,13 @@ public sealed class Db
         // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
         Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
+        // Акаунти: нік займають один раз разом із паролем. nick_key — той самий trim+lower, що й у гаманців,
+        // тож усе, що вже лежить під цим ніком (глеки, ачівки, статистика), стає добром акаунта без переносу.
+        Exec(c, """
+            CREATE TABLE IF NOT EXISTS accounts(
+                nick_key TEXT PRIMARY KEY, nick TEXT NOT NULL, pass_hash TEXT NOT NULL, pass_salt TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member', created_at TEXT NOT NULL, seen_at TEXT NOT NULL)
+            """);
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
     }
@@ -865,6 +872,49 @@ public sealed class Db
         var list = new List<(string, string?)>();
         while (r.Read()) list.Add((r.GetString(0), Str(r, 1)));
         return list;
+    }
+
+    // ---- акаунти ----
+
+    /// <summary>Нік уже чийсь? Порівняння без регістру — через nick_key, бо lower() у SQLite кирилиці не знає.</summary>
+    public Account? FindAccount(string nick)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "SELECT nick, pass_hash, pass_salt, role FROM accounts WHERE nick_key=$k", ("$k", Auth.NickKey(nick)));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? new Account(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3)) : null;
+    }
+
+    /// <summary>Зайняти нік. false — уже зайнятий (гонка двох реєстрацій теж сюди: PRIMARY KEY не дасть двох).</summary>
+    public bool AddAccount(string nick, string passHash, string passSalt)
+    {
+        using var c = Open();
+        try
+        {
+            Exec(c, "INSERT INTO accounts(nick_key, nick, pass_hash, pass_salt, created_at, seen_at) VALUES($k, $n, $h, $s, $now, $now)",
+                ("$k", Auth.NickKey(nick)), ("$n", nick), ("$h", passHash), ("$s", passSalt), ("$now", Now()));
+            return true;
+        }
+        catch (SqliteException e) when (e.SqliteErrorCode == 19) { return false; } // constraint: нік уже є
+    }
+
+    public void SetAccountPassword(string nick, string passHash, string passSalt)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE accounts SET pass_hash=$h, pass_salt=$s WHERE nick_key=$k", ("$h", passHash), ("$s", passSalt), ("$k", Auth.NickKey(nick)));
+    }
+
+    public void SetAccountRole(string nick, string role)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE accounts SET role=$r WHERE nick_key=$k", ("$r", role), ("$k", Auth.NickKey(nick)));
+    }
+
+    /// <summary>Коли востаннє заходив — щоб колись можна було відрізнити живі акаунти від покинутих.</summary>
+    public void TouchAccount(string nick)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE accounts SET seen_at=$now WHERE nick_key=$k", ("$now", Now()), ("$k", Auth.NickKey(nick)));
     }
 
     // ---- generic cache ----

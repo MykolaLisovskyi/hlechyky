@@ -15,9 +15,12 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     public override async Task OnConnectedAsync()
     {
-        var nick = Auth.SanitizeNick(Context.GetHttpContext()?.Request.Query["nick"].ToString());
+        // Нік уже порахував Auth: з сесії — для акаунта, з ?nick= і з приставкою «гість » — для решти.
+        var http = Context.GetHttpContext();
+        var nick = http is null ? Auth.Guest : Auth.Nick(http);
         presence.Set(Context.ConnectionId, nick);
         rooms.NoteOnline(nick);
+        if (http is not null && Auth.IsUser(http)) db.TouchAccount(nick);
         await Clients.Caller.SendAsync("chatHistory", db.RecentChat(100, 120));
         // Лобі не має ціни підключення: якщо знімок чомусь не склався, людина все одно заходить слухати.
         List<RoomSummary> lobby;
@@ -75,6 +78,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         {
             var now = DateTime.UtcNow;
             if (LastCommand.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 1200) return "Не так швидко";
+            if (text.StartsWith("/пароль", StringComparison.OrdinalIgnoreCase)) return ResetPassword(text);
             var r = ChatCommands.Run(text, rooms.LiveIds);
             if (r.Error is not null) return r.Error;   // на друкарську помилку паузу не вішаємо
             LastCommand[nick] = now;
@@ -112,10 +116,14 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (presence.SetListening(Context.ConnectionId, on)) await Clients.All.SendAsync("state", engine.Snapshot());
     }
 
+    /// <summary>Гість перейменовується як хоче (приставка лишається); в акаунта нік один, і зміна — це вже інший вхід.</summary>
     public async Task SetNick(string nick)
     {
+        var http = Context.GetHttpContext();
+        var fresh = http is not null && Auth.IsUser(http) ? Auth.Me(http)!.Nick : Auth.GuestNick(nick);
         var old = presence.Get(Context.ConnectionId);
-        presence.Set(Context.ConnectionId, Auth.SanitizeNick(nick));
+        if (old == fresh) return;
+        presence.Set(Context.ConnectionId, fresh);
         rooms.NoteOnline(Nick());
         await Clients.All.SendAsync("state", engine.Snapshot());
         // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
@@ -215,5 +223,23 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// <summary>Квота на секунду з одного з'єднання: десять дій, тридцять вводів (див. <see cref="RateGate"/>).</summary>
     bool Allow(bool input) => rates.Allow(Context.ConnectionId, input, clock.UtcNow.ToUnixTimeSeconds());
 
-    string Nick() => presence.Get(Context.ConnectionId) ?? "гість";
+    /// <summary>
+    /// /пароль Влад новий123 — адмін ставить людині новий пароль, коли та свій забула. Відповідь бачить
+    /// лише адмін, у базу не лягає; старі сесії того акаунта одразу гаснуть (у куці — сіль пароля).
+    /// </summary>
+    string ResetPassword(string text)
+    {
+        var http = Context.GetHttpContext();
+        if (http is null || !Auth.IsAdmin(http)) return "Пароль міняє лише адмін";
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 3) return "Так: /пароль нік новий_пароль";
+        var password = parts[^1];
+        var nick = string.Join(' ', parts[1..^1]);
+        if (password.Length < Auth.PasswordMin) return $"Пароль — хоча б {Auth.PasswordMin} символів";
+        if (db.FindAccount(nick) is not { } a) return $"Акаунта «{nick}» нема";
+        db.SetAccountPassword(a.Nick, Auth.HashPassword(password, out var salt), salt);
+        return $"Пароль для «{a.Nick}» змінено";
+    }
+
+    string Nick() => presence.Get(Context.ConnectionId) ?? Auth.Guest;
 }

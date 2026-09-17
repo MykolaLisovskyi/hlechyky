@@ -32,7 +32,8 @@
     return (t.match(EMOJI_SEQ) || []).length;
   }
 
-  let me = { nick: localStorage.getItem('nick') || '', role: 'member' };
+  // account — чи це акаунт із паролем; інакше нік гостьовий, з приставкою «гість », і його дає сервер.
+  let me = { nick: localStorage.getItem('nick') || '', role: 'member', account: false };
   let state = null;
   let conn = null;
   let searchTimer = null;
@@ -88,25 +89,86 @@
   const queueTrack = (id) => api('POST', `/api/queue/track/${id}`).then(ok).catch(fail);
 
   // ---------- nick ----------
-  function askNick(force) {
-    if (me.nick && !force) return;
-    $('nickInput').value = me.nick;
-    $('nickModal').hidden = false;
-    setTimeout(() => $('nickInput').focus(), 50);
+  // Одна картка на чотири випадки: зайти в акаунт, зареєструвати нік, піти гостем, вийти (режим «me»).
+  // Нік каже сервер: акаунт — із куки, гість — «гість » + те, що набрав. Після входу чи виходу сторінка
+  // перезавантажується: хаб тримає одне з'єднання на вкладку і чужу куку на льоту не підхопить.
+  const NICK_HINTS = {
+    login: 'Нік і пароль. Забув пароль — адмін поставить новий командою /пароль у балачках.',
+    register: 'Нік стане твоїм: під ним ніхто інший не напише, а глеки й ачівки під цим іменем — твої.',
+    guest: 'Без пароля. Будеш «гість Вася»: усе, що заробиш, лежатиме під цим іменем.',
+    me: 'Вийти — і ти знову гість. Глеки й ачівки лишаються за ніком, зайдеш — усе на місці.',
+  };
+  const NICK_BUTTONS = { login: 'Зайти', register: 'Зареєструватись', guest: 'Заходжу як гість', me: 'Вийти з акаунта' };
+  let nickMode = 'register';
+  const guestBody = (n) => String(n || '').replace(/^гість\s*/i, '').trim();
+  function setNickMode(mode) {
+    nickMode = mode;
+    $('nickTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+    $('nickTabs').hidden = mode === 'me';
+    $('nickInput').hidden = mode === 'me';
+    $('passInput').hidden = mode === 'guest' || mode === 'me';
+    $('passInput').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+    $('nickTitle').textContent = mode === 'me' ? `Ти — ${me.nick}` : 'Хто прийшов?';
+    $('nickHint').textContent = NICK_HINTS[mode];
+    $('nickSave').textContent = NICK_BUTTONS[mode];
+    $('nickSave').classList.toggle('primary', mode !== 'me');
+    $('nickErr').hidden = true;
   }
-  function saveNick() {
+  function askNick(force, mode, prefill) {
+    if (me.nick && !force) return;
+    setNickMode(mode || (me.account ? 'me' : me.nick ? 'login' : 'register'));
+    $('nickInput').value = prefill !== undefined ? prefill : guestBody(me.nick);
+    $('passInput').value = '';
+    $('nickLater').hidden = !me.nick;   // без ніка на сайті робити нічого — картку не закрити
+    $('nickModal').hidden = false;
+    if (nickMode !== 'me') setTimeout(() => $('nickInput').focus(), 50);
+  }
+  function paintNick() {
+    const b = $('nickBtn');
+    b.textContent = me.nick;
+    b.classList.toggle('admin', me.role === 'admin');
+    b.classList.toggle('guest', !me.account);
+    b.title = me.account ? 'Твій акаунт' : 'Зайти в акаунт, зареєструвати нік або змінити гостьовий';
+  }
+  function showNickError(text) { $('nickErr').textContent = text; $('nickErr').hidden = false; }
+  async function saveNick() {
     const n = $('nickInput').value.trim().slice(0, 24);
-    if (!n) return;
-    const changed = n !== me.nick;
+    $('nickErr').hidden = true;
+    try {
+      if (nickMode === 'me') {
+        await api('POST', '/api/account/logout');
+        localStorage.removeItem('nick');
+        location.reload();
+        return;
+      }
+      if (!n) return;
+      if (nickMode === 'guest') { await becomeGuest(n); return; }
+      const password = $('passInput').value;
+      if (password.length < 6) { showNickError('Пароль — хоча б 6 символів'); return; }
+      const r = await busy($('nickSave'), nickMode === 'login' ? 'Заходжу…' : 'Реєструю…',
+        () => api('POST', `/api/account/${nickMode}`, { nick: n, password }));
+      localStorage.setItem('nick', r.nick);
+      location.reload();
+    } catch (e) { showNickError(e.message); }
+  }
+  // Гостьовий нік остаточно складає сервер (приставка, довжина): питаємо /api/me з новим X-Nick.
+  async function becomeGuest(n) {
+    const was = me.nick;
     me.nick = n;
-    localStorage.setItem('nick', n);
+    let m;
+    try { m = await api('GET', '/api/me'); }
+    catch (e) { me.nick = was; throw e; }
+    me.nick = m.nick;
+    localStorage.setItem('nick', m.nick);
     $('nickModal').hidden = true;
-    $('nickBtn').textContent = n;
-    if (changed && conn && conn.state === 'Connected') conn.invoke('SetNick', n).catch(() => {});
+    paintNick();
+    if (m.nick !== was && conn && conn.state === 'Connected') conn.invoke('SetNick', m.nick).catch(() => {});
     if (!conn) connect();
     else render();
   }
   $('nickForm').onsubmit = (e) => { e.preventDefault(); saveNick(); };
+  $('nickTabs').querySelectorAll('button').forEach((b) => b.onclick = () => { setNickMode(b.dataset.mode); $('nickInput').focus(); });
+  $('nickLater').onclick = () => { $('nickModal').hidden = true; };
   $('nickBtn').onclick = () => askNick(true);
 
   // ---------- player ----------
@@ -615,6 +677,7 @@
     { cmd: '/choose', args: 'а | б | в', help: 'обрати за тебе: /choose чай | кава | компот. Аліаси — /обери, /вибери' },
     { cmd: '/8ball', args: 'питання', help: 'спитати Дядька Глека: /8ball чи буде дощ? Аліаси — /куля, /глек' },
     { cmd: '/столи', args: '', help: 'які столи зараз живі — з кнопками. Бачиш лише ти. Аліас — /tables' },
+    { cmd: '/пароль', args: 'нік новий_пароль', help: 'поставити людині новий пароль, коли вона свій забула. Лише адмін', admin: true },
   ];
   // Грані малюємо крапками самі: юнікодні ⚀⚁⚂ у кожному шрифті сидять у своєму квадраті по-своєму
   // і в плитці стоять криво. Індекси — клітинки сітки 3×3 зліва направо.
@@ -661,7 +724,7 @@
   function showCmdHint(typed) {
     const box = $('cmdHint');
     const q = (typed || '/').toLowerCase();
-    const list = COMMANDS.filter((c) => c.cmd.startsWith(q.split(' ')[0]) || q === '/');
+    const list = COMMANDS.filter((c) => (!c.admin || me.role === 'admin') && (c.cmd.startsWith(q.split(' ')[0]) || q === '/'));
     if (!list.length) { box.hidden = true; return; }
     box.innerHTML = list.map((c) => `<div class="cmd" data-cmd="${c.cmd}">
         <b>${esc(c.cmd)}</b> <span class="muted small">${esc(c.args)}</span>
@@ -1841,14 +1904,26 @@
   setPlayUi();
   HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go });
   applyRoute();
+  // Хто я — каже сервер: акаунт із куки або гість із приставкою до того, що лежить у localStorage.
+  // Тому підключаємось до хабу лише після /api/me: інакше me.nick розійшовся б із тим, як нас звуть за столами.
   api('GET', '/api/me').then((m) => {
     me.role = m.role;
+    me.account = !!m.account;
     me.banPrice = m.banPrice || 0;
     $('adsTab').hidden = me.role !== 'admin';
-    $('nickBtn').classList.toggle('admin', me.role === 'admin');
     // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
     if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');
+    if (me.account || me.nick) {
+      // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
+      const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;
+      me.nick = m.nick;
+      localStorage.setItem('nick', m.nick);
+      paintNick();
+      connect();
+      if (plain) askNick(true, 'register', plain);
+    } else askNick();
     if (state) render();
-  }).catch(() => {});
-  if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
+  }).catch(() => {
+    if (me.nick) { paintNick(); connect(); } else askNick();
+  });
 })();
