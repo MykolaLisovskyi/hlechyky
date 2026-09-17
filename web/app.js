@@ -1081,14 +1081,15 @@
   };
   function setChatTab(tab) {
     chatTab = tab;
-    $('chatTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    $('chatTabs').querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     $('messages').hidden = tab !== 'chat';
     $('log').hidden = tab !== 'log';
     const box = tab === 'chat' ? $('messages') : $('log');
     box.scrollTop = box.scrollHeight;
     if (chatVisible()) setUnread(0);
   }
-  $('chatTabs').querySelectorAll('button').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
+  // Лише вкладки: у тому ж рядку живуть 🔔 і ✕, у них свої обробники — інакше клік по дзвіночку «відкривав» порожню вкладку.
+  $('chatTabs').querySelectorAll('button[data-tab]').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
   // ---------- маршрути ----------
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #chat (вкладка балачок на телефоні).
