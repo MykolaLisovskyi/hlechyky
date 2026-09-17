@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Hlechyky;
@@ -947,6 +948,99 @@ public sealed class Db
     {
         using var c = Open();
         Exec(c, "UPDATE accounts SET seen_at=$now WHERE nick_key=$k", ("$now", Now()), ("$k", Auth.NickKey(nick)));
+    }
+
+    /// <summary>
+    /// Гість зареєструвався чи зайшов із того ж браузера: усе, що він нафармив як «гість Вася», переїжджає
+    /// на акаунт. Ігрові таблиці — за nick_key, радійні — за самим ніком. Де в акаунта вже щось є (грав під
+    /// цим ніком ще до акаунтів), зливаємо: гаманець і лічильники — сумою, рейтинг — більшим ело й сумою
+    /// партій, ачівки та лайки — об'єднанням, збереження гончарні — тим, де більше зроблено глеків.
+    /// Балачки не чіпаємо: історія — як було сказано. Виняток із «тут лише DDL для ігрових таблиць»:
+    /// злиття мусить бути однією транзакцією через обидві половини бази.
+    /// </summary>
+    public void MergeNick(string from, string to)
+    {
+        var (fk, tk) = (Auth.NickKey(from), Auth.NickKey(to));
+        if (fk.Length == 0 || fk == tk) return;
+        using var c = Open();
+        using var tx = c.BeginTransaction();
+        (string, object?)[] p = [("$f", fk), ("$t", tk), ("$fn", from), ("$tn", to), ("$now", Now())];
+
+        Exec(c, """
+            INSERT INTO wallets(nick_key, nick, balance, earned, spent, updated_at)
+            SELECT $t, $tn, balance, earned, spent, $now FROM wallets WHERE nick_key=$f
+            ON CONFLICT(nick_key) DO UPDATE SET balance=balance+excluded.balance, earned=earned+excluded.earned,
+                spent=spent+excluded.spent, updated_at=excluded.updated_at
+            """, p);
+        Exec(c, "DELETE FROM wallets WHERE nick_key=$f", p);
+        Exec(c, "UPDATE ledger SET nick_key=$t WHERE nick_key=$f", p);
+        Exec(c, """
+            INSERT INTO economy_counters(nick_key, key, day, n) SELECT $t, key, day, n FROM economy_counters WHERE nick_key=$f
+            ON CONFLICT(nick_key, key, day) DO UPDATE SET n=n+excluded.n
+            """, p);
+        Exec(c, "DELETE FROM economy_counters WHERE nick_key=$f", p);
+        Exec(c, """
+            INSERT INTO ratings(nick_key, game, nick, elo, games, wins, losses, draws, updated_at)
+            SELECT $t, game, $tn, elo, games, wins, losses, draws, $now FROM ratings WHERE nick_key=$f
+            ON CONFLICT(nick_key, game) DO UPDATE SET elo=max(elo, excluded.elo), games=games+excluded.games,
+                wins=wins+excluded.wins, losses=losses+excluded.losses, draws=draws+excluded.draws, updated_at=excluded.updated_at
+            """, p);
+        Exec(c, "DELETE FROM ratings WHERE nick_key=$f", p);
+        // Там, де ключ складений, конфлікт означає «в акаунта вже є» — його й лишаємо, гостьовий дублікат прибираємо.
+        foreach (var table in new[] { "game_results", "achievements", "daily_results" })
+        {
+            Exec(c, $"UPDATE OR IGNORE {table} SET nick_key=$t, nick=$tn WHERE nick_key=$f", p);
+            Exec(c, $"DELETE FROM {table} WHERE nick_key=$f", p);
+        }
+        foreach (var table in new[] { "likes", "chat_likes", "melody_dislikes", "play_listeners" })
+        {
+            Exec(c, $"UPDATE OR IGNORE {table} SET nick=$tn WHERE nick=$fn", p);
+            Exec(c, $"DELETE FROM {table} WHERE nick=$fn", p);
+        }
+        Exec(c, "UPDATE plays SET requested_by=$tn WHERE requested_by=$fn", p);
+        Exec(c, "UPDATE playlists SET created_by=$tn WHERE created_by=$fn", p);
+        Exec(c, "UPDATE playlist_tracks SET added_by=$tn WHERE added_by=$fn", p);
+        Exec(c, "UPDATE bans SET by_nick=$tn WHERE by_nick=$fn", p);
+        Exec(c, "UPDATE dj_feedback SET nick=$tn WHERE nick=$fn", p);
+        MergeStates(c, fk, tk);
+        tx.Commit();
+    }
+
+    /// <summary>
+    /// Збереження під ніком: <c>clicker:&lt;нік&gt;</c> (гончарня — покращення, глеки, все) і <c>daily:&lt;гра&gt;:&lt;день&gt;:&lt;нік&gt;</c>.
+    /// Гончарню, якщо збереження є з обох боків, беремо ту, де більше зроблено глеків (Total у знімку);
+    /// щоденну гру — ту, що вже в акаунта.
+    /// </summary>
+    static void MergeStates(SqliteConnection c, string fk, string tk)
+    {
+        var rows = new List<(string Key, string Json)>();
+        using (var cmd = Cmd(c, "SELECT key, json FROM game_state WHERE key=$ck OR key LIKE 'daily:%:' || $f", ("$ck", "clicker:" + fk), ("$f", fk)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) rows.Add((r.GetString(0), r.GetString(1)));
+        foreach (var (key, json) in rows)
+        {
+            if (!key.EndsWith(fk, StringComparison.Ordinal)) continue;
+            var target = key[..^fk.Length] + tk;
+            string? existing;
+            using (var q = Cmd(c, "SELECT json FROM game_state WHERE key=$k", ("$k", target))) existing = q.ExecuteScalar() as string;
+            var take = existing is null || (key.StartsWith("clicker:", StringComparison.Ordinal) && Progress(json) > Progress(existing));
+            if (take)
+                Exec(c, "INSERT OR REPLACE INTO game_state(key, json, updated_at) VALUES($k, $j, $now)", ("$k", target), ("$j", json), ("$now", Now()));
+            Exec(c, "DELETE FROM game_state WHERE key=$k", ("$k", key));
+        }
+    }
+
+    /// <summary>Скільки глеків зроблено за весь час — поле Total у знімку гончарні; чужий чи битий JSON — 0.</summary>
+    public static long Progress(string json)
+    {
+        try
+        {
+            using var d = JsonDocument.Parse(json);
+            foreach (var prop in d.RootElement.EnumerateObject())
+                if (prop.Name.Equals("total", StringComparison.OrdinalIgnoreCase) && prop.Value.TryGetInt64(out var n)) return n;
+        }
+        catch (JsonException) { /* не знімок гончарні */ }
+        return 0;
     }
 
     // ---- generic cache ----

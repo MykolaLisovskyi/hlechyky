@@ -109,6 +109,16 @@ public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
         return Ok(db.FindAccount(me.Nick)!);
     }
 
+    /// <summary>
+    /// Людина щойно зайшла чи зареєструвалась, а до того в цьому браузері була гостем «гість Вася»: усе її
+    /// гостьове добро переїжджає на акаунт. Просто «гість» без імені — спільний, його не чіпаємо.
+    /// </summary>
+    public void Adopt(Account a, string? guestNick)
+    {
+        if (string.IsNullOrEmpty(guestNick) || !Auth.IsGuestNick(guestNick) || Auth.NickKey(guestNick) == Auth.Guest) return;
+        db.MergeNick(guestNick, a.Nick);
+    }
+
     /// <summary>Поставити чи змінити пароль. Теперішній питаємо лише в того, у кого він є (Google-акаунт ставить перший).</summary>
     public Outcome SetPassword(Account me, string? current, string? password)
     {

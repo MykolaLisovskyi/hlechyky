@@ -37,40 +37,42 @@ public static class Endpoints
 
         // ---- акаунти: нік займають один раз (паролем або через Google); гість — усе те ж, але як «гість Вася» ----
 
-        static IResult Signed(HttpContext c, Accounts.Outcome r)
+        // Хто зайшов — той і забирає з собою все, що нафармив гостем у цьому браузері (Auth.Nick до SignIn — ще гостьовий).
+        static IResult Signed(HttpContext c, Accounts.Outcome r, Accounts accounts)
         {
             if (r.Account is null) return Results.Json(new { ok = false, message = r.Error, needNick = r.NeedNick, suggest = r.Suggest }, statusCode: r.Status);
+            accounts.Adopt(r.Account, Auth.IsUser(c) ? null : Auth.Nick(c));
             Auth.SignIn(c, r.Account);
             return Results.Ok(new { ok = true, nick = r.Account.Nick, role = Auth.Role(c) });
         }
 
-        api.MapPost("/account/register", (HttpContext c, AccountRequest req, Accounts accounts) => Signed(c, accounts.Register(req.Nick, req.Password)));
+        api.MapPost("/account/register", (HttpContext c, AccountRequest req, Accounts accounts) => Signed(c, accounts.Register(req.Nick, req.Password), accounts));
 
         api.MapPost("/account/login", (HttpContext c, AccountRequest req, Accounts accounts) =>
         {
             if (Auth.TooManyTries(c)) return Fail("Забагато спроб — зачекай п'ять хвилин");
             var r = accounts.Login(req.Nick, req.Password);
             if (r.Account is null) Auth.CountMiss(c); else Auth.ForgetMisses(c);
-            return Signed(c, r);
+            return Signed(c, r, accounts);
         });
 
         // Кнопка Google: свій — вхід, новий — спершу нік (needNick), з ніком — реєстрація без пароля.
         api.MapPost("/account/google", async (HttpContext c, GoogleRequest req, Accounts accounts, IGoogleVerifier google) =>
         {
             if (await google.VerifyAsync(req.Credential ?? "") is not { } who) return Results.Json(new { ok = false, message = "Google не підтвердив вхід — спробуй ще раз" }, statusCode: 401);
-            return Signed(c, accounts.Google(who, req.Nick));
+            return Signed(c, accounts.Google(who, req.Nick), accounts);
         });
 
         api.MapPost("/account/google/link", async (HttpContext c, GoogleRequest req, Accounts accounts, IGoogleVerifier google) =>
         {
             if (Auth.Me(c) is not { } me) return Fail("Спершу зайди в акаунт");
             if (await google.VerifyAsync(req.Credential ?? "") is not { } who) return Results.Json(new { ok = false, message = "Google не підтвердив вхід — спробуй ще раз" }, statusCode: 401);
-            return Signed(c, accounts.LinkGoogle(me, who));
+            return Signed(c, accounts.LinkGoogle(me, who), accounts);
         });
 
         // Новий пароль — нова сіль, тож і нова кука: Signed кладе її, щоб ця ж вкладка не вилетіла.
         api.MapPost("/account/password", (HttpContext c, PasswordRequest req, Accounts accounts) =>
-            Auth.Me(c) is { } me ? Signed(c, accounts.SetPassword(me, req.Current, req.Password)) : Fail("Спершу зайди в акаунт"));
+            Auth.Me(c) is { } me ? Signed(c, accounts.SetPassword(me, req.Current, req.Password), accounts) : Fail("Спершу зайди в акаунт"));
 
         api.MapPost("/account/logout", (HttpContext c) =>
         {

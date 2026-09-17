@@ -187,3 +187,98 @@ public class GoogleAccountsTests
         Assert.Null(a.SetPassword(withPass, "інший123", "12345").Account);   // закороткий
     }
 }
+
+/// <summary>Гість зареєструвався — усе, що нафармив у цьому браузері, переїжджає на акаунт.</summary>
+public class GuestAdoptionTests
+{
+    static Accounts Make(TempDb t) => new(t.Db, new FixedOptions<SiteOptions>(new SiteOptions()));
+    static void Wallet(Db db, string nick, int balance, int earned) => db.Exec(
+        "INSERT INTO wallets(nick_key, nick, balance, earned, spent, updated_at) VALUES($k, $n, $b, $e, 0, 'now')",
+        ("$k", Auth.NickKey(nick)), ("$n", nick), ("$b", balance), ("$e", earned));
+    static (int Balance, int Earned)? WalletOf(Db db, string nick) => db.With(c =>
+    {
+        var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT balance, earned FROM wallets WHERE nick_key=$k";
+        cmd.Parameters.AddWithValue("$k", Auth.NickKey(nick));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ((int)r.GetInt64(0), (int)r.GetInt64(1)) : ((int, int)?)null;
+    });
+    static string? State(Db db, string key) => db.With(c =>
+    {
+        var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT json FROM game_state WHERE key=$k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    });
+
+    [Fact]
+    public void Guest_shards_and_pottery_follow_the_new_account()
+    {
+        using var t = new TempDb();
+        Wallet(t.Db, "гість Вася", 10, 12);
+        t.Db.Exec("INSERT INTO game_state(key, json, updated_at) VALUES('clicker:гість вася', '{\"pots\":3,\"total\":40}', 'now')");
+        t.Db.Exec("INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('гість вася', 'first', 'гість Вася', 'now')");
+        t.Db.Exec("INSERT INTO likes(track_id, nick, created_at) VALUES('t1', 'гість Вася', 'now')");
+
+        var a = Make(t);
+        var made = a.Register("Вася", "секрет123").Account!;
+        a.Adopt(made, "гість Вася");
+
+        Assert.Equal((10, 12), WalletOf(t.Db, "Вася"));
+        Assert.Null(WalletOf(t.Db, "гість Вася"));
+        Assert.Equal("{\"pots\":3,\"total\":40}", State(t.Db, "clicker:вася"));
+        Assert.Null(State(t.Db, "clicker:гість вася"));
+        Assert.Equal(1L, t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT count(*) FROM achievements WHERE nick_key='вася' AND nick='Вася'"; return (long)q.ExecuteScalar()!; }));
+        Assert.Equal(1L, t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT count(*) FROM likes WHERE nick='Вася'"; return (long)q.ExecuteScalar()!; }));
+    }
+
+    [Fact]
+    public void An_old_nick_with_its_own_loot_gets_the_guest_loot_added_and_keeps_the_bigger_pottery()
+    {
+        using var t = new TempDb();
+        Wallet(t.Db, "Влад", 100, 300);        // грав ще до акаунтів
+        Wallet(t.Db, "гість Влад", 10, 12);    // після оновлення трохи пофармив гостем
+        t.Db.Exec("INSERT INTO game_state(key, json, updated_at) VALUES('clicker:влад', '{\"pots\":50,\"total\":900}', 'now')");
+        t.Db.Exec("INSERT INTO game_state(key, json, updated_at) VALUES('clicker:гість влад', '{\"pots\":2,\"total\":7}', 'now')");
+        t.Db.Exec("INSERT INTO ratings(nick_key, game, nick, elo, games, wins, losses, draws, updated_at) VALUES('влад', 'chess', 'Влад', 1100, 10, 6, 4, 0, 'now')");
+        t.Db.Exec("INSERT INTO ratings(nick_key, game, nick, elo, games, wins, losses, draws, updated_at) VALUES('гість влад', 'chess', 'гість Влад', 1020, 2, 1, 1, 0, 'now')");
+        t.Db.Exec("INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('влад', 'first', 'Влад', 'now')");
+        t.Db.Exec("INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('гість влад', 'first', 'гість Влад', 'now')");
+        t.Db.Exec("INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('гість влад', 'hundred', 'гість Влад', 'now')");
+
+        t.Db.MergeNick("гість Влад", "Влад");
+
+        Assert.Equal((110, 312), WalletOf(t.Db, "Влад"));
+        Assert.Equal("{\"pots\":50,\"total\":900}", State(t.Db, "clicker:влад"));   // більша гончарня перемагає
+        Assert.Null(State(t.Db, "clicker:гість влад"));
+        var rating = t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT elo, games, wins FROM ratings WHERE nick_key='влад' AND game='chess'"; using var r = q.ExecuteReader(); r.Read(); return (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2)); });
+        Assert.Equal((1100L, 12L, 7L), rating);
+        var ach = t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT count(*) FROM achievements WHERE nick_key='влад'"; return (long)q.ExecuteScalar()!; });
+        Assert.Equal(2L, ach);
+        Assert.Equal(0L, t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT count(*) FROM achievements WHERE nick_key='гість влад'"; return (long)q.ExecuteScalar()!; }));
+    }
+
+    [Fact]
+    public void The_nameless_guest_pool_and_non_guests_are_never_merged()
+    {
+        using var t = new TempDb();
+        Wallet(t.Db, "гість", 500, 500);
+        Wallet(t.Db, "Оля", 7, 7);
+        var a = Make(t);
+        var vlad = a.Register("Влад", "секрет123").Account!;
+        a.Adopt(vlad, "гість");
+        a.Adopt(vlad, "Оля");
+        a.Adopt(vlad, null);
+        Assert.Null(WalletOf(t.Db, "Влад"));
+        Assert.Equal((500, 500), WalletOf(t.Db, "гість"));
+        Assert.Equal((7, 7), WalletOf(t.Db, "Оля"));
+    }
+
+    [Fact]
+    public void Progress_reads_the_total_from_a_pottery_snapshot_and_shrugs_at_anything_else()
+    {
+        Assert.Equal(40, Db.Progress("{\"pots\":3,\"total\":40}"));
+        Assert.Equal(0, Db.Progress("{\"pots\":3}"));
+        Assert.Equal(0, Db.Progress("не json"));
+    }
+}
