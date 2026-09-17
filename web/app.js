@@ -242,7 +242,9 @@
     el.innerHTML = '';
     const width = Math.max(200, Math.min(400, el.parentElement.clientWidth || 300));
     google.accounts.id.renderButton(el, {
-      theme: 'filled_black', size: 'large', shape: 'pill', locale: 'uk', width,
+      // Світла тема: персональний варіант кнопки («Увійти як Коля») Google малює на білому блоці, і на
+      // темній картці чорна пігулка в білій рамці виглядала як помилка. Біла пігулка на білому — рівна.
+      theme: 'outline', size: 'large', shape: 'pill', locale: 'uk', width,
       text: nickMode === 'me' ? 'continue_with' : 'signin_with',
     });
   }
