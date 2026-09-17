@@ -1024,6 +1024,10 @@ public sealed class Db
             string? existing;
             using (var q = Cmd(c, "SELECT json FROM game_state WHERE key=$k", ("$k", target))) existing = q.ExecuteScalar() as string;
             var take = existing is null || (key.StartsWith("clicker:", StringComparison.Ordinal) && Progress(json) > Progress(existing));
+            // Те, що програло, не стираємо, а кладемо під lost:<ключ>:<час>: людина скаже «у мене було більше» — є звідки повернути руками.
+            var loser = existing is null ? null : take ? existing : json;
+            if (loser is not null)
+                Exec(c, "INSERT OR REPLACE INTO game_state(key, json, updated_at) VALUES($k, $j, $now)", ("$k", $"lost:{target}:{Now()}"), ("$j", loser), ("$now", Now()));
             if (take)
                 Exec(c, "INSERT OR REPLACE INTO game_state(key, json, updated_at) VALUES($k, $j, $now)", ("$k", target), ("$j", json), ("$now", Now()));
             Exec(c, "DELETE FROM game_state WHERE key=$k", ("$k", key));

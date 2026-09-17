@@ -251,6 +251,9 @@ public class GuestAdoptionTests
         Assert.Equal((110, 312), WalletOf(t.Db, "Влад"));
         Assert.Equal("{\"pots\":50,\"total\":900}", State(t.Db, "clicker:влад"));   // більша гончарня перемагає
         Assert.Null(State(t.Db, "clicker:гість влад"));
+        // Менша не зникає — лягає в резерв, щоб можна було повернути руками.
+        var lost = t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT json FROM game_state WHERE key LIKE 'lost:clicker:влад:%'"; return q.ExecuteScalar() as string; });
+        Assert.Equal("{\"pots\":2,\"total\":7}", lost);
         var rating = t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT elo, games, wins FROM ratings WHERE nick_key='влад' AND game='chess'"; using var r = q.ExecuteReader(); r.Read(); return (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2)); });
         Assert.Equal((1100L, 12L, 7L), rating);
         var ach = t.Db.With(c => { var q = c.CreateCommand(); q.CommandText = "SELECT count(*) FROM achievements WHERE nick_key='влад'"; return (long)q.ExecuteScalar()!; });
