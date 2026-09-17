@@ -89,39 +89,66 @@
   const queueTrack = (id) => api('POST', `/api/queue/track/${id}`).then(ok).catch(fail);
 
   // ---------- nick ----------
-  // Одна картка на чотири випадки: зайти в акаунт, зареєструвати нік, піти гостем, вийти (режим «me»).
-  // Нік каже сервер: акаунт — із куки, гість — «гість » + те, що набрав. Після входу чи виходу сторінка
-  // перезавантажується: хаб тримає одне з'єднання на вкладку і чужу куку на льоту не підхопить.
+  // Одна картка на всі випадки: зайти (паролем чи через Google), зареєструвати нік, піти гостем; після
+  // Google для новенького — «як тебе кликати?» (gnick); а для того, хто вже в акаунті — «Ти — Влад»:
+  // вийти, змінити пароль (password), прив'язати Google. Нік каже сервер: акаунт — із куки, гість —
+  // «гість » + те, що набрав. Після входу чи виходу сторінка перезавантажується: хаб тримає одне
+  // з'єднання на вкладку і чужу куку на льоту не підхопить.
   const NICK_HINTS = {
-    login: 'Нік і пароль. Забув пароль — адмін поставить новий командою /пароль у балачках.',
+    login: 'Нік і пароль. Забув пароль — зайди через Google, якщо прив\'язував, або попроси адміна (/пароль у балачках).',
     register: 'Нік стане твоїм: під ним ніхто інший не напише, а глеки й ачівки під цим іменем — твої.',
     guest: 'Без пароля. Будеш «гість Вася»: усе, що заробиш, лежатиме під цим іменем.',
+    gnick: 'Google тебе підтвердив. Обери нік — під ним тебе тут знатимуть, пароль не потрібен.',
     me: 'Вийти — і ти знову гість. Глеки й ачівки лишаються за ніком, зайдеш — усе на місці.',
+    password: 'Новий пароль — хоча б 6 символів. Інші вкладки з цим акаунтом доведеться перезайти.',
   };
-  const NICK_BUTTONS = { login: 'Зайти', register: 'Зареєструватись', guest: 'Заходжу як гість', me: 'Вийти з акаунта' };
+  const NICK_BUTTONS = {
+    login: 'Зайти', register: 'Зареєструватись', guest: 'Заходжу як гість', gnick: 'Заходжу',
+    me: 'Вийти з акаунта', password: 'Зберегти пароль',
+  };
   let nickMode = 'register';
+  let pendingGoogle = null;   // ID-токен від Google, поки новенький обирає нік
   const guestBody = (n) => String(n || '').replace(/^гість\s*/i, '').trim();
   function setNickMode(mode) {
     nickMode = mode;
+    const isMe = mode === 'me' || mode === 'password';
     $('nickTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
-    $('nickTabs').hidden = mode === 'me';
-    $('nickInput').hidden = mode === 'me';
-    $('passInput').hidden = mode === 'guest' || mode === 'me';
-    $('passInput').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
-    $('nickTitle').textContent = mode === 'me' ? `Ти — ${me.nick}` : 'Хто прийшов?';
+    $('nickTabs').hidden = isMe || mode === 'gnick';
+    $('nickInput').hidden = isMe;
+    $('passCurrent').hidden = mode !== 'password' || !me.hasPassword;
+    $('passInput').hidden = mode === 'guest' || mode === 'gnick' || mode === 'me';
+    $('passInput').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    $('passInput').placeholder = mode === 'password' ? 'новий пароль' : 'пароль';
+    $('nickTitle').textContent = isMe ? `Ти — ${me.nick}` : 'Хто прийшов?';
     $('nickHint').textContent = NICK_HINTS[mode];
     $('nickSave').textContent = NICK_BUTTONS[mode];
     $('nickSave').classList.toggle('primary', mode !== 'me');
+    $('nickPass').hidden = mode !== 'me';
+    $('nickPass').textContent = me.hasPassword ? 'Змінити пароль' : 'Поставити пароль';
     $('nickErr').hidden = true;
+    paintMeInfo();
+    paintGoogle();
+  }
+  function paintMeInfo() {
+    const box = $('meInfo');
+    box.hidden = nickMode !== 'me';
+    if (box.hidden) return;
+    const lines = [];
+    if (me.google) lines.push(`Google прив'язано${me.email ? ' · ' + esc(me.email) : ''}.`);
+    else lines.push('Прив\'яжи Google — заходитимеш без пароля, і нік не пропаде, якщо його забудеш.');
+    if (!me.hasPassword) lines.push('Пароля нема: заходиш через Google. Хочеш — постав.');
+    box.innerHTML = lines.map((l) => `<div class="muted">${l}</div>`).join('');
   }
   function askNick(force, mode, prefill) {
     if (me.nick && !force) return;
     setNickMode(mode || (me.account ? 'me' : me.nick ? 'login' : 'register'));
     $('nickInput').value = prefill !== undefined ? prefill : guestBody(me.nick);
     $('passInput').value = '';
+    $('passCurrent').value = '';
     $('nickLater').hidden = !me.nick;   // без ніка на сайті робити нічого — картку не закрити
     $('nickModal').hidden = false;
-    if (nickMode !== 'me') setTimeout(() => $('nickInput').focus(), 50);
+    if (!$('nickInput').hidden) setTimeout(() => $('nickInput').focus(), 50);
+    else if (nickMode === 'password') setTimeout(() => ($('passCurrent').hidden ? $('passInput') : $('passCurrent')).focus(), 50);
   }
   function paintNick() {
     const b = $('nickBtn');
@@ -133,6 +160,7 @@
   function showNickError(text) { $('nickErr').textContent = text; $('nickErr').hidden = false; }
   async function saveNick() {
     const n = $('nickInput').value.trim().slice(0, 24);
+    const password = $('passInput').value;
     $('nickErr').hidden = true;
     try {
       if (nickMode === 'me') {
@@ -141,9 +169,23 @@
         location.reload();
         return;
       }
+      if (nickMode === 'password') {
+        if (password.length < 6) { showNickError('Пароль — хоча б 6 символів'); return; }
+        await busy($('nickSave'), 'Зберігаю…', () => api('POST', '/api/account/password', { current: $('passCurrent').value, password }));
+        me.hasPassword = true;
+        $('nickModal').hidden = true;
+        toast('Пароль збережено', 'ok');
+        return;
+      }
       if (!n) return;
       if (nickMode === 'guest') { await becomeGuest(n); return; }
-      const password = $('passInput').value;
+      if (nickMode === 'gnick') {
+        const r = await busy($('nickSave'), 'Заходжу…', () => api('POST', '/api/account/google', { credential: pendingGoogle, nick: n }));
+        if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+        localStorage.setItem('nick', r.nick);
+        location.reload();
+        return;
+      }
       if (password.length < 6) { showNickError('Пароль — хоча б 6 символів'); return; }
       const r = await busy($('nickSave'), nickMode === 'login' ? 'Заходжу…' : 'Реєструю…',
         () => api('POST', `/api/account/${nickMode}`, { nick: n, password }));
@@ -168,8 +210,60 @@
   }
   $('nickForm').onsubmit = (e) => { e.preventDefault(); saveNick(); };
   $('nickTabs').querySelectorAll('button').forEach((b) => b.onclick = () => { setNickMode(b.dataset.mode); $('nickInput').focus(); });
+  $('nickPass').onclick = () => askNick(true, 'password');
   $('nickLater').onclick = () => { $('nickModal').hidden = true; };
   $('nickBtn').onclick = () => askNick(true);
+
+  // ---------- вхід через Google ----------
+  // Бібліотеку Google тягнемо лише коли сервер дав Client ID; вона сама малює кнопку в наш контейнер
+  // і віддає підписаний ID-токен — його перевіряє сервер. Та сама кнопка в картці «Ти — …» — прив'язка.
+  let googleReady = false;
+  function loadGoogle(clientId) {
+    if (!clientId || googleReady || document.getElementById('gsi')) return;
+    const s = document.createElement('script');
+    s.id = 'gsi';
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => {
+      try {
+        google.accounts.id.initialize({ client_id: clientId, callback: onGoogle, ux_mode: 'popup', itp_support: true });
+        googleReady = true;
+        if (!$('nickModal').hidden) paintGoogle();
+      } catch (e) { console.warn('[google]', e); }
+    };
+    document.head.appendChild(s);
+  }
+  function paintGoogle() {
+    const box = $('googleBox');
+    const want = googleReady && (nickMode === 'login' || nickMode === 'register' || (nickMode === 'me' && !me.google));
+    box.hidden = !want;
+    if (!want) return;
+    const el = $('googleBtn');
+    el.innerHTML = '';
+    const width = Math.max(200, Math.min(400, el.parentElement.clientWidth || 300));
+    google.accounts.id.renderButton(el, {
+      theme: 'filled_black', size: 'large', shape: 'pill', locale: 'uk', width,
+      text: nickMode === 'me' ? 'continue_with' : 'signin_with',
+    });
+  }
+  async function onGoogle(resp) {
+    const credential = resp && resp.credential;
+    if (!credential) return;
+    $('nickErr').hidden = true;
+    try {
+      if (me.account) {
+        await api('POST', '/api/account/google/link', { credential });
+        toast('Google прив\'язано', 'ok');
+        location.reload();
+        return;
+      }
+      const r = await api('POST', '/api/account/google', { credential });
+      if (r.needNick) { pendingGoogle = credential; askNick(true, 'gnick', r.suggest || ''); return; }
+      if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+      localStorage.setItem('nick', r.nick);
+      location.reload();
+    } catch (e) { showNickError(e.message); }
+  }
 
   // ---------- player ----------
   const audio = $('audio');
@@ -1909,7 +2003,11 @@
   api('GET', '/api/me').then((m) => {
     me.role = m.role;
     me.account = !!m.account;
+    me.hasPassword = !!m.hasPassword;
+    me.google = !!m.google;
+    me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
+    loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
     if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');

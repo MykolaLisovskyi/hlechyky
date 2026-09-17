@@ -102,5 +102,11 @@ public sealed class StateSnapshot
     public required int VoiceMaxSeconds { get; init; }
 }
 
-/// <summary>Акаунт: нік як зареєстрували (з регістром), пароль як PBKDF2 і роль (member чи admin).</summary>
-public sealed record Account(string Nick, string PassHash, string PassSalt, string Role);
+/// <summary>
+/// Акаунт: нік як зареєстрували (з регістром), пароль як PBKDF2 (порожній — лише через Google), роль
+/// (member чи admin), прив'язаний Google (<c>sub</c>) і пошта з нього — довідкова, листів не шлемо.
+/// </summary>
+public sealed record Account(string Nick, string PassHash, string PassSalt, string Role, string? GoogleSub = null, string? Email = null)
+{
+    public bool HasPassword => PassHash.Length > 0;
+}

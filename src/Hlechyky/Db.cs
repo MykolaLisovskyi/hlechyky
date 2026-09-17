@@ -116,11 +116,16 @@ public sealed class Db
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
         // Акаунти: нік займають один раз разом із паролем. nick_key — той самий trim+lower, що й у гаманців,
         // тож усе, що вже лежить під цим ніком (глеки, ачівки, статистика), стає добром акаунта без переносу.
+        // pass_hash порожній — акаунт лише через Google (сіль усе одно є: вона живе в сесійній куці).
         Exec(c, """
             CREATE TABLE IF NOT EXISTS accounts(
                 nick_key TEXT PRIMARY KEY, nick TEXT NOT NULL, pass_hash TEXT NOT NULL, pass_salt TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'member', created_at TEXT NOT NULL, seen_at TEXT NOT NULL)
+                role TEXT NOT NULL DEFAULT 'member', created_at TEXT NOT NULL, seen_at TEXT NOT NULL,
+                google_sub TEXT, email TEXT)
             """);
+        try { Exec(c, "ALTER TABLE accounts ADD COLUMN google_sub TEXT"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE accounts ADD COLUMN email TEXT"); } catch (SqliteException) { /* exists */ }
+        Exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS ix_accounts_google ON accounts(google_sub) WHERE google_sub IS NOT NULL");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
         BackfillSongKeys(c);
     }
@@ -876,26 +881,53 @@ public sealed class Db
 
     // ---- акаунти ----
 
+    const string AccountCols = "nick, pass_hash, pass_salt, role, google_sub, email";
+    static Account ReadAccount(SqliteDataReader r) => new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), Str(r, 4), Str(r, 5));
+
     /// <summary>Нік уже чийсь? Порівняння без регістру — через nick_key, бо lower() у SQLite кирилиці не знає.</summary>
     public Account? FindAccount(string nick)
     {
         using var c = Open();
-        using var cmd = Cmd(c, "SELECT nick, pass_hash, pass_salt, role FROM accounts WHERE nick_key=$k", ("$k", Auth.NickKey(nick)));
+        using var cmd = Cmd(c, $"SELECT {AccountCols} FROM accounts WHERE nick_key=$k", ("$k", Auth.NickKey(nick)));
         using var r = cmd.ExecuteReader();
-        return r.Read() ? new Account(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3)) : null;
+        return r.Read() ? ReadAccount(r) : null;
     }
 
-    /// <summary>Зайняти нік. false — уже зайнятий (гонка двох реєстрацій теж сюди: PRIMARY KEY не дасть двох).</summary>
-    public bool AddAccount(string nick, string passHash, string passSalt)
+    /// <summary>Акаунт, до якого прив'язаний цей Google (його стале <c>sub</c>, не пошта: пошту можна змінити).</summary>
+    public Account? FindAccountByGoogle(string sub)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT {AccountCols} FROM accounts WHERE google_sub=$g", ("$g", sub));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ReadAccount(r) : null;
+    }
+
+    /// <summary>
+    /// Зайняти нік. false — уже зайнятий або цей Google уже чийсь (гонка двох реєстрацій теж сюди:
+    /// PRIMARY KEY і унікальний індекс не дадуть двох). Порожній <paramref name="passHash"/> — вхід лише через Google.
+    /// </summary>
+    public bool AddAccount(string nick, string passHash, string passSalt, string? googleSub = null, string? email = null)
     {
         using var c = Open();
         try
         {
-            Exec(c, "INSERT INTO accounts(nick_key, nick, pass_hash, pass_salt, created_at, seen_at) VALUES($k, $n, $h, $s, $now, $now)",
-                ("$k", Auth.NickKey(nick)), ("$n", nick), ("$h", passHash), ("$s", passSalt), ("$now", Now()));
+            Exec(c, "INSERT INTO accounts(nick_key, nick, pass_hash, pass_salt, created_at, seen_at, google_sub, email) VALUES($k, $n, $h, $s, $now, $now, $g, $e)",
+                ("$k", Auth.NickKey(nick)), ("$n", nick), ("$h", passHash), ("$s", passSalt), ("$now", Now()), ("$g", googleSub), ("$e", email));
             return true;
         }
-        catch (SqliteException e) when (e.SqliteErrorCode == 19) { return false; } // constraint: нік уже є
+        catch (SqliteException e) when (e.SqliteErrorCode == 19) { return false; } // constraint: нік або Google уже є
+    }
+
+    /// <summary>Прив'язати Google до акаунта. false — цей Google уже прив'язаний до іншого.</summary>
+    public bool SetAccountGoogle(string nick, string sub, string? email)
+    {
+        using var c = Open();
+        try
+        {
+            Exec(c, "UPDATE accounts SET google_sub=$g, email=COALESCE($e, email) WHERE nick_key=$k", ("$g", sub), ("$e", email), ("$k", Auth.NickKey(nick)));
+            return true;
+        }
+        catch (SqliteException e) when (e.SqliteErrorCode == 19) { return false; }
     }
 
     public void SetAccountPassword(string nick, string passHash, string passSalt)

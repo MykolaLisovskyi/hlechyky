@@ -19,6 +19,7 @@ builder.Configuration
 var cfg = builder.Configuration;
 builder.Services.Configure<SiteOptions>(cfg.GetSection("Site"));
 builder.Services.Configure<AuthOptions>(cfg.GetSection("Auth"));
+builder.Services.Configure<GoogleOptions>(cfg.GetSection("Google"));
 builder.Services.Configure<YtDlpOptions>(cfg.GetSection("YtDlp"));
 builder.Services.Configure<VoiceOptions>(cfg.GetSection("Voice"));
 builder.Services.Configure<LiquidsoapOptions>(cfg.GetSection("Liquidsoap"));
@@ -32,6 +33,8 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton(_ => new Db(Paths.Resolve("data/hlechyky.db")));
+builder.Services.AddSingleton<Accounts>();
+builder.Services.AddSingleton<IGoogleVerifier, GoogleVerifier>();
 builder.Services.AddSingleton<YtMusicClient>();
 builder.Services.AddSingleton<YtDlpService>();
 builder.Services.AddSingleton<VoiceService>();

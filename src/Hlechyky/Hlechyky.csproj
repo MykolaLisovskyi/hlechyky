@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.46.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.76.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
 

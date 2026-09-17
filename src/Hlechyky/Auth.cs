@@ -81,11 +81,13 @@ public static class Auth
     // PBKDF2-SHA256: своя сіль на кожного, ітерацій стільки, щоб перебір був дорогим, а вхід — миттєвим.
     const int PbkdfIterations = 120_000;
 
+    /// <summary>Сіль потрібна й акаунту без пароля: вона — ключ сесії в куці, і зміна пароля її оновлює.</summary>
+    public static string NewSalt() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+
     public static string HashPassword(string password, out string salt)
     {
-        var saltBytes = RandomNumberGenerator.GetBytes(16);
-        salt = Convert.ToBase64String(saltBytes);
-        return Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(password, saltBytes, PbkdfIterations, HashAlgorithmName.SHA256, 32));
+        salt = NewSalt();
+        return Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(salt), PbkdfIterations, HashAlgorithmName.SHA256, 32));
     }
 
     public static bool VerifyPassword(string password, string hash, string salt)

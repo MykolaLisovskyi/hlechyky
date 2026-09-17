@@ -151,8 +151,9 @@
 
 <div id="toasts" class="toasts"></div>
 
-<!-- Хто прийшов: зайти в акаунт, зареєструвати нік або піти гостем (тоді нік буде «гість Вася»).
-     Для того, хто вже в акаунті, ця ж картка — «Ти — Влад» і кнопка «Вийти». -->
+<!-- Хто прийшов: зайти в акаунт (паролем чи через Google), зареєструвати нік або піти гостем (тоді нік
+     буде «гість Вася»). Для того, хто вже в акаунті, ця ж картка — «Ти — Влад»: вийти, змінити пароль,
+     прив'язати Google. Кнопку Google малює її бібліотека в #googleBtn / #googleLink, коли є Client ID. -->
 <div id="nickModal" class="modal" hidden>
   <form id="nickForm" class="card">
     <h3><img src="/static/glek.svg" alt=""><span id="nickTitle">Хто прийшов?</span></h3>
@@ -161,13 +162,20 @@
       <button type="button" data-mode="register">Новий нік</button>
       <button type="button" data-mode="guest">Як гість</button>
     </div>
+    <p id="meInfo" class="small" hidden></p>
     <input id="nickInput" type="text" maxlength="24" placeholder="як тебе кликати" autocomplete="nickname">
+    <input id="passCurrent" type="password" maxlength="200" placeholder="теперішній пароль" autocomplete="current-password" hidden>
     <input id="passInput" type="password" minlength="6" maxlength="200" placeholder="пароль" autocomplete="current-password">
     <p id="nickHint" class="muted small"></p>
     <p id="nickErr" class="nickerr small" hidden></p>
     <div class="row">
       <button id="nickSave" class="primary" type="submit">Заходжу</button>
+      <button id="nickPass" class="ghost" type="button" hidden>Змінити пароль</button>
       <button id="nickLater" class="ghost" type="button" hidden>Не зараз</button>
+    </div>
+    <div id="googleBox" class="gbox" hidden>
+      <div class="or muted small">або</div>
+      <div id="googleBtn" class="gbtn"></div>
     </div>
   </form>
 </div>

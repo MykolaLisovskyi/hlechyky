@@ -12,6 +12,9 @@ public static class Endpoints
     public sealed record SayRequest(string? Text);
     public sealed record QueueAllRequest(bool Shuffle);
     public sealed record AccountRequest(string? Nick, string? Password);
+    /// <summary>Credential — ID-токен від кнопки Google; Nick — коли Google підтвердив, а ніка тут ще нема.</summary>
+    public sealed record GoogleRequest(string? Credential, string? Nick);
+    public sealed record PasswordRequest(string? Current, string? Password);
 
     static IResult Reply((bool Ok, string Message) r) =>
         r.Ok ? Results.Ok(new { ok = true, message = r.Message }) : Results.BadRequest(new { ok = false, message = r.Message });
@@ -22,36 +25,52 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/me", (HttpContext c, TrackBans bans) => new { nick = Auth.Nick(c), role = Auth.Role(c), account = Auth.IsUser(c), banPrice = bans.BanPrice });
-
-        // ---- акаунти: нік займають один раз разом із паролем; гість — усе те ж, але як «гість Вася» ----
-
-        api.MapPost("/account/register", (HttpContext c, AccountRequest req, Db db, IOptionsMonitor<SiteOptions> site) =>
+        api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google) => new
         {
-            var nick = Auth.CleanNick(req.Nick);
-            if (Auth.NickProblem(nick, site.CurrentValue) is { } why) return Fail(why);
-            if ((req.Password ?? "").Length < Auth.PasswordMin) return Fail($"Пароль — хоча б {Auth.PasswordMin} символів");
-            var hash = Auth.HashPassword(req.Password!, out var salt);
-            if (!db.AddAccount(nick, hash, salt)) return Results.Conflict(new { ok = false, message = $"Нік «{nick}» уже зайнятий" });
-            var a = db.FindAccount(nick)!;
-            Auth.SignIn(c, a);
-            return Results.Ok(new { ok = true, nick = a.Nick, role = Auth.Role(c) });
+            nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
+            account = Auth.IsUser(c),
+            hasPassword = Auth.Me(c)?.HasPassword ?? false,
+            google = Auth.Me(c)?.GoogleSub is not null,
+            email = Auth.Me(c)?.Email,
+            googleClientId = google.Enabled ? google.ClientId : null,
         });
 
-        api.MapPost("/account/login", (HttpContext c, AccountRequest req, Db db) =>
+        // ---- акаунти: нік займають один раз (паролем або через Google); гість — усе те ж, але як «гість Вася» ----
+
+        static IResult Signed(HttpContext c, Accounts.Outcome r)
+        {
+            if (r.Account is null) return Results.Json(new { ok = false, message = r.Error, needNick = r.NeedNick, suggest = r.Suggest }, statusCode: r.Status);
+            Auth.SignIn(c, r.Account);
+            return Results.Ok(new { ok = true, nick = r.Account.Nick, role = Auth.Role(c) });
+        }
+
+        api.MapPost("/account/register", (HttpContext c, AccountRequest req, Accounts accounts) => Signed(c, accounts.Register(req.Nick, req.Password)));
+
+        api.MapPost("/account/login", (HttpContext c, AccountRequest req, Accounts accounts) =>
         {
             if (Auth.TooManyTries(c)) return Fail("Забагато спроб — зачекай п'ять хвилин");
-            var a = db.FindAccount(Auth.CleanNick(req.Nick));
-            if (a is null || !Auth.VerifyPassword(req.Password ?? "", a.PassHash, a.PassSalt))
-            {
-                Auth.CountMiss(c);
-                return Results.Json(new { ok = false, message = "Не той нік або пароль" }, statusCode: 401);
-            }
-            Auth.ForgetMisses(c);
-            Auth.SignIn(c, a);
-            db.TouchAccount(a.Nick);
-            return Results.Ok(new { ok = true, nick = a.Nick, role = Auth.Role(c) });
+            var r = accounts.Login(req.Nick, req.Password);
+            if (r.Account is null) Auth.CountMiss(c); else Auth.ForgetMisses(c);
+            return Signed(c, r);
         });
+
+        // Кнопка Google: свій — вхід, новий — спершу нік (needNick), з ніком — реєстрація без пароля.
+        api.MapPost("/account/google", async (HttpContext c, GoogleRequest req, Accounts accounts, IGoogleVerifier google) =>
+        {
+            if (await google.VerifyAsync(req.Credential ?? "") is not { } who) return Results.Json(new { ok = false, message = "Google не підтвердив вхід — спробуй ще раз" }, statusCode: 401);
+            return Signed(c, accounts.Google(who, req.Nick));
+        });
+
+        api.MapPost("/account/google/link", async (HttpContext c, GoogleRequest req, Accounts accounts, IGoogleVerifier google) =>
+        {
+            if (Auth.Me(c) is not { } me) return Fail("Спершу зайди в акаунт");
+            if (await google.VerifyAsync(req.Credential ?? "") is not { } who) return Results.Json(new { ok = false, message = "Google не підтвердив вхід — спробуй ще раз" }, statusCode: 401);
+            return Signed(c, accounts.LinkGoogle(me, who));
+        });
+
+        // Новий пароль — нова сіль, тож і нова кука: Signed кладе її, щоб ця ж вкладка не вилетіла.
+        api.MapPost("/account/password", (HttpContext c, PasswordRequest req, Accounts accounts) =>
+            Auth.Me(c) is { } me ? Signed(c, accounts.SetPassword(me, req.Current, req.Password)) : Fail("Спершу зайди в акаунт"));
 
         api.MapPost("/account/logout", (HttpContext c) =>
         {

@@ -559,6 +559,11 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 .modal .tabs { margin-bottom: 0; }
 .modal p { margin: 0; }
 .modal .nickerr { color: var(--danger); }
+.modal .row { flex-wrap: wrap; }
+.modal .gbox { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.modal .gbox .or { display: flex; align-items: center; gap: 10px; width: 100%; }
+.modal .gbox .or::before, .modal .gbox .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.modal .gbtn { min-height: 40px; }
 
 
 /* ---- scrollbars: slim, rounded, in the panel palette ---- */

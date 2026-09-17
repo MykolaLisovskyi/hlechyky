@@ -39,6 +39,12 @@ public sealed class AuthOptions
     public string AdminKey { get; set; } = "";
 }
 
+/// <summary>Вхід через Google. Client ID публічний (він і так у сторінці), секрет для ID-токенів не потрібен. Порожній — кнопки нема.</summary>
+public sealed class GoogleOptions
+{
+    public string ClientId { get; set; } = "";
+}
+
 public sealed class YtDlpOptions
 {
     public string BinaryPath { get; set; } = "tools/yt-dlp/yt-dlp.exe";
