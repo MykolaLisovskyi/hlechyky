@@ -12,18 +12,21 @@ public sealed class Tanks : Game
     /// <summary>«Готуйсь» на свіжій мапі — дві секунди.</summary>
     public const int StartTicks = 50;
     public const string PhaseStart = "start", PhaseGo = "go", PhaseOver = "over";
-    public const int DefaultFrags = 5;
+    /// <summary>«За столом»: на двох — до 5, на трьох-чотирьох — до 8, на п'ятьох-шістьох — до 12.</summary>
+    public static int FragsFor(int players) => players <= 2 ? 5 : players <= 4 ? 8 : 12;
 
     public override GameInfo Info { get; } = new(
         "tanks", "Танчики", "танчики", GameGroup.Live, 2, TanksCore.Seats, TickMs: TanksCore.TickMs,
         Start: StartMode.ByHost, Score: ScoreOrder.HigherIsBetter,
-        Options: [new GameOption("frags", "Грати до", [("5", "5 фрагів"), ("10", "10 фрагів")], "5")],
+        Options: [new GameOption("frags", "Грати до", [("auto", "За столом"), ("5", "5 фрагів"), ("10", "10 фрагів"), ("15", "15 фрагів")], "auto")],
         Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв. На п'ятьох-шістьох мапа більша");
 
     TanksCore? _core;
     string _phase = PhaseStart;
     int _startIn = StartTicks;
-    int _need = DefaultFrags;
+    /// <summary>Скільки фрагів до перемоги; 0 — «за столом», рахується на «Почати» зі складу.</summary>
+    int _frags;
+    int _need = FragsFor(2);
     bool _started;
 
     /// <summary>
@@ -67,7 +70,8 @@ public sealed class Tanks : Game
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        _need = options.TryGetValue("frags", out var v) && int.TryParse(v, out var n) && n is 5 or 10 ? n : DefaultFrags;
+        _frags = options.TryGetValue("frags", out var v) && int.TryParse(v, out var n) && n is 5 or 10 or 15 ? n : 0;
+        _need = _frags > 0 ? _frags : FragsFor(2);
     }
 
     public override void Start()
@@ -75,7 +79,9 @@ public sealed class Tanks : Game
         _started = true;
         _phase = PhaseStart;
         _startIn = StartTicks;
-        Rebuild([.. Enumerable.Range(0, TanksCore.Seats).Select(Ctx.Seated)]);
+        var plays = Enumerable.Range(0, TanksCore.Seats).Select(Ctx.Seated).ToArray();
+        _need = _frags > 0 ? _frags : FragsFor(plays.Count(p => p));
+        Rebuild(plays);
     }
 
     // ---------- ввід ----------

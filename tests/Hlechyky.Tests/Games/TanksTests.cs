@@ -394,6 +394,19 @@ public class TanksTests
         Assert.Equal("go", Phase(h));
     }
 
+    [Theory]
+    [InlineData(2, 5)]
+    [InlineData(3, 8)]
+    [InlineData(4, 8)]
+    [InlineData(6, 12)]
+    public void By_default_the_bar_follows_the_table_size(int players, int need)
+    {
+        var h = new RoomHarness("tanks", seed: 5);
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марта", "Юрко" }.Take(players)) h.Join(nick);
+        h.Start();
+        Assert.Equal(need, h.View(null).GetProperty("need").GetInt32());
+    }
+
     [Fact]
     public void Time_out_gives_the_match_to_the_leader_or_calls_a_draw()
     {
