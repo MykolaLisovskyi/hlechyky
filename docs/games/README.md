@@ -27,6 +27,7 @@
 | specs/pong.md | 32 | Понг |
 | specs/curve.md | 33 | Кривуля |
 | specs/bomber.md | 34 | Бомбер |
+| specs/tanks.md | — | Танчики |
 | specs/duel.md | 37 | Дуель-вестерн на реакцію |
 | specs/territory.md | 38 | Земля (splix) |
 | specs/chat-commands.md | 39 | /coin, /choose, /8ball |

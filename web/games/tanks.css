@@ -1,0 +1,50 @@
+/*
+  Танчики. Поле малює канвас, тут — рядок над ним і керування пальцем. Свої кольори — на :root,
+  бо модуль читає їх через ctx.css().
+*/
+:root {
+  --tmortar: #8f5527;   /* шви на цеглі */
+  --tdark: #0d1a13;     /* гусениці, башта, дуло */
+}
+
+.tboard { max-width: 520px; }
+
+/* ---- рядок над полем: фраги кожного і годинник партії ---- */
+.thud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: .82em; }
+.tchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.tchip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.tchip .tback { color: var(--muted); }
+.tchip.out { opacity: .55; }
+.tchip.s0 { color: var(--accent); }
+.tchip.s1 { color: var(--ok); }
+.tchip.s2 { color: var(--clay); }
+.tchip.s3 { color: var(--muted); }
+.tchip.tclock { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---- керування пальцем: напрямок тримають, тому pointerdown/pointerup, а не клік ---- */
+.tpad { display: none; }
+@media (pointer: coarse) {
+  .tpad {
+    display: grid; grid-template-columns: auto auto; gap: 16px; align-items: center;
+    justify-content: center; margin-top: 4px; touch-action: none; user-select: none;
+  }
+  .tdirs { display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 40px); gap: 5px; }
+  .tdirs button { justify-content: center; font-size: 1.15em; }
+  .tdirs button[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .tdirs button[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .tdirs button[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .tdirs button[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .tfire {
+    width: 72px; height: 72px; border-radius: 50%; justify-content: center; font-size: 1.7em;
+    background: var(--panel3);
+  }
+  .tfire:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .tdirs { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 38px); }
+  .tfire { width: 64px; height: 64px; font-size: 1.5em; }
+  .tpad { gap: 10px; }
+}
