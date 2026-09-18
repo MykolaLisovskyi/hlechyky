@@ -47,10 +47,29 @@ public sealed class Shell
 /// <summary>
 /// Поле, танки й снаряди — правила однієї партії без жодного слова про кімнати й Журнал. Мапа з
 /// <paramref name="rng"/>, але дзеркальна по обох осях: кути рівні, скільки б там не випало.
+/// Розмір — за складом: до чотирьох — 21×15, на п'ятьох-шістьох — 27×19 (див. <see cref="SizeFor"/>).
 /// </summary>
-public sealed class TanksCore(Random rng)
+public sealed class TanksCore
 {
-    public const int W = 21, H = 15;
+    public const int SmallW = 21, SmallH = 15, BigW = 27, BigH = 19;
+    /// <summary>Скільки людей уміщає звична мапа; більше — велика.</summary>
+    public const int SmallSeats = 4;
+    public readonly int W, H;
+    readonly Random _rng;
+
+    public TanksCore(Random rng, int w = SmallW, int h = SmallH)
+    {
+        _rng = rng;
+        W = w;
+        H = h;
+        Tiles = new TankTile[W * H];
+        Tanks = [.. Enumerable.Range(0, Seats).Select(_ => new Tank())];
+        Starts = [Cell(1, 1), Cell(W - 2, H - 2), Cell(W - 2, 1), Cell(1, H - 2), Cell(1, H / 2), Cell(W - 2, H / 2)];
+    }
+
+    /// <summary>Розмір мапи під стількох гравців.</summary>
+    public static (int W, int H) SizeFor(int players) => players > SmallSeats ? (BigW, BigH) : (SmallW, SmallH);
+
     /// <summary>25 кадрів на секунду: крок каркаса 20 мс ділить його рівно.</summary>
     public const int TickMs = 40;
     public const int Sub = 12;
@@ -68,25 +87,28 @@ public sealed class TanksCore(Random rng)
     /// <summary>Дві хвилини.</summary>
     public const int MatchTicks = 3000;
     public const int SteelChance = 6, BrickChance = 28;
-    public const int Seats = 4;
+    public const int Seats = 6;
 
     /// <summary>0 праворуч, 1 вниз, 2 ліворуч, 3 вгору — як скрізь на платформі.</summary>
     public static readonly (int Dx, int Dy)[] Deltas = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 
-    /// <summary>Стартові кути: перші два — по діагоналі, щоб на двох стіл був чесним.</summary>
-    public static readonly int[] Corners = [Cell(1, 1), Cell(W - 2, H - 2), Cell(W - 2, 1), Cell(1, H - 2)];
+    /// <summary>
+    /// Старти по місцях: чотири кути (перші два — по діагоналі, щоб на двох стіл був чесним), далі
+    /// середина лівого й правого краю. Мапа дзеркальна, тож усі шість — рівні.
+    /// </summary>
+    public int[] Starts { get; }
 
-    public TankTile[] Tiles { get; } = new TankTile[W * H];
-    public Tank[] Tanks { get; } = [.. Enumerable.Range(0, Seats).Select(_ => new Tank())];
+    public TankTile[] Tiles { get; }
+    public Tank[] Tanks { get; }
     public List<Shell> Shells { get; } = [];
     public int Ticks { get; private set; }
     int _nextShell;
 
-    public static int Cell(int x, int y) => y * W + x;
-    public static int X(int cell) => cell % W;
-    public static int Y(int cell) => cell / W;
+    public int Cell(int x, int y) => y * W + x;
+    public int X(int cell) => cell % W;
+    public int Y(int cell) => cell / W;
 
-    public static int Ahead(int cell, int dir)
+    public int Ahead(int cell, int dir)
     {
         if (dir is < 0 or > 3) return -1;
         var (dx, dy) = Deltas[dir];
@@ -95,20 +117,20 @@ public sealed class TanksCore(Random rng)
     }
 
     /// <summary>Лівий верхній кут танка в дванадцятих; сам танк — квадрат Sub×Sub від нього.</summary>
-    public static int PosX(Tank t) => X(t.Cell) * Sub + (t.Move >= 0 ? Deltas[t.Move].Dx * t.Step : 0);
-    public static int PosY(Tank t) => Y(t.Cell) * Sub + (t.Move >= 0 ? Deltas[t.Move].Dy * t.Step : 0);
+    public int PosX(Tank t) => X(t.Cell) * Sub + (t.Move >= 0 ? Deltas[t.Move].Dx * t.Step : 0);
+    public int PosY(Tank t) => Y(t.Cell) * Sub + (t.Move >= 0 ? Deltas[t.Move].Dy * t.Step : 0);
     /// <summary>Центр танка — від нього рахуються дуло і влучання.</summary>
-    public static int CenterX(Tank t) => PosX(t) + Sub / 2;
-    public static int CenterY(Tank t) => PosY(t) + Sub / 2;
+    public int CenterX(Tank t) => PosX(t) + Sub / 2;
+    public int CenterY(Tank t) => PosY(t) + Sub / 2;
 
     /// <summary>Клітинки, які танк зараз займає: та, звідки їде, і та, куди (коли посеред кроку).</summary>
-    static IEnumerable<int> Footprint(Tank t)
+    IEnumerable<int> Footprint(Tank t)
     {
         yield return t.Cell;
         if (t.Move >= 0 && t.Step > 0) yield return Ahead(t.Cell, t.Move);
     }
 
-    static bool NearCorner(int cell) => Corners.Any(c => Math.Abs(X(c) - X(cell)) <= 1 && Math.Abs(Y(c) - Y(cell)) <= 1);
+    bool NearStart(int cell) => Starts.Any(c => Math.Abs(X(c) - X(cell)) <= 1 && Math.Abs(Y(c) - Y(cell)) <= 1);
 
     // ---------- поле ----------
 
@@ -121,7 +143,7 @@ public sealed class TanksCore(Random rng)
             for (var x = 0; x < W; x++)
                 Tiles[Cell(x, y)] = x == 0 || y == 0 || x == W - 1 || y == H - 1 ? TankTile.Steel : TankTile.Free;
         for (var i = 0; i < Seats; i++)
-            Tanks[i] = new Tank { Cell = Corners[i], Home = Corners[i], Want = Tanks[i].Want, Dir = i is 0 or 3 ? 0 : 2 };
+            Tanks[i] = new Tank { Cell = Starts[i], Home = Starts[i], Want = Tanks[i].Want, Dir = X(Starts[i]) < W / 2 ? 0 : 2 };
     }
 
     /// <summary>
@@ -134,10 +156,10 @@ public sealed class TanksCore(Random rng)
         for (var y = 1; y <= H / 2; y++)
             for (var x = 1; x <= W / 2; x++)
             {
-                var roll = rng.Next(100);
+                var roll = _rng.Next(100);
                 var tile = roll < SteelChance ? TankTile.Steel : roll < SteelChance + BrickChance ? TankTile.Brick : TankTile.Free;
                 foreach (var cell in new[] { Cell(x, y), Cell(W - 1 - x, y), Cell(x, H - 1 - y), Cell(W - 1 - x, H - 1 - y) })
-                    Tiles[cell] = NearCorner(cell) ? TankTile.Free : tile;
+                    Tiles[cell] = NearStart(cell) ? TankTile.Free : tile;
             }
         for (var i = 0; i < Seats; i++)
         {
@@ -199,10 +221,10 @@ public sealed class TanksCore(Random rng)
         }
     }
 
-    /// <summary>Повернення на свій кут, а як він зайнятий — на найближчий вільний; зі щитом.</summary>
+    /// <summary>Повернення на свій старт, а як він зайнятий — на найближчий вільний; зі щитом.</summary>
     void Spawn(Tank t)
     {
-        var spot = Corners.OrderBy(c => c == t.Home ? 0 : 1 + Math.Abs(X(c) - X(t.Home)) + Math.Abs(Y(c) - Y(t.Home)))
+        var spot = Starts.OrderBy(c => c == t.Home ? 0 : 1 + Math.Abs(X(c) - X(t.Home)) + Math.Abs(Y(c) - Y(t.Home)))
             .FirstOrDefault(c => !Tanks.Any(o => o != t && o.Alive && Footprint(o).Contains(c)), t.Home);
         t.Cell = spot;
         t.Move = -1;

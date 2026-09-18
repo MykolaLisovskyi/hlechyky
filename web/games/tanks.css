@@ -5,9 +5,14 @@
 :root {
   --tmortar: #8f5527;   /* шви на цеглі */
   --tdark: #0d1a13;     /* гусениці, башта, дуло */
+  --tblue: #6fb3e8;     /* п'яте місце */
+  --tpink: #e88ac0;     /* шосте місце */
 }
 
-.tboard { max-width: 520px; }
+.tboard { max-width: 620px; }
+/* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
+.gseat.tb { color: var(--tblue); }
+.gseat.tp { color: var(--tpink); }
 
 /* ---- рядок над полем: фраги кожного і годинник партії ---- */
 .thud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: .82em; }
@@ -22,6 +27,8 @@
 .tchip.s1 { color: var(--ok); }
 .tchip.s2 { color: var(--clay); }
 .tchip.s3 { color: var(--muted); }
+.tchip.s4 { color: var(--tblue); }
+.tchip.s5 { color: var(--tpink); }
 .tchip.tclock { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---- керування пальцем: напрямок тримають, тому pointerdown/pointerup, а не клік ---- */

@@ -40,7 +40,7 @@ public class TanksTests
     static Tank Put(TanksCore core, int seat, int x, int y, int dir = 0)
     {
         var t = core.Tanks[seat];
-        t.Cell = TanksCore.Cell(x, y);
+        t.Cell = core.Cell(x, y);
         t.Move = -1;
         t.Step = 0;
         t.Want = -1;
@@ -55,7 +55,7 @@ public class TanksTests
         for (var i = 0; i < n; i++) core.Step();
     }
 
-    static TankTile At(TanksCore core, int x, int y) => core.Tiles[TanksCore.Cell(x, y)];
+    static TankTile At(TanksCore core, int x, int y) => core.Tiles[core.Cell(x, y)];
 
     // ---------- мапа ----------
 
@@ -64,14 +64,14 @@ public class TanksTests
     {
         var core = Empty();
         core.Reset([true, true, true, true]);
-        for (var x = 0; x < TanksCore.W; x++) { Assert.Equal(TankTile.Steel, At(core, x, 0)); Assert.Equal(TankTile.Steel, At(core, x, TanksCore.H - 1)); }
-        for (var y = 0; y < TanksCore.H; y++) { Assert.Equal(TankTile.Steel, At(core, 0, y)); Assert.Equal(TankTile.Steel, At(core, TanksCore.W - 1, y)); }
-        foreach (var c in TanksCore.Corners)
+        for (var x = 0; x < core.W; x++) { Assert.Equal(TankTile.Steel, At(core, x, 0)); Assert.Equal(TankTile.Steel, At(core, x, core.H - 1)); }
+        for (var y = 0; y < core.H; y++) { Assert.Equal(TankTile.Steel, At(core, 0, y)); Assert.Equal(TankTile.Steel, At(core, core.W - 1, y)); }
+        foreach (var c in core.Starts)
             for (var dy = -1; dy <= 1; dy++)
                 for (var dx = -1; dx <= 1; dx++)
                 {
-                    var (x, y) = (TanksCore.X(c) + dx, TanksCore.Y(c) + dy);
-                    if (x == 0 || y == 0 || x == TanksCore.W - 1 || y == TanksCore.H - 1) continue;   // рамка
+                    var (x, y) = (core.X(c) + dx, core.Y(c) + dy);
+                    if (x == 0 || y == 0 || x == core.W - 1 || y == core.H - 1) continue;   // рамка
                     Assert.Equal(TankTile.Free, At(core, x, y));
                 }
     }
@@ -81,11 +81,11 @@ public class TanksTests
     {
         var core = Empty(7);
         core.Reset([true, true]);
-        for (var y = 0; y < TanksCore.H; y++)
-            for (var x = 0; x < TanksCore.W; x++)
+        for (var y = 0; y < core.H; y++)
+            for (var x = 0; x < core.W; x++)
             {
-                Assert.Equal(At(core, x, y), At(core, TanksCore.W - 1 - x, y));
-                Assert.Equal(At(core, x, y), At(core, x, TanksCore.H - 1 - y));
+                Assert.Equal(At(core, x, y), At(core, core.W - 1 - x, y));
+                Assert.Equal(At(core, x, y), At(core, x, core.H - 1 - y));
             }
     }
 
@@ -97,8 +97,8 @@ public class TanksTests
         {
             var core = Empty(seed);
             core.Reset([true, true]);
-            for (var y = 1; y < TanksCore.H - 1; y++)
-                for (var x = 1; x < TanksCore.W - 1; x++)
+            for (var y = 1; y < core.H - 1; y++)
+                for (var x = 1; x < core.W - 1; x++)
                 {
                     inner++;
                     if (At(core, x, y) == TankTile.Brick) bricks++;
@@ -114,8 +114,8 @@ public class TanksTests
     {
         var core = Empty();
         core.Reset([true, true]);
-        Assert.Equal(TanksCore.Cell(1, 1), core.Tanks[0].Cell);
-        Assert.Equal(TanksCore.Cell(TanksCore.W - 2, TanksCore.H - 2), core.Tanks[1].Cell);
+        Assert.Equal(core.Cell(1, 1), core.Tanks[0].Cell);
+        Assert.Equal(core.Cell(core.W - 2, core.H - 2), core.Tanks[1].Cell);
         Assert.False(core.Tanks[2].Alive);
     }
 
@@ -129,10 +129,10 @@ public class TanksTests
         core.Turn(0, 0);
         Assert.Equal(0, t.Dir);                 // повернувся одразу, ще до тика
         Steps(core, 3);
-        Assert.Equal(TanksCore.Cell(5, 5), t.Cell);
-        Assert.Equal(9, TanksCore.PosX(t) - 5 * TanksCore.Sub);
+        Assert.Equal(core.Cell(5, 5), t.Cell);
+        Assert.Equal(9, core.PosX(t) - 5 * TanksCore.Sub);
         Steps(core, 1);
-        Assert.Equal(TanksCore.Cell(6, 5), t.Cell);
+        Assert.Equal(core.Cell(6, 5), t.Cell);
         Assert.Equal(-1, t.Move);
     }
 
@@ -141,19 +141,19 @@ public class TanksTests
     {
         var core = Empty();
         var t = Put(core, 0, 5, 5);
-        core.Tiles[TanksCore.Cell(6, 5)] = TankTile.Steel;
-        core.Tiles[TanksCore.Cell(5, 6)] = TankTile.Brick;
+        core.Tiles[core.Cell(6, 5)] = TankTile.Steel;
+        core.Tiles[core.Cell(5, 6)] = TankTile.Brick;
         Put(core, 1, 4, 5);
         foreach (var dir in new[] { 0, 1, 2 })
         {
             core.Turn(0, dir);
             Steps(core, 8);
-            Assert.Equal(TanksCore.Cell(5, 5), t.Cell);
+            Assert.Equal(core.Cell(5, 5), t.Cell);
             Assert.Equal(dir, t.Dir);
         }
         core.Turn(0, 3);
         Steps(core, 4);
-        Assert.Equal(TanksCore.Cell(5, 4), t.Cell);
+        Assert.Equal(core.Cell(5, 4), t.Cell);
     }
 
     [Fact]
@@ -166,9 +166,9 @@ public class TanksTests
         core.Turn(0, 1);
         Assert.Equal(0, t.Dir);                 // посеред кроку дуло ще туди, куди їде
         Steps(core, 3);
-        Assert.Equal(TanksCore.Cell(6, 5), t.Cell);
+        Assert.Equal(core.Cell(6, 5), t.Cell);
         Steps(core, 4);
-        Assert.Equal(TanksCore.Cell(6, 6), t.Cell);
+        Assert.Equal(core.Cell(6, 6), t.Cell);
         Assert.Equal(1, t.Dir);
     }
 
@@ -181,7 +181,7 @@ public class TanksTests
         Steps(core, 1);
         core.Turn(0, -1);
         Steps(core, 10);
-        Assert.Equal(TanksCore.Cell(6, 5), t.Cell);
+        Assert.Equal(core.Cell(6, 5), t.Cell);
         Assert.Equal(-1, t.Move);
     }
 
@@ -195,11 +195,11 @@ public class TanksTests
         Assert.True(core.Fire(0));
         Assert.False(core.Fire(0));
         var s = Assert.Single(core.Shells);
-        Assert.Equal(TanksCore.CenterX(t) + TanksCore.ShellNose, s.X);
-        Assert.Equal(TanksCore.CenterY(t), s.Y);
+        Assert.Equal(core.CenterX(t) + TanksCore.ShellNose, s.X);
+        Assert.Equal(core.CenterY(t), s.Y);
         Steps(core, 1);
-        Assert.Equal(TanksCore.CenterX(t) + TanksCore.ShellNose + TanksCore.ShellSpeed, s.X);
-        Assert.Equal(TanksCore.CenterY(t), s.Y);
+        Assert.Equal(core.CenterX(t) + TanksCore.ShellNose + TanksCore.ShellSpeed, s.X);
+        Assert.Equal(core.CenterY(t), s.Y);
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class TanksTests
     {
         var core = Empty();
         Put(core, 0, 5, 5, dir: 2);
-        core.Tiles[TanksCore.Cell(3, 5)] = TankTile.Steel;
+        core.Tiles[core.Cell(3, 5)] = TankTile.Steel;
         core.Fire(0);
         Steps(core, 3);
         Assert.Empty(core.Shells);
@@ -215,7 +215,7 @@ public class TanksTests
         Steps(core, TanksCore.ReloadTicks);
         Assert.True(core.Fire(0));
         Steps(core, 3);
-        core.Tiles[TanksCore.Cell(3, 5)] = TankTile.Free;
+        core.Tiles[core.Cell(3, 5)] = TankTile.Free;
         Steps(core, TanksCore.ReloadTicks);
         core.Fire(0);
         Steps(core, 30);                        // до рамки й за неї
@@ -227,8 +227,8 @@ public class TanksTests
     {
         var core = Empty();
         Put(core, 0, 5, 5, dir: 1);
-        core.Tiles[TanksCore.Cell(5, 7)] = TankTile.Brick;
-        core.Tiles[TanksCore.Cell(5, 8)] = TankTile.Brick;
+        core.Tiles[core.Cell(5, 7)] = TankTile.Brick;
+        core.Tiles[core.Cell(5, 8)] = TankTile.Brick;
         core.Fire(0);
         Steps(core, 4);
         Assert.Equal(TankTile.Free, At(core, 5, 7));
@@ -257,7 +257,7 @@ public class TanksTests
         var core = Empty();
         var shooter = Put(core, 0, 5, 5, dir: 0);
         var victim = Put(core, 1, 9, 5);
-        victim.Home = TanksCore.Corners[2];     // повертається на свій кут, а не туди, де його підбили
+        victim.Home = core.Starts[2];     // повертається на свій кут, а не туди, де його підбили
         core.Fire(0);
         Steps(core, 8);
         Assert.False(victim.Alive);
@@ -266,11 +266,11 @@ public class TanksTests
         Assert.False(victim.Alive);
         Steps(core, 1);
         Assert.True(victim.Alive);
-        Assert.Equal(TanksCore.Corners[2], victim.Cell);
+        Assert.Equal(core.Starts[2], victim.Cell);
         Assert.Equal(TanksCore.ShieldTicks, victim.Shield);
 
         // Стрілець стає навпроти й б'є ще раз: щит рятує, а коли він згас — уже ні.
-        Put(core, 0, TanksCore.X(TanksCore.Corners[2]) - 3, TanksCore.Y(TanksCore.Corners[2]), dir: 0);
+        Put(core, 0, core.X(core.Starts[2]) - 3, core.Y(core.Starts[2]), dir: 0);
         core.Fire(0);
         Steps(core, 8);
         Assert.True(victim.Alive);              // щит
@@ -289,18 +289,18 @@ public class TanksTests
     {
         var core = Empty();
         var victim = Put(core, 0, 1, 1);
-        victim.Home = TanksCore.Cell(1, 1);
+        victim.Home = core.Cell(1, 1);
         Put(core, 1, 1, 1);                     // хтось стоїть на його старті
         Put(core, 2, 10, 7, dir: 0);
-        victim.Cell = TanksCore.Cell(12, 7);
+        victim.Cell = core.Cell(12, 7);
         core.Tanks[2].Dir = 0;
         core.Fire(2);
         Steps(core, 8);
         Assert.False(victim.Alive);
         Steps(core, TanksCore.RespawnTicks);
         Assert.True(victim.Alive);
-        Assert.NotEqual(TanksCore.Cell(1, 1), victim.Cell);
-        Assert.Contains(victim.Cell, TanksCore.Corners);
+        Assert.NotEqual(core.Cell(1, 1), victim.Cell);
+        Assert.Contains(victim.Cell, core.Starts);
     }
 
     [Fact]
@@ -325,8 +325,8 @@ public class TanksTests
         var core = Empty();
         var t = Put(core, 0, 5, 5, dir: 0);
         core.Fire(0);
-        core.Shells[0].X = TanksCore.CenterX(t);   // штучно: снаряд «у» своєму танку
-        core.Shells[0].Y = TanksCore.CenterY(t);
+        core.Shells[0].X = core.CenterX(t);   // штучно: снаряд «у» своєму танку
+        core.Shells[0].Y = core.CenterY(t);
         Steps(core, 1);
         Assert.True(t.Alive);
     }
@@ -354,10 +354,10 @@ public class TanksTests
         Assert.Equal("start", Phase(h));
         Ready(h);
         var v = h.View(null);
-        Assert.Equal(TanksCore.W, v.GetProperty("width").GetInt32());
+        Assert.Equal(TanksCore.SmallW, v.GetProperty("width").GetInt32());
         Assert.Equal(5, v.GetProperty("need").GetInt32());
-        Assert.True(v.GetProperty("walls").GetArrayLength() >= 2 * TanksCore.W + 2 * TanksCore.H - 4);
-        Assert.Equal(2, v.GetProperty("p").GetArrayLength() - 2);   // чотири місця в кадрі завжди
+        Assert.True(v.GetProperty("walls").GetArrayLength() >= 2 * TanksCore.SmallW + 2 * TanksCore.SmallH - 4);
+        Assert.Equal(TanksCore.Seats, v.GetProperty("p").GetArrayLength());   // усі місця в кадрі завжди
     }
 
     [Fact]
@@ -371,7 +371,7 @@ public class TanksTests
         // Жовтий стріляє в зеленого через чистий ряд: п'ятий фраг.
         Put(core, 0, 5, 5, dir: 0);
         Put(core, 1, 8, 5);
-        for (var x = 5; x <= 8; x++) core.Tiles[TanksCore.Cell(x, 5)] = TankTile.Free;
+        for (var x = 5; x <= 8; x++) core.Tiles[core.Cell(x, 5)] = TankTile.Free;
         h.Input(0, "fire");
         h.Tick(10);
         Assert.Equal("over", Phase(h));
@@ -457,7 +457,7 @@ public class TanksTests
         Assert.Equal(0, Core(h).Tanks[0].Want);
         Ready(h);
         h.Tick(4);
-        Assert.NotEqual(TanksCore.Corners[0], Core(h).Tanks[0].Cell);   // поїхав з першого тика
+        Assert.NotEqual(Core(h).Starts[0], Core(h).Tanks[0].Cell);   // поїхав з першого тика
     }
 
     [Fact]
@@ -472,6 +472,48 @@ public class TanksTests
         Assert.True(shot.GetProperty("i").GetInt32() > 0);
         Assert.True(v.GetProperty("bricks").GetArrayLength() > 10);
         Assert.True(v.GetProperty("left").GetInt32() < TanksCore.MatchTicks);
+    }
+
+    [Fact]
+    public void Five_or_six_players_get_the_big_map_and_side_starts()
+    {
+        Assert.Equal((TanksCore.SmallW, TanksCore.SmallH), TanksCore.SizeFor(4));
+        Assert.Equal((TanksCore.BigW, TanksCore.BigH), TanksCore.SizeFor(5));
+        var h = new RoomHarness("tanks", seed: 5);
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марта", "Юрко" }) h.Join(nick);
+        Assert.Equal(TanksCore.SmallW, h.View(null).GetProperty("width").GetInt32());   // у лобі — звична
+        h.Start();
+        var v = h.View(null);
+        Assert.Equal(TanksCore.BigW, v.GetProperty("width").GetInt32());
+        Assert.Equal(TanksCore.BigH, v.GetProperty("height").GetInt32());
+        var core = Core(h);
+        Assert.Equal(core.Cell(1, core.H / 2), core.Tanks[4].Cell);
+        Assert.Equal(core.Cell(core.W - 2, core.H / 2), core.Tanks[5].Cell);
+        Assert.All(core.Tanks, t => Assert.True(t.Alive));
+        // Навколо бокових стартів так само порожньо
+        foreach (var c in new[] { core.Tanks[4].Cell, core.Tanks[5].Cell })
+            for (var dy = -1; dy <= 1; dy++)
+                Assert.Equal(TankTile.Free, core.Tiles[core.Cell(core.X(c) + (core.X(c) == 1 ? 1 : -1), core.Y(c) + dy)]);
+        // Мапа й тут дзеркальна
+        for (var y = 0; y < core.H; y++)
+            for (var x = 0; x < core.W; x++)
+                Assert.Equal(core.Tiles[core.Cell(x, y)], core.Tiles[core.Cell(core.W - 1 - x, core.H - 1 - y)]);
+    }
+
+    [Fact]
+    public void Four_players_after_six_go_back_to_the_small_map_on_rematch()
+    {
+        var h = new RoomHarness("tanks", seed: 5);
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марта", "Юрко" }) h.Join(nick);
+        h.Start();
+        Assert.Equal(TanksCore.BigW, h.View(null).GetProperty("width").GetInt32());
+        Ready(h);
+        h.Leave("Марта");
+        h.Leave("Юрко");
+        h.Tick(TanksCore.MatchTicks);
+        Assert.Equal("over", Phase(h));
+        h.Rematch("Оля");
+        Assert.Equal(TanksCore.SmallW, h.View(null).GetProperty("width").GetInt32());
     }
 
     [Fact]

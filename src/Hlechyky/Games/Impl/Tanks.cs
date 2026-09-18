@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Танчики на двох–чотирьох: арена згори, цегла ламається, хто перший набере фрагів — той і взяв.
+/// Танчики на двох–шістьох: арена згори, цегла ламається, хто перший набере фрагів — той і взяв.
 /// Правила поля живуть у <see cref="TanksCore"/>, а тут — фази («готуйсь», гра, кінець), опція «до
 /// скількох», вид і кадр. Кадр летить 25 разів на секунду, тож у ньому лише короткі числа.
 /// </summary>
@@ -18,7 +18,7 @@ public sealed class Tanks : Game
         "tanks", "Танчики", "танчики", GameGroup.Live, 2, TanksCore.Seats, TickMs: TanksCore.TickMs,
         Start: StartMode.ByHost, Score: ScoreOrder.HigherIsBetter,
         Options: [new GameOption("frags", "Грати до", [("5", "5 фрагів"), ("10", "10 фрагів")], "5")],
-        Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв");
+        Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв. На п'ятьох-шістьох мапа більша");
 
     TanksCore? _core;
     string _phase = PhaseStart;
@@ -26,7 +26,10 @@ public sealed class Tanks : Game
     int _need = DefaultFrags;
     bool _started;
 
-    /// <summary>Поле готове ще до старту (рамка й танки по кутах) — стіл у лобі виглядає як поле, а не як порожнеча.</summary>
+    /// <summary>
+    /// Поле готове ще до старту (рамка й танки по стартах) — стіл у лобі виглядає як поле, а не як порожнеча.
+    /// До старту воно звичне; скільки людей сіло, відомо лише на «Почати» — тоді й вирішується розмір.
+    /// </summary>
     TanksCore Core
     {
         get
@@ -38,12 +41,28 @@ public sealed class Tanks : Game
         }
     }
 
+    /// <summary>Нова мапа під склад: на п'ятьох-шістьох — велика. Намір-напрямок кожного переживає заміну.</summary>
+    void Rebuild(bool[] plays)
+    {
+        var (w, h) = TanksCore.SizeFor(plays.Count(p => p));
+        if (_core is null || _core.W != w || _core.H != h)
+        {
+            var fresh = new TanksCore(Ctx.Rng, w, h);
+            if (_core is not null)
+                for (var i = 0; i < TanksCore.Seats; i++) fresh.Tanks[i].Want = _core.Tanks[i].Want;
+            _core = fresh;
+        }
+        _core.Reset(plays);
+    }
+
     public override string SeatName(int seat) => seat switch
     {
         0 => "жовтий",
         1 => "зелений",
         2 => "рудий",
-        _ => "сірий",
+        3 => "сірий",
+        4 => "синій",
+        _ => "рожевий",
     };
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
@@ -56,7 +75,7 @@ public sealed class Tanks : Game
         _started = true;
         _phase = PhaseStart;
         _startIn = StartTicks;
-        Core.Reset([.. Enumerable.Range(0, TanksCore.Seats).Select(Ctx.Seated)]);
+        Rebuild([.. Enumerable.Range(0, TanksCore.Seats).Select(Ctx.Seated)]);
     }
 
     // ---------- ввід ----------
@@ -162,8 +181,8 @@ public sealed class Tanks : Game
 
     public override object View(int? seat) => new
     {
-        width = TanksCore.W,
-        height = TanksCore.H,
+        width = Core.W,
+        height = Core.H,
         sub = TanksCore.Sub,
         turn = (int?)null,
         need = _need,
@@ -184,8 +203,8 @@ public sealed class Tanks : Game
     [
         .. Core.Tanks.Select((t, i) => (object)new
         {
-            x = TanksCore.PosX(t),
-            y = TanksCore.PosY(t),
+            x = Core.PosX(t),
+            y = Core.PosY(t),
             d = t.Dir,
             alive = _started ? t.Alive : Ctx.Seated(i),
             shield = t.Shield,

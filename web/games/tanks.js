@@ -10,7 +10,8 @@
   Input('fire') — постріл у напрямку дула.
 */
 (() => {
-  const W = 21, H = 15, PX = 22, SUB = 12, TICK_MS = 40;
+  // Розмір поля каже вид (width/height): до чотирьох — 21×15, на п'ятьох-шістьох — 27×19.
+  const PX = 22, SUB = 12, TICK_MS = 40;
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="2" y="5" width="9" height="8" rx="2" fill="var(--accent)"/>'
     + '<rect x="9" y="8" width="6" height="2" fill="var(--clay)"/>'
@@ -29,10 +30,10 @@
   };
   const isFire = (e) => e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
   const DELTA = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5']];
+  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'], ['--tblue', '#6fb3e8'], ['--tpink', '#e88ac0']];
   const BOOM_MS = 380;
 
-  const at = (cell) => [(cell % W) * PX, Math.floor(cell / W) * PX];
+  const at = (cell, W) => [(cell % W) * PX, Math.floor(cell / W) * PX];
   const lerp = (a, b, t) => a + (b - a) * t;
   const clock = (ticks) => {
     const s = Math.max(0, Math.ceil((ticks * TICK_MS) / 1000));
@@ -59,9 +60,9 @@
     };
   }
 
-  function drawWalls(pal, g, walls) {
+  function drawWalls(pal, g, walls, W) {
     for (const cell of walls) {
-      const [x, y] = at(cell);
+      const [x, y] = at(cell, W);
       g.fillStyle = pal.steel;
       g.fillRect(x, y, PX, PX);
       g.fillStyle = pal.edge;
@@ -70,9 +71,9 @@
     }
   }
 
-  function drawBricks(pal, g, cells) {
+  function drawBricks(pal, g, cells, W) {
     for (const cell of cells || []) {
-      const [x, y] = at(cell);
+      const [x, y] = at(cell, W);
       g.fillStyle = pal.clay;
       g.fillRect(x + 1, y + 1, PX - 2, PX - 2);
       // кладка: два ряди, шов зі зсувом — щоб цегла читалась цеглою
@@ -206,10 +207,10 @@
     const pal = palette(st);
     g.fillStyle = pal.bg2;
     g.fillRect(0, 0, c.w, c.h);
-    drawWalls(pal, g, st.walls);
+    drawWalls(pal, g, st.walls, st.W);
     if (!cur) return;
     const f = cur.f;
-    drawBricks(pal, g, f.bricks);
+    drawBricks(pal, g, f.bricks, st.W);
     for (let i = 0; i < cur.men.length; i++) {
       const m = cur.men[i];
       if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now);
@@ -232,7 +233,7 @@
     }
     const men = (f && f.p) || [];
     let html = '';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const nick = ctx.nickOf(i);
       if (!nick) continue;
       const m = men[i] || {};
@@ -292,7 +293,7 @@
     if (!root._tanks) {
       root._tanks = {
         cv: null, walls: [], last: null, held: -1, pid: null, fireDown: false, booms: [],
-        raf: 0, keyup: null, phase: '', css: ctx.css,
+        raf: 0, keyup: null, phase: '', css: ctx.css, W: 21, H: 15,
       };
     }
     root._tanks.ctx = ctx;
@@ -333,13 +334,13 @@
   HGames.register({
     id: 'tanks',
     icon: ICON,
-    seatNames: ['жовтий', 'зелений', 'рудий', 'сірий'],
-    seatClass: ['x', 'o', 'c', 'd'],
+    seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
+    seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
 
     mount(root, ctx) {
       const st = state(root, ctx);
       st.interp = HGames.ui.Interp();
-      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'tboard' });
+      st.cv = HGames.ui.canvas(root, { w: st.W * PX, h: st.H * PX, cls: 'tboard' });
       st.keyup = (e) => {
         if (isFire(e)) { st.fireDown = false; return; }
         if (dirOf(e) !== st.held || st.held < 0) return;
@@ -356,9 +357,17 @@
       st.ctx = ctx;
       if (!st.cv) return;
       const v = ctx.view;
+      // На «Почати» мапа може стати більшою (шестеро) чи знову звичною (Ще раз учотирьох) — канвас за нею.
+      if (v && v.width && v.height && (v.width !== st.W || v.height !== st.H)) {
+        st.W = v.width;
+        st.H = v.height;
+        st.cv = HGames.ui.canvas(root, { w: st.W * PX, h: st.H * PX, cls: 'tboard' });
+        st.interp.reset();
+        st.booms = [];
+      }
       if (v && v.walls && v.walls.length) st.walls = v.walls;
       if (v && v.p) {
-        const jump = !st.last || v.t < (st.last.t || 0);
+        const jump = !st.last || v.t < (st.last.t || 0) || (st.last.bricks && v.bricks && st.last.bricks.length < v.bricks.length);
         noteBooms(st, v);
         st.last = v;
         if (jump) st.interp.reset();
