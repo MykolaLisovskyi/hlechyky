@@ -30,6 +30,12 @@ public static class GamesSetup
         services.AddSingleton<Tournament>();
         services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
+        // «Вгадай мелодію»: один на всі столи — щоб пісню з добірки не качали двічі два столи водночас
+        services.AddSingleton(sp => new Impl.MelodyLibrary(
+            sp.GetService<Db>(), sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<YtDlpOptions>>(),
+            sp.GetService<YtMusicClient>(), sp.GetService<YtDlpService>(), Impl.MelodyClassics.Default,
+            sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<MelodyOptions>>(), sp.GetService<ILogger<Impl.MelodyLibrary>>()));
+        services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
         return services;
     }
 

@@ -5,16 +5,27 @@ using Hlechyky.Tests.Support;
 
 namespace Hlechyky.Tests.Games;
 
-/// <summary>Підроблене джерело: треки зі списку, уривок — кілька кілобайт нулів (або null для «зламаних»).</summary>
-sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null) : IMelodySource
+/// <summary>
+/// Підроблене джерело: треки зі списку, уривок — кілька кілобайт нулів (або null для «зламаних»). Трек без файла
+/// (<see cref="MelodyTrack.Pending"/>) «качається» миттєво — або не качається, якщо його назва в <paramref name="missing"/>.
+/// </summary>
+sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null, ISet<string>? missing = null) : IMelodySource
 {
-    public int Clips;
-    public bool? UkrainianOnly;
+    public int Clips, Resolved;
+    public IReadOnlyList<string>? Categories;
 
-    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, bool ukrainianOnly, Random rng, CancellationToken ct)
+    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
     {
-        UkrainianOnly = ukrainianOnly;
+        Categories = categories;
         return Task.FromResult<IReadOnlyList<MelodyTrack>>([.. tracks.Take(count)]);
+    }
+
+    public Task<MelodyTrack?> ResolveAsync(MelodyTrack track, CancellationToken ct)
+    {
+        if (!track.Pending) return Task.FromResult<MelodyTrack?>(track);
+        Interlocked.Increment(ref Resolved);
+        if (missing?.Contains(track.Title) == true) return Task.FromResult<MelodyTrack?>(null);
+        return Task.FromResult<MelodyTrack?>(track with { Id = "yt-" + track.Title, DurationSec = 240, FilePath = "/dev/null" });
     }
 
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
@@ -239,10 +250,10 @@ public class MelodyTests
     [Fact]
     public void No_tracks_at_all_closes_the_table_with_a_reason()
     {
-        var h = Table(new FakeMelodySource([]), new { lang = "all" });
+        var h = Table(new FakeMelodySource([]), new { cat = "world,rock" });
         for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++) { h.Tick(); Thread.Sleep(2); }
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Contains("нема скачаних треків", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("для цих категорій ще нема", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -301,26 +312,124 @@ public class MelodyTests
     public void Title_matching(string artist, string title, string guess, bool hit) =>
         Assert.Equal(hit, MelodyAnswer.Hits(guess, MelodyAnswer.Titles(T("x", artist, title))));
 
+    // ---------------------------------------------------------------- категорії
+
     [Fact]
-    public void Ukrainian_is_the_default_and_all_is_an_option()
+    public void Everything_is_the_default_and_several_categories_can_be_chosen()
     {
         var src = new FakeMelodySource(Songs);
         var h = Table(src);
         Until(h, "play");
-        Assert.True(src.UkrainianOnly);
+        Assert.Contains("ua", src.Categories!);
+        Assert.Contains("world", src.Categories!);
+        Assert.Contains("rock", src.Categories!);          // з data/melody/classics.txt
+        Assert.DoesNotContain("all", src.Categories!);
 
-        var all = new FakeMelodySource(Songs);
-        var h2 = Table(all, new { lang = "all" });
+        var two = new FakeMelodySource(Songs);
+        var h2 = Table(two, new { cat = "rock,ua" });
         Until(h2, "play");
-        Assert.False(all.UkrainianOnly);
+        Assert.Equal(["ua", "rock"], two.Categories);      // у порядку паспорта
+
+        var unknown = new FakeMelodySource(Songs);
+        var h3 = Table(unknown, new { cat = "jazz" });
+        Until(h3, "play");
+        Assert.Contains("world", unknown.Categories!);     // невідоме → усе
     }
 
     [Fact]
     public void No_ukrainian_tracks_says_so()
     {
-        var h = Table(new FakeMelodySource([]));
+        var h = Table(new FakeMelodySource([]), new { cat = "ua" });
         for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++) { h.Tick(); Thread.Sleep(2); }
         Assert.Contains("Українських треків", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void A_pending_classic_is_fetched_and_one_that_cannot_be_is_skipped()
+    {
+        var pending = new MelodyTrack("", "Bohemian Rhapsody", "Queen", 0, null, "");
+        var lost = new MelodyTrack("", "Nowhere Song", "Nobody", 0, null, "");
+        var src = new FakeMelodySource([Songs[0], lost, pending], missing: new HashSet<string> { "Nowhere Song" });
+        var h = Table(src, new { rounds = "5" });
+        Until(h, "play");
+        Assert.Equal(2, src.Resolved);
+        Assert.Equal(2, h.View(null).GetProperty("rounds").GetInt32());
+        Assert.Contains("виконавець", Guess(h, 0, "океан ельзи").Message);
+        h.Clock.AdvanceMs(Melody.ExtraMs + 20_000);
+        Until(h, "reveal");
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        Until(h, "play");
+        Assert.Contains("назва", Guess(h, 1, "bohemian rhapsody").Message);
+        h.Clock.AdvanceMs(Melody.ExtraMs + 20_000);
+        Until(h, "reveal");
+        Assert.Equal("yt-Bohemian Rhapsody", h.View(null).GetProperty("answer").GetProperty("id").GetString());   // id — уже справжній, з бази
+    }
+
+    [Fact]
+    public void Classics_file_parses_categories_and_songs()
+    {
+        var c = MelodyClassics.Parse(
+        [
+            "# коментар", "", "[rock] Рок-класика", "Queen — Bohemian Rhapsody", "Queen - We Will Rock You",
+            "без тире", "Queen — Bohemian Rhapsody (Official Video)", "[ua] не можна — зайнято", "Океан Ельзи — Обійми",
+            "[hits] Світові хіти", "ABBA – Dancing Queen",
+        ]);
+        Assert.Equal([("rock", "Рок-класика"), ("hits", "Світові хіти")], c.Categories);
+        Assert.Equal(["Bohemian Rhapsody", "We Will Rock You"], c.In("rock").Select(e => e.Title));   // дубль — не двічі
+        Assert.Equal(["Dancing Queen"], c.In("hits").Select(e => e.Title));
+        Assert.Empty(c.In("ua"));                                                                      // «ua» — з радіо, у файлі не буває
+        Assert.Equal(SongKey.Of("Queen", "Bohemian Rhapsody"), c.Entries[0].Key);
+    }
+
+    [Fact]
+    public void Real_classics_file_has_rock_and_ukrainian_categories()
+    {
+        var c = MelodyClassics.Default;
+        Assert.Contains(c.Categories, x => x.Value == "rock");
+        Assert.Contains(c.Categories, x => x.Value == "uahits");
+        Assert.True(c.In("rock").Count() > 100);
+        Assert.Contains(c.In("rock"), e => e.Artist == "Nirvana" && e.Title == "Smells Like Teen Spirit");
+        Assert.All(c.Entries, e => Assert.True(e.Key.Length > 0));
+    }
+
+    [Fact]
+    public void Categories_are_interleaved_and_a_ready_track_goes_first()
+    {
+        var rng = new Random(1);
+        var rows = new List<MelodyLibrary.Row>
+        {
+            new(T("a", "Океан Ельзи", "Обійми"), 3, SongKey.Of("Океан Ельзи", "Обійми")),
+            new(T("b", "Скрябін", "Мовчати"), 1, SongKey.Of("Скрябін", "Мовчати")),
+            new(T("q", "Queen", "Bohemian Rhapsody (Remastered 2011)"), 2, SongKey.Of("Queen", "Bohemian Rhapsody (Remastered 2011)")),
+            new(T("d", "Nirvana", "Lithium"), 0, SongKey.Of("Nirvana", "Lithium")),
+        };
+        var classics = MelodyClassics.Parse(["[rock] Рок", "Queen — Bohemian Rhapsody", "Nirvana — Smells Like Teen Spirit", "Nirvana — Lithium", "AC/DC — Thunderstruck"]);
+        var disliked = new HashSet<string> { SongKey.Of("AC/DC", "Thunderstruck") };
+
+        var pools = MelodyLibrary.Pools(rows, disliked, ["ua", "rock"], classics, rng);
+        Assert.Equal(2, pools.Count);
+        Assert.Equal(["a", "b"], pools[0].Select(t => t.Id).Order());                       // українське з радіо
+        var rock = pools[1];
+        Assert.Equal(3, rock.Count);                                                          // AC/DC з 👎 — ні
+        var queen = Assert.Single(rock, t => t.Id == "q");
+        Assert.Equal("Bohemian Rhapsody", queen.Title);                                       // назва з добірки, файл із кешу
+        Assert.False(queen.Pending);
+        Assert.Single(rock, t => t.Id == "d" && !t.Pending);                                 // Lithium уже в кеші
+        Assert.Single(rock, t => t.Pending && t.Title == "Smells Like Teen Spirit");         // а цю — качати
+
+        var mixed = MelodyLibrary.Interleave([[rows[0].Track, rows[1].Track], [rock[0], rock[1], rock[2]]]);
+        Assert.Equal([rows[0].Track, rock[0], rows[1].Track, rock[1], rock[2]], mixed);
+
+        var pend = new MelodyTrack("", "X", "Y", 0, null, "");
+        Assert.Equal(["a", "", "b"], MelodyLibrary.FirstReady([pend, rows[0].Track, rows[1].Track]).Select(t => t.Id));
+        Assert.Equal(["a", "", "b"], MelodyLibrary.FirstReady([rows[0].Track, pend, rows[1].Track]).Select(t => t.Id));
+    }
+
+    [Fact]
+    public void Choose_keeps_order_when_told_not_to_shuffle()
+    {
+        var list = new List<MelodyTrack> { Songs[0], Songs[1], T("a2", "Океан Ельзи", "Обійми (Live)"), Songs[2] };
+        Assert.Equal(["a", "b", "c"], MelodyLibrary.Choose(list, 3, new Random(1), shuffle: false).Select(t => t.Id));
     }
 
     [Theory]
@@ -369,7 +478,7 @@ public class MelodyTests
     [Fact]
     public void Everything_that_was_played_counts_equally()
     {
-        var list = Enumerable.Range(0, 60).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 50 ? (i % 7) + 1 : 0)).ToList();
+        var list = Enumerable.Range(0, 60).Select(i => new MelodyLibrary.Row(T($"t{i:00}", $"A{i}", $"S{i}"), i < 50 ? (i % 7) + 1 : 0, "")).ToList();
         var pool = MelodyLibrary.Heard(list, 10);
         Assert.Equal(50, pool.Count);                                   // усі, що звучали, а не верхівка
         Assert.DoesNotContain(pool, t => t.Id == "t55");                // жодного разу не грав — не беремо
@@ -378,7 +487,7 @@ public class MelodyTests
     [Fact]
     public void Too_few_played_tracks_fall_back_to_the_rest_of_the_cache()
     {
-        var list = Enumerable.Range(0, 20).Select(i => (T($"t{i:00}", $"A{i}", $"S{i}"), Plays: i < 3 ? 1 : 0)).ToList();
+        var list = Enumerable.Range(0, 20).Select(i => new MelodyLibrary.Row(T($"t{i:00}", $"A{i}", $"S{i}"), i < 3 ? 1 : 0, "")).ToList();
         var pool = MelodyLibrary.Heard(list, 10);
         Assert.Equal(20, pool.Count);
         Assert.Equal(["t00", "t01", "t02"], pool.Take(3).Select(t => t.Id));

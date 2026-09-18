@@ -39,9 +39,9 @@ public sealed class Melody : Game
         [
             new GameOption("rounds", "Треків", [.. RoundChoices.Select(n => (n.ToString(), n.ToString()))], "10"),
             new GameOption("clip", "Звучить", [.. ClipChoices.Select(n => (n.ToString(), $"{n} с"))], "15"),
-            new GameOption("lang", "Пісні", [("ua", "Українські"), ("all", "Усі")], "ua"),
+            new GameOption("cat", "Пісні", MelodyCategories.Values(MelodyClassics.Default), MelodyCategories.All, Multi: true),
         ],
-        Hint: "Звучить уривок пісні, яка вже грала на радіо. Пиши виконавця й назву — хто перший, той бере більше");
+        Hint: "Звучить уривок пісні — з радіо або зі світової класики. Пиши виконавця й назву — хто перший, той бере більше");
 
     sealed record Prepared(MelodyTrack Track, string Token);
 
@@ -54,7 +54,8 @@ public sealed class Melody : Game
     IMelodySource _source = null!;
     int _rounds = 10;
     int _clipSec = 15;
-    bool _ukrainianOnly = true;
+    /// <summary>Обрані категорії (<see cref="MelodyCategories"/>); порожньо не буває — «усе» розгортається в усі.</summary>
+    IReadOnlyList<string> _categories = MelodyCategories.Radio;
 
     // ---------- підготовка (фон) ----------
     CancellationTokenSource? _cts;
@@ -85,7 +86,7 @@ public sealed class Melody : Game
         _source = Ctx.Services.GetService<IMelodySource>()
             ?? new MelodyLibrary(Ctx.Services.GetService<Db>(), Ctx.Services.GetService<IOptionsMonitor<YtDlpOptions>>());
         if (options.TryGetValue("rounds", out var r) && int.TryParse(r, out var rn) && RoundChoices.Contains(rn)) _rounds = rn;
-        if (options.TryGetValue("lang", out var lang)) _ukrainianOnly = lang != "all";
+        _categories = MelodyCategories.Parse(options.GetValueOrDefault("cat"), MelodyClassics.Default);
         if (options.TryGetValue("clip", out var c) && int.TryParse(c, out var cn) && ClipChoices.Contains(cn)) _clipSec = cn;
     }
 
@@ -122,11 +123,14 @@ public sealed class Melody : Game
         try
         {
             var rng = new Random(seed);
-            var tracks = await _source.PickAsync(_rounds + Spare, _ukrainianOnly, rng, ct);
+            var tracks = await _source.PickAsync(_rounds + Spare, _categories, rng, ct);
             var round = 0;
-            foreach (var t in tracks)
+            foreach (var pick in tracks)
             {
                 if (ct.IsCancellationRequested || round >= _rounds) break;
+                // пісня з добірки, якої ще нема на диску, качається тут — уже під час гри, поки звучать попередні
+                var t = await _source.ResolveAsync(pick, ct);
+                if (t is null) continue;
                 var len = t.DurationSec > 0 ? t.DurationSec : 180;
                 // з першої чверті до 60% — там зазвичай куплет або приспів, а не тиша інтро
                 var from = len * 0.25;
@@ -156,7 +160,7 @@ public sealed class Melody : Game
         {
             case Loading:
                 if (_ready.ContainsKey(_round + 1)) BeginRound();
-                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? (_ukrainianOnly ? "Українських треків у кеші радіо ще нема — грати нема в що" : "На радіо ще нема скачаних треків — грати нема в що") : null);
+                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? NoTracks() : null);
                 else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs) Over(_round == 0 ? "Уривки не нарізались — ffmpeg мовчить" : null);
                 break;
             case Play:
@@ -181,6 +185,10 @@ public sealed class Melody : Game
     }
 
     IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s));
+
+    string NoTracks() => _categories.Count == 1 && _categories[0] == MelodyCategories.Ua
+        ? "Українських треків у кеші радіо ще нема — грати нема в що"
+        : "Треків для цих категорій ще нема — грати нема в що";
 
     bool Finished(int seat) => _found.TryGetValue(seat, out var f) && f.Artist && f.Title;
 

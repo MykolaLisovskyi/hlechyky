@@ -142,10 +142,14 @@ public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, Db db, I
         return null;
     }
 
-    /// <summary>Downloads best audio for the track into the cache, returns the file path.</summary>
-    public async Task<string> DownloadAsync(TrackInfo t, CancellationToken ct)
+    /// <summary>
+    /// Downloads best audio for the track into the cache (or into <paramref name="dir"/> — «Вгадай мелодію» тримає
+    /// свої добірки окремо, поза лімітом TrackCache), returns the file path.
+    /// </summary>
+    public async Task<string> DownloadAsync(TrackInfo t, CancellationToken ct, string? dir = null)
     {
-        var cached = FindCached(t.Id, t);
+        var outDir = dir ?? CacheDir;
+        var cached = (dir is null ? null : Directory.EnumerateFiles(outDir, t.Id + ".*").FirstOrDefault(IsAudio)) ?? FindCached(t.Id, t);
         if (cached is not null)
         {
             // свіжа позначка: TrackCache не видалить файл, який щойно взяли в чергу
@@ -159,16 +163,16 @@ public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, Db db, I
             "-f", "bestaudio[ext=m4a]/bestaudio/best",
             "-x", "--audio-format", "best",
             "--no-progress",
-            "-o", Path.Combine(CacheDir, t.Id + ".%(ext)s"),
+            "-o", Path.Combine(outDir, t.Id + ".%(ext)s"),
             "--print", "after_move:filepath",
             t.SourceUrl,
         ]);
         var (code, o, e) = await RunWithCookieFallbackAsync(args, TimeSpan.FromSeconds(O.TimeoutSeconds), ct);
         var path = o.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
-        if (path is null || !File.Exists(path)) path = Directory.EnumerateFiles(CacheDir, t.Id + ".*").FirstOrDefault(IsAudio);
+        if (path is null || !File.Exists(path)) path = Directory.EnumerateFiles(outDir, t.Id + ".*").FirstOrDefault(IsAudio);
         if (path is not null)
         {
-            Downloaded?.Invoke();
+            if (dir is null) Downloaded?.Invoke();
             return path;
         }
         log.LogWarning("yt-dlp download failed ({Code}) for {Url}: {Err}", code, t.SourceUrl, e);

@@ -60,16 +60,42 @@ public class MelodyDislikeTests
             AddTrack(t, "b", "Океан Ельзи", "Обійми", file);
             AddTrack(t, "c", "KALUSH", "Stefania", file);
 
-            var library = new MelodyLibrary(t.Db, null);
-            Assert.Equal(3, (await library.PickAsync(10, false, new Random(1), default)).Count);   // а1/а2 — одна пісня
+            var library = new MelodyLibrary(t.Db, null, classics: MelodyClassics.Empty);
+            var radio = MelodyCategories.Radio;
+            Assert.Equal(3, (await library.PickAsync(10, radio, new Random(1), default)).Count);   // а1/а2 — одна пісня
 
             t.Db.ToggleMelodyDislike("a1", "Оля");
-            var picked = await library.PickAsync(10, false, new Random(1), default);
+            var picked = await library.PickAsync(10, radio, new Random(1), default);
             Assert.DoesNotContain(picked, x => x.Id is "a1" or "a2");
             Assert.Equal(["b", "c"], picked.Select(x => x.Id).Order());
 
             t.Db.ToggleMelodyDislike("a1", "Оля");     // зняли — повернулась
-            Assert.Contains(await library.PickAsync(10, false, new Random(1), default), x => x.Id is "a1" or "a2");
+            Assert.Contains(await library.PickAsync(10, radio, new Random(1), default), x => x.Id is "a1" or "a2");
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public async Task A_disliked_song_from_a_playlist_is_not_fetched_either()
+    {
+        using var t = new TempDb();
+        var file = Path.GetTempFileName();
+        try
+        {
+            AddTrack(t, "q", "Queen", "Bohemian Rhapsody (Official Video)", file);
+            var classics = MelodyClassics.Parse(["[rock] Рок", "Queen — Bohemian Rhapsody", "Nirvana — Lithium"]);
+            var library = new MelodyLibrary(t.Db, null, classics: classics);
+
+            var picked = await library.PickAsync(10, ["rock"], new Random(1), default);
+            Assert.Equal(2, picked.Count);
+            Assert.Equal("q", picked[0].Id);                       // з кешу — і першим, бо вже на диску
+            Assert.Equal("Bohemian Rhapsody", picked[0].Title);    // під назвою з добірки
+            Assert.True(picked[1].Pending);
+
+            t.Db.ToggleMelodyDislike("q", "Оля");
+            picked = await library.PickAsync(10, ["rock"], new Random(1), default);
+            var only = Assert.Single(picked);
+            Assert.Equal("Lithium", only.Title);                   // Queen з 👎 — і не з кешу, і не качати
         }
         finally { File.Delete(file); }
     }

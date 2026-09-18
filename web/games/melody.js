@@ -161,7 +161,7 @@
       html = '<div class="mgdisc"></div><div class="mgwait">Господар тисне «Почати» — і звучить перший уривок</div>';
     } else if (v.phase === 'loading') {
       key = 'loading:' + v.round;
-      html = '<div class="mgwait"><span class="spin"></span> ' + (v.round ? 'Наступний трек…' : 'Ріжемо уривки з кешу радіо…') + '</div>';
+      html = '<div class="mgwait"><span class="spin"></span> ' + (v.round ? 'Наступний трек…' : 'Готуємо уривки…') + '</div>';
     } else if (v.phase === 'play') {
       key = 'play:' + v.round;
       html = '<div class="mgdisc"></div>'

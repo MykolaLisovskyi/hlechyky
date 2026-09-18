@@ -28,6 +28,7 @@ builder.Services.Configure<LastFmOptions>(cfg.GetSection("LastFm"));
 builder.Services.Configure<AutoDjOptions>(cfg.GetSection("AutoDj"));
 builder.Services.Configure<DjBotOptions>(cfg.GetSection("DjBot"));
 builder.Services.Configure<DeployOptions>(cfg.GetSection("Deploy"));
+builder.Services.Configure<MelodyOptions>(cfg.GetSection("Melody"));
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));

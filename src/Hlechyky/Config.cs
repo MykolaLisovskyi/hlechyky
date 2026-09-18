@@ -207,3 +207,12 @@ public sealed class DeployOptions
     /// <summary>Раз на скільки хвилин перевіряти, чи не загубився вебхук про зелену збірку. 0 — не перевіряти.</summary>
     public int PollMinutes { get; set; } = 3;
 }
+
+public sealed class MelodyOptions
+{
+    /// <summary>
+    /// Скільки мегабайт тримати в <c>cache/melody</c> — треках із добірок «Вгадай мелодію», яких на радіо не було
+    /// (<c>data/melody/classics.txt</c>). Понад ліміт — видаляється те, чого найдовше не брали. 0 — без ліміту.
+    /// </summary>
+    public int ClassicsMaxMb { get; set; } = 500;
+}
