@@ -322,13 +322,13 @@ public class MelodyTests
         Until(h, "play");
         Assert.Contains("ua", src.Categories!);
         Assert.Contains("world", src.Categories!);
-        Assert.Contains("rock", src.Categories!);          // з data/melody/classics.txt
+        Assert.Contains("hits", src.Categories!);          // з data/melody/classics.txt
         Assert.DoesNotContain("all", src.Categories!);
 
         var two = new FakeMelodySource(Songs);
-        var h2 = Table(two, new { cat = "rock,ua" });
+        var h2 = Table(two, new { cat = "hits,ua" });
         Until(h2, "play");
-        Assert.Equal(["ua", "rock"], two.Categories);      // у порядку паспорта
+        Assert.Equal(["ua", "hits"], two.Categories);      // у порядку паспорта
 
         var unknown = new FakeMelodySource(Songs);
         var h3 = Table(unknown, new { cat = "jazz" });
@@ -382,13 +382,13 @@ public class MelodyTests
     }
 
     [Fact]
-    public void Real_classics_file_has_rock_and_ukrainian_categories()
+    public void Real_classics_file_has_hits_and_ukrainian_categories()
     {
         var c = MelodyClassics.Default;
-        Assert.Contains(c.Categories, x => x.Value == "rock");
+        Assert.Contains(c.Categories, x => x.Value == "hits");
         Assert.Contains(c.Categories, x => x.Value == "uahits");
-        Assert.True(c.In("rock").Count() > 100);
-        Assert.Contains(c.In("rock"), e => e.Artist == "Nirvana" && e.Title == "Smells Like Teen Spirit");
+        Assert.True(c.In("hits").Count() > 100);
+        Assert.Contains(c.In("hits"), e => e.Artist == "Nirvana" && e.Title == "Smells Like Teen Spirit");
         Assert.All(c.Entries, e => Assert.True(e.Key.Length > 0));
     }
 

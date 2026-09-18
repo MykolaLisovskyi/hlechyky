@@ -3,554 +3,260 @@
 # далі по пісні на рядок: «Виконавець — Назва». Порожні рядки й рядки з # не читаються.
 # Назва й виконавець тут — це те, що треба вгадати: пишіть так, як пісню знають, без «(Official Video)».
 
-[rock] Рок-класика
-The Beatles — Hey Jude
-The Beatles — Let It Be
+# Лише англомовні хіти, які впізнають із приспіву, — від 50-х до сьогодні. Не «гурти», а пісні.
+[hits] Світові хіти
+# --- 50-ті й 60-ті
+Elvis Presley — Can't Help Falling in Love
+Elvis Presley — Jailhouse Rock
+Chuck Berry — Johnny B. Goode
 The Beatles — Yesterday
-The Beatles — Come Together
-The Beatles — Help!
-The Beatles — Here Comes the Sun
+The Beatles — Let It Be
+The Beatles — Hey Jude
 The Beatles — Yellow Submarine
+The Rolling Stones — Satisfaction
+The Rolling Stones — Paint It Black
+The Animals — The House of the Rising Sun
+Louis Armstrong — What a Wonderful World
+Frank Sinatra — My Way
+Ben E. King — Stand by Me
+Simon & Garfunkel — The Sound of Silence
+Aretha Franklin — Respect
+Ray Charles — Hit the Road Jack
+# --- 70-ті
+Led Zeppelin — Stairway to Heaven
+Deep Purple — Smoke on the Water
+Pink Floyd — Another Brick in the Wall
 Queen — Bohemian Rhapsody
 Queen — We Will Rock You
 Queen — We Are the Champions
 Queen — Don't Stop Me Now
-Queen — Another One Bites the Dust
-Queen — I Want to Break Free
-Queen — The Show Must Go On
-Queen — Under Pressure
-Nirvana — Smells Like Teen Spirit
-Nirvana — Come as You Are
-Nirvana — Lithium
-Nirvana — Heart-Shaped Box
-Nirvana — The Man Who Sold the World
-Nirvana — About a Girl
-The Rolling Stones — Satisfaction
-The Rolling Stones — Paint It Black
-The Rolling Stones — Angie
-The Rolling Stones — Sympathy for the Devil
-Led Zeppelin — Stairway to Heaven
-Led Zeppelin — Whole Lotta Love
-Led Zeppelin — Immigrant Song
-Led Zeppelin — Kashmir
-Pink Floyd — Another Brick in the Wall
-Pink Floyd — Wish You Were Here
-Pink Floyd — Comfortably Numb
-Pink Floyd — Money
-AC/DC — Highway to Hell
-AC/DC — Back in Black
-AC/DC — Thunderstruck
-AC/DC — T.N.T.
-Deep Purple — Smoke on the Water
-Deep Purple — Child in Time
-Metallica — Enter Sandman
-Metallica — Nothing Else Matters
-Metallica — The Unforgiven
-Metallica — Master of Puppets
-Guns N' Roses — Sweet Child o' Mine
-Guns N' Roses — November Rain
-Guns N' Roses — Welcome to the Jungle
-Guns N' Roses — Paradise City
-The Doors — Riders on the Storm
-The Doors — Light My Fire
-The Doors — Break On Through
-The Doors — People Are Strange
-The Police — Every Breath You Take
-The Police — Roxanne
-The Police — Message in a Bottle
-The Cure — Friday I'm in Love
-The Cure — Boys Don't Cry
-The Cure — Lullaby
-Radiohead — Creep
-Radiohead — Karma Police
-Radiohead — No Surprises
-Red Hot Chili Peppers — Californication
-Red Hot Chili Peppers — Under the Bridge
-Red Hot Chili Peppers — Otherside
-Red Hot Chili Peppers — Can't Stop
-Red Hot Chili Peppers — Snow (Hey Oh)
-Linkin Park — In the End
-Linkin Park — Numb
-Linkin Park — Crawling
-Linkin Park — What I've Done
-System of a Down — Chop Suey!
-System of a Down — Toxicity
-System of a Down — Aerials
-Rammstein — Du Hast
-Rammstein — Sonne
-Rammstein — Ohne dich
-Scorpions — Wind of Change
-Scorpions — Still Loving You
-Scorpions — Rock You Like a Hurricane
-Bon Jovi — It's My Life
-Bon Jovi — Livin' on a Prayer
-Bon Jovi — Always
-Aerosmith — I Don't Want to Miss a Thing
-Aerosmith — Dream On
-Aerosmith — Crazy
-Eagles — Hotel California
-Dire Straits — Sultans of Swing
-Dire Straits — Money for Nothing
-David Bowie — Space Oddity
-David Bowie — Heroes
-David Bowie — Let's Dance
-Jimi Hendrix — Purple Haze
-Jimi Hendrix — Hey Joe
-Black Sabbath — Paranoid
-Black Sabbath — Iron Man
-Kiss — I Was Made for Lovin' You
-Europe — The Final Countdown
-Survivor — Eye of the Tiger
-Bruce Springsteen — Born in the U.S.A.
-Creedence Clearwater Revival — Have You Ever Seen the Rain
-Creedence Clearwater Revival — Fortunate Son
-Creedence Clearwater Revival — Bad Moon Rising
-Lynyrd Skynyrd — Sweet Home Alabama
-Lynyrd Skynyrd — Free Bird
-Oasis — Wonderwall
-Oasis — Don't Look Back in Anger
-Oasis — Champagne Supernova
-The White Stripes — Seven Nation Army
-Coldplay — Yellow
-Coldplay — The Scientist
-Coldplay — Viva la Vida
-Coldplay — Fix You
-Coldplay — Clocks
-Muse — Hysteria
-Muse — Supermassive Black Hole
-Muse — Starlight
-Muse — Uprising
-Green Day — Boulevard of Broken Dreams
-Green Day — American Idiot
-Green Day — Basket Case
-Green Day — Wake Me Up When September Ends
-The Offspring — The Kids Aren't Alright
-The Offspring — Pretty Fly (For a White Guy)
-The Offspring — Self Esteem
-Blink-182 — All the Small Things
-Blink-182 — I Miss You
-Foo Fighters — Everlong
-Foo Fighters — The Pretender
-Foo Fighters — Learn to Fly
-Pearl Jam — Alive
-Pearl Jam — Jeremy
-Soundgarden — Black Hole Sun
-Alice in Chains — Man in the Box
-Evanescence — Bring Me to Life
-Evanescence — My Immortal
-Limp Bizkit — Behind Blue Eyes
-Limp Bizkit — Rollin'
-Papa Roach — Last Resort
-Korn — Freak on a Leash
-Marilyn Manson — The Beautiful People
-Marilyn Manson — Sweet Dreams (Are Made of This)
-Johnny Cash — Hurt
-Johnny Cash — Ring of Fire
-Depeche Mode — Enjoy the Silence
-Depeche Mode — Personal Jesus
-U2 — With or Without You
-U2 — One
-U2 — Beautiful Day
-R.E.M. — Losing My Religion
-R.E.M. — Everybody Hurts
-The Cranberries — Zombie
-The Cranberries — Linger
-Placebo — Every You Every Me
-Placebo — Special K
-Gorillaz — Clint Eastwood
-Gorillaz — Feel Good Inc.
-Arctic Monkeys — Do I Wanna Know?
-Arctic Monkeys — 505
-Arctic Monkeys — I Bet You Look Good on the Dancefloor
-The Killers — Mr. Brightside
-The Killers — Somebody Told Me
-The Killers — Human
-Franz Ferdinand — Take Me Out
-The Strokes — Last Nite
-The Strokes — Reptilia
-Kasabian — Fire
-Kasabian — Club Foot
-Imagine Dragons — Radioactive
-Imagine Dragons — Believer
-Imagine Dragons — Demons
-Twenty One Pilots — Stressed Out
-Twenty One Pilots — Heathens
-The Animals — The House of the Rising Sun
-Chuck Berry — Johnny B. Goode
-Elvis Presley — Jailhouse Rock
-Elvis Presley — Can't Help Falling in Love
-Elvis Presley — Suspicious Minds
-Bob Dylan — Knockin' on Heaven's Door
-Bob Dylan — Like a Rolling Stone
-Eric Clapton — Tears in Heaven
-Eric Clapton — Layla
-Fleetwood Mac — Dreams
-Fleetwood Mac — Go Your Own Way
-Toto — Africa
-Toto — Hold the Line
-Joan Jett & the Blackhearts — I Love Rock 'n' Roll
-Ozzy Osbourne — Crazy Train
-Iron Maiden — Fear of the Dark
-Iron Maiden — The Trooper
-Iron Maiden — Run to the Hills
-Judas Priest — Breaking the Law
-Motörhead — Ace of Spades
-Nickelback — How You Remind Me
-Nickelback — Rockstar
-3 Doors Down — Kryptonite
-3 Doors Down — Here Without You
-Audioslave — Like a Stone
-Rage Against the Machine — Killing in the Name
-The Smashing Pumpkins — Bullet with Butterfly Wings
-The Smashing Pumpkins — 1979
-Blur — Song 2
-Garbage — Only Happy When It Rains
-The Verve — Bitter Sweet Symphony
-Portishead — Glory Box
-Massive Attack — Teardrop
-Sum 41 — Fat Lip
-Sum 41 — In Too Deep
-Simple Plan — Welcome to My Life
-My Chemical Romance — Welcome to the Black Parade
-My Chemical Romance — Helena
-Paramore — Misery Business
-Paramore — Decode
-Thirty Seconds to Mars — The Kill
-Thirty Seconds to Mars — Kings and Queens
-Hoobastank — The Reason
-The Cardigans — Lovefool
-The Cardigans — My Favourite Game
-Weezer — Buddy Holly
-Weezer — Island in the Sun
-Beck — Loser
-Slipknot — Duality
-Slipknot — Psychosocial
-Disturbed — Down with the Sickness
-Disturbed — The Sound of Silence
-Wheatus — Teenage Dirtbag
-Joy Division — Love Will Tear Us Apart
-Tom Petty — Free Fallin'
-Bryan Adams — Summer of '69
-Sting — Shape of My Heart
-Sting — Englishman in New York
-Sting — Desert Rose
-Bloodhound Gang — The Bad Touch
-The Prodigy — Firestarter
-The Prodigy — Breathe
-
-[hits] Світові хіти
 ABBA — Dancing Queen
 ABBA — Mamma Mia
 ABBA — Gimme! Gimme! Gimme!
 ABBA — Money, Money, Money
-ABBA — The Winner Takes It All
-ABBA — Waterloo
+Boney M. — Daddy Cool
+Boney M. — Rasputin
+Boney M. — Rivers of Babylon
+Bee Gees — Stayin' Alive
+Gloria Gaynor — I Will Survive
+Village People — Y.M.C.A.
+Earth, Wind & Fire — September
+Eagles — Hotel California
+AC/DC — Highway to Hell
+Bob Marley — No Woman, No Cry
+Smokie — Living Next Door to Alice
+Baccara — Yes Sir, I Can Boogie
+Eruption — One Way Ticket
+Kiss — I Was Made for Lovin' You
+# --- 80-ті
 Michael Jackson — Billie Jean
 Michael Jackson — Beat It
 Michael Jackson — Thriller
 Michael Jackson — Smooth Criminal
-Michael Jackson — Black or White
-Michael Jackson — Bad
-Michael Jackson — They Don't Care About Us
-Michael Jackson — Earth Song
 Madonna — Like a Prayer
-Madonna — Material Girl
 Madonna — La Isla Bonita
-Madonna — Vogue
-Madonna — Hung Up
-Madonna — Frozen
-Boney M. — Daddy Cool
-Boney M. — Rasputin
-Boney M. — Rivers of Babylon
-Boney M. — Sunny
-Bee Gees — Stayin' Alive
-Bee Gees — How Deep Is Your Love
+a-ha — Take On Me
+Eurythmics — Sweet Dreams (Are Made of This)
 Modern Talking — Cheri, Cheri Lady
 Modern Talking — Brother Louie
 Modern Talking — You're My Heart, You're My Soul
-Ace of Base — All That She Wants
-Ace of Base — The Sign
-Ace of Base — Happy Nation
-Ace of Base — Beautiful Life
-Roxette — It Must Have Been Love
-Roxette — Listen to Your Heart
-Roxette — The Look
-Roxette — Joyride
-a-ha — Take On Me
-a-ha — The Sun Always Shines on T.V.
-Eurythmics — Sweet Dreams (Are Made of This)
-Cyndi Lauper — Girls Just Want to Have Fun
-Cyndi Lauper — Time After Time
-Whitney Houston — I Will Always Love You
-Whitney Houston — I Wanna Dance with Somebody
-Celine Dion — My Heart Will Go On
-Mariah Carey — All I Want for Christmas Is You
-Mariah Carey — Hero
-Elton John — Rocket Man
-Elton John — Your Song
-Elton John — I'm Still Standing
-Elton John — Can You Feel the Love Tonight
-George Michael — Careless Whisper
-George Michael — Faith
-George Michael — Freedom
-Wham! — Last Christmas
-Wham! — Wake Me Up Before You Go-Go
-Phil Collins — In the Air Tonight
-Phil Collins — Another Day in Paradise
-Bryan Adams — (Everything I Do) I Do It for You
-Bryan Adams — Please Forgive Me
-Lionel Richie — Hello
-Lionel Richie — All Night Long
-Stevie Wonder — Superstition
-Stevie Wonder — I Just Called to Say I Love You
-Tina Turner — What's Love Got to Do with It
-Tina Turner — The Best
-Bonnie Tyler — Total Eclipse of the Heart
-Bonnie Tyler — Holding Out for a Hero
-Rick Astley — Never Gonna Give You Up
-Duran Duran — Ordinary World
-Duran Duran — Hungry Like the Wolf
-Pet Shop Boys — It's a Sin
-Pet Shop Boys — West End Girls
-Pet Shop Boys — Go West
-Erasure — Always
-Alphaville — Forever Young
-Alphaville — Big in Japan
-Sandra — Maria Magdalena
 C.C. Catch — Cause You Are Young
-C.C. Catch — Heaven and Hell
+Sandra — Maria Magdalena
 Bad Boys Blue — You're a Woman
 Joy — Touch by Touch
-Falco — Rock Me Amadeus
+Alphaville — Forever Young
+Alphaville — Big in Japan
+Europe — The Final Countdown
+Survivor — Eye of the Tiger
+Scorpions — Wind of Change
+Scorpions — Still Loving You
+Bon Jovi — Livin' on a Prayer
+Guns N' Roses — Sweet Child o' Mine
+Metallica — Nothing Else Matters
+Metallica — Enter Sandman
+AC/DC — Thunderstruck
+Toto — Africa
+Depeche Mode — Enjoy the Silence
+Depeche Mode — Personal Jesus
+The Police — Every Breath You Take
+Cyndi Lauper — Girls Just Want to Have Fun
+Whitney Houston — I Wanna Dance with Somebody
+Bonnie Tyler — Total Eclipse of the Heart
+Rick Astley — Never Gonna Give You Up
+Wham! — Last Christmas
+George Michael — Careless Whisper
+Tina Turner — The Best
+Phil Collins — In the Air Tonight
+Laura Branigan — Self Control
+Dead or Alive — You Spin Me Round
+Berlin — Take My Breath Away
 Opus — Live Is Life
-Kaoma — Lambada
-Los del Río — Macarena
-Ricky Martin — Livin' la Vida Loca
-Shakira — Whenever, Wherever
-Shakira — Hips Don't Lie
-Shakira — Waka Waka (This Time for Africa)
-Jennifer Lopez — On the Floor
-Jennifer Lopez — Let's Get Loud
-Enrique Iglesias — Bailamos
-Enrique Iglesias — Hero
-Las Ketchup — The Ketchup Song (Aserejé)
-Backstreet Boys — I Want It That Way
-Backstreet Boys — Everybody (Backstreet's Back)
-Backstreet Boys — As Long as You Love Me
-NSYNC — Bye Bye Bye
-Spice Girls — Wannabe
-Britney Spears — ...Baby One More Time
-Britney Spears — Toxic
-Britney Spears — Oops!... I Did It Again
-Christina Aguilera — Genie in a Bottle
-Christina Aguilera — Beautiful
-Destiny's Child — Survivor
-Destiny's Child — Say My Name
-Beyoncé — Crazy in Love
-Beyoncé — Halo
-Beyoncé — Single Ladies (Put a Ring on It)
-Rihanna — Umbrella
-Rihanna — Diamonds
-Rihanna — We Found Love
-Rihanna — Only Girl (In the World)
-Lady Gaga — Poker Face
-Lady Gaga — Bad Romance
-Lady Gaga — Just Dance
-Lady Gaga — Shallow
-Katy Perry — Firework
-Katy Perry — Roar
-Katy Perry — Hot n Cold
-Katy Perry — I Kissed a Girl
-Adele — Rolling in the Deep
-Adele — Someone Like You
-Adele — Hello
-Adele — Skyfall
-Amy Winehouse — Rehab
-Amy Winehouse — Back to Black
-Amy Winehouse — Valerie
-Dido — Thank You
-Dido — White Flag
-Natalie Imbruglia — Torn
-Alanis Morissette — Ironic
-No Doubt — Don't Speak
-Sade — Smooth Operator
-Enigma — Sadeness
-Enigma — Return to Innocence
-Enya — Only Time
-Enya — Orinoco Flow
-Vanessa Carlton — A Thousand Miles
-Avril Lavigne — Complicated
-Avril Lavigne — Sk8er Boi
-Avril Lavigne — Girlfriend
-Kelly Clarkson — Since U Been Gone
-Kelly Clarkson — Stronger
-P!nk — Just Like a Pill
-P!nk — So What
-P!nk — Get the Party Started
-Nelly Furtado — Say It Right
-Nelly Furtado — Maneater
-Gwen Stefani — Hollaback Girl
-Fergie — Big Girls Don't Cry
-The Black Eyed Peas — Where Is the Love?
-The Black Eyed Peas — I Gotta Feeling
-The Black Eyed Peas — Pump It
-The Black Eyed Peas — Let's Get It Started
-Eminem — Lose Yourself
-Eminem — Without Me
-Eminem — The Real Slim Shady
-Eminem — Stan
-Eminem — Mockingbird
-Dr. Dre — Still D.R.E.
-50 Cent — In da Club
-50 Cent — Candy Shop
-Snoop Dogg — Drop It Like It's Hot
+Pet Shop Boys — Go West
+Elton John — I'm Still Standing
+# --- 90-ті
+Nirvana — Smells Like Teen Spirit
+Nirvana — Come as You Are
+Radiohead — Creep
+Oasis — Wonderwall
+The Cranberries — Zombie
+Red Hot Chili Peppers — Californication
+Red Hot Chili Peppers — Under the Bridge
 Coolio — Gangsta's Paradise
-House of Pain — Jump Around
-Cypress Hill — Insane in the Brain
-Vanilla Ice — Ice Ice Baby
-MC Hammer — U Can't Touch This
-OutKast — Hey Ya!
-OutKast — Ms. Jackson
-Gnarls Barkley — Crazy
-Usher — Yeah!
-Sean Paul — Get Busy
-Sean Paul — Temperature
-Nelly — Dilemma
-Nelly — Hot in Herre
-Justin Timberlake — Cry Me a River
-Justin Timberlake — SexyBack
-Justin Timberlake — Can't Stop the Feeling!
-Maroon 5 — This Love
-Maroon 5 — Moves like Jagger
-Maroon 5 — Sugar
-Maroon 5 — Payphone
-OneRepublic — Apologize
-OneRepublic — Counting Stars
-The Script — Hall of Fame
-James Blunt — You're Beautiful
-Robbie Williams — Angels
-Robbie Williams — Feel
-Robbie Williams — Rock DJ
-Daft Punk — One More Time
-Daft Punk — Get Lucky
-Daft Punk — Around the World
-Moby — Porcelain
-Fatboy Slim — Right Here, Right Now
-Fatboy Slim — The Rockafeller Skank
-The Chemical Brothers — Hey Boy Hey Girl
-The Chemical Brothers — Galvanize
-Eiffel 65 — Blue (Da Ba Dee)
-Vengaboys — We Like to Party!
-Vengaboys — Boom, Boom, Boom, Boom!!
-Aqua — Barbie Girl
-Scooter — How Much Is the Fish?
-Scooter — Maria (I Like It Loud)
 Haddaway — What Is Love
 Snap! — Rhythm Is a Dancer
-Snap! — The Power
 2 Unlimited — No Limit
 Dr. Alban — It's My Life
 La Bouche — Be My Lover
 Corona — The Rhythm of the Night
-Culture Beat — Mr. Vain
-Robert Miles — Children
-Darude — Sandstorm
-ATC — Around the World (La La La La La)
-Cascada — Everytime We Touch
-Alice Deejay — Better Off Alone
-Sash! — Ecuador
+Ace of Base — All That She Wants
+Ace of Base — Happy Nation
+Roxette — It Must Have Been Love
+Roxette — Listen to Your Heart
+Aqua — Barbie Girl
+Eiffel 65 — Blue (Da Ba Dee)
+Vengaboys — Boom, Boom, Boom, Boom!!
+Vengaboys — We Like to Party!
+Scooter — How Much Is the Fish?
 Mr. President — Coco Jamboo
 Lou Bega — Mambo No. 5
+Ricky Martin — Livin' la Vida Loca
+Backstreet Boys — Everybody (Backstreet's Back)
+Backstreet Boys — I Want It That Way
+Spice Girls — Wannabe
+Britney Spears — ...Baby One More Time
+Celine Dion — My Heart Will Go On
+Whitney Houston — I Will Always Love You
+Mariah Carey — All I Want for Christmas Is You
+Cher — Believe
+Natalie Imbruglia — Torn
+Robert Miles — Children
+Darude — Sandstorm
+Daft Punk — Around the World
+Blur — Song 2
+Bloodhound Gang — The Bad Touch
+Bryan Adams — (Everything I Do) I Do It for You
+Sting — Shape of My Heart
+Sting — Desert Rose
+Alice Deejay — Better Off Alone
+ATC — Around the World (La La La La La)
+Sash! — Ecuador
+Dr. Dre — Still D.R.E.
+Eminem — The Real Slim Shady
+Enya — Only Time
+Lenny Kravitz — Fly Away
+# --- 2000-ні
+Eminem — Lose Yourself
+Eminem — Without Me
+Linkin Park — In the End
+Linkin Park — Numb
+System of a Down — Chop Suey!
+Evanescence — Bring Me to Life
+Limp Bizkit — Behind Blue Eyes
+Papa Roach — Last Resort
+Nickelback — How You Remind Me
+The White Stripes — Seven Nation Army
+Coldplay — Yellow
+Coldplay — Viva la Vida
+Gorillaz — Clint Eastwood
+Gorillaz — Feel Good Inc.
+The Killers — Mr. Brightside
+Franz Ferdinand — Take Me Out
+Green Day — Boulevard of Broken Dreams
+The Black Eyed Peas — Where Is the Love?
+The Black Eyed Peas — I Gotta Feeling
+The Black Eyed Peas — Pump It
+50 Cent — In da Club
+Shakira — Whenever, Wherever
+Shakira — Hips Don't Lie
+Shakira — Waka Waka (This Time for Africa)
+Avril Lavigne — Complicated
+Avril Lavigne — Sk8er Boi
+Kelly Clarkson — Since U Been Gone
+Rihanna — Umbrella
+Beyoncé — Crazy in Love
+Lady Gaga — Poker Face
+Lady Gaga — Bad Romance
+Katy Perry — Hot n Cold
+Britney Spears — Toxic
+Nelly Furtado — Say It Right
+Maroon 5 — This Love
+Maroon 5 — Moves like Jagger
+James Blunt — You're Beautiful
+Robbie Williams — Feel
+Gnarls Barkley — Crazy
+OutKast — Hey Ya!
+Sean Paul — Get Busy
+Usher — Yeah!
+Justin Timberlake — Cry Me a River
+Justin Timberlake — SexyBack
+Enrique Iglesias — Hero
+Amy Winehouse — Rehab
+Amy Winehouse — Back to Black
+Dido — Thank You
+Moby — Porcelain
+Cascada — Everytime We Touch
+Daft Punk — One More Time
+Pitbull — Give Me Everything
+Kesha — Tik Tok
+Flo Rida — Low
+LMFAO — Party Rock Anthem
+Modjo — Lady (Hear Me Tonight)
+# --- 2010-ті й новіше
+Adele — Rolling in the Deep
+Adele — Someone Like You
+Adele — Hello
+Gotye — Somebody That I Used to Know
 Avicii — Wake Me Up
 Avicii — Levels
 David Guetta — Titanium
-David Guetta — When Love Takes Over
-Calvin Harris — Summer
-Calvin Harris — Feel So Close
 Swedish House Mafia — Don't You Worry Child
+Imagine Dragons — Radioactive
+Imagine Dragons — Believer
+Bruno Mars — Uptown Funk
+Bruno Mars — Just the Way You Are
+Pharrell Williams — Happy
 Ed Sheeran — Shape of You
 Ed Sheeran — Perfect
-Ed Sheeran — Thinking Out Loud
-Bruno Mars — Just the Way You Are
-Bruno Mars — Uptown Funk
-Bruno Mars — Locked Out of Heaven
-Bruno Mars — Grenade
-Pharrell Williams — Happy
 Sia — Chandelier
 Sia — Cheap Thrills
 Dua Lipa — New Rules
 Dua Lipa — Don't Start Now
-Dua Lipa — Levitating
 The Weeknd — Blinding Lights
-The Weeknd — Starboy
-The Weeknd — Can't Feel My Face
 Billie Eilish — Bad Guy
-Billie Eilish — Lovely
 Harry Styles — As It Was
-Harry Styles — Watermelon Sugar
-Taylor Swift — Shake It Off
-Taylor Swift — Blank Space
-Taylor Swift — Love Story
 Miley Cyrus — Wrecking Ball
 Miley Cyrus — Flowers
 Lana Del Rey — Summertime Sadness
-Lana Del Rey — Born to Die
-Lana Del Rey — Video Games
 Lorde — Royals
 Hozier — Take Me to Church
 Passenger — Let Her Go
-Gotye — Somebody That I Used to Know
+Twenty One Pilots — Stressed Out
+The Chainsmokers — Closer
+Lil Nas X — Old Town Road
+Rag'n'Bone Man — Human
+Lukas Graham — 7 Years
+OneRepublic — Counting Stars
+Calvin Harris — Summer
+Måneskin — Beggin'
+Tones and I — Dance Monkey
+Taylor Swift — Shake It Off
+Katy Perry — Firework
+Rihanna — Diamonds
+Coldplay — Paradise
+# --- найвідоміше не англійською: те, що знає кожен
 PSY — Gangnam Style
-Carly Rae Jepsen — Call Me Maybe
-LMFAO — Party Rock Anthem
-Pitbull — Give Me Everything
-Pitbull — Timber
-Flo Rida — Low
-Flo Rida — Whistle
-Kesha — Tik Tok
-Frank Sinatra — My Way
-Frank Sinatra — New York, New York
-Frank Sinatra — Fly Me to the Moon
-Louis Armstrong — What a Wonderful World
-Ray Charles — Hit the Road Jack
-Nat King Cole — L-O-V-E
-Aretha Franklin — Respect
-Ben E. King — Stand by Me
-The Beach Boys — Surfin' U.S.A.
-Simon & Garfunkel — The Sound of Silence
-Simon & Garfunkel — Mrs. Robinson
-Gloria Gaynor — I Will Survive
-Donna Summer — Hot Stuff
-Village People — Y.M.C.A.
-Earth, Wind & Fire — September
-Chic — Le Freak
-KC and the Sunshine Band — That's the Way (I Like It)
-Kool & the Gang — Celebration
-Blondie — Call Me
-Blondie — Heart of Glass
-Cher — Believe
-Seal — Kiss from a Rose
-Vanessa Paradis — Joe le taxi
-Joe Dassin — Les Champs-Élysées
-Joe Dassin — Et si tu n'existais pas
-Édith Piaf — Non, je ne regrette rien
-Édith Piaf — La Vie en rose
-Adriano Celentano — Confessa
-Adriano Celentano — Soli
-Toto Cutugno — L'Italiano
-Ricchi e Poveri — Sarà perché ti amo
-Eros Ramazzotti — Più bella cosa
-Al Bano & Romina Power — Felicità
-Umberto Tozzi — Ti amo
-Gipsy Kings — Bamboléo
-Manu Chao — Bongo Bong
-Manu Chao — Me Gustas Tu
-Tarkan — Şımarık
+Luis Fonsi — Despacito
+Los del Río — Macarena
 O-Zone — Dragostea Din Tei
-Bob Marley — No Woman, No Cry
-Bob Marley — Could You Be Loved
-Bob Marley — Is This Love
-Bob Marley — Three Little Birds
+Kaoma — Lambada
+Las Ketchup — The Ketchup Song (Aserejé)
+Rammstein — Du Hast
+Tarkan — Şımarık
+Toto Cutugno — L'Italiano
+Al Bano & Romina Power — Felicità
+Ricchi e Poveri — Sarà perché ti amo
+Joe Dassin — Les Champs-Élysées
+Gipsy Kings — Bamboléo
 
 [uahits] Українська класика
 Океан Ельзи — Без бою
