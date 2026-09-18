@@ -2,7 +2,8 @@
   Танчики. Реалтайм: сервер тикає раз на 40 мс і шле кадр, ми його малюємо й згладжуємо.
 
   Кадр (Impl/Tanks.cs):
-    { t, p: [{x, y, d, alive, shield, frags, reload, back}], s: [{i, x, y, d}], bricks: int[], phase, startIn, left }
+    { t, p: [{x, y, d, alive, shield, frags, reload, back, perks}], s: [{i, x, y, d, big}], pw: [{x, y, kind}],
+      bricks: int[], phase, startIn, left }
   Координати танків (лівий верхній кут) і снарядів (точка) — у дванадцятих частках клітинки (SUB).
   Сталь не міняється за партію, тому її шле лише вид: { width, height, sub, walls, need, ... }.
 
@@ -32,6 +33,8 @@
   const DELTA = [[1, 0], [0, 1], [-1, 0], [0, -1]];
   const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'], ['--tblue', '#6fb3e8'], ['--tpink', '#e88ac0']];
   const BOOM_MS = 380;
+  const GLYPH = { speed: '⚡', twin: '🔫', rapid: '🚀', shield: '🛡', pierce: '💥' };
+  const PERK = { s: '⚡', t: '🔫', r: '🚀', p: '💥' };
 
   const at = (cell, W) => [(cell % W) * PX, Math.floor(cell / W) * PX];
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -47,6 +50,7 @@
   function palette(st) {
     return {
       bg2: st.css('--bg2', '#16291f'),
+      panel: st.css('--panel', '#1c3328'),
       steel: st.css('--panel3', '#2b4c3c'),
       edge: st.css('--line', '#2f4d3d'),
       clay: st.css('--clay', '#c5763a'),
@@ -85,6 +89,22 @@
       g.moveTo(x + PX / 4, y + PX / 2); g.lineTo(x + PX / 4, y + PX - 1);
       g.moveTo(x + 3 * PX / 4, y + PX / 2); g.lineTo(x + 3 * PX / 4, y + PX - 1);
       g.stroke();
+    }
+  }
+
+  function drawLoot(pal, g, drops, now) {
+    for (const d of drops || []) {
+      const x = d.x * PX, y = d.y * PX;
+      g.fillStyle = pal.panel;
+      g.globalAlpha = 0.8 + 0.2 * Math.sin(now / 160);
+      g.beginPath();
+      g.roundRect(x + 3, y + 3, PX - 6, PX - 6, 6);
+      g.fill();
+      g.globalAlpha = 1;
+      g.font = '12px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(GLYPH[d.kind] || '?', x + PX / 2, y + PX / 2 + 1);
     }
   }
 
@@ -137,9 +157,9 @@
       g.lineTo(x, y);
       g.stroke();
       g.globalAlpha = 1;
-      g.fillStyle = pal.text;
+      g.fillStyle = s.big ? pal.danger : pal.text;
       g.beginPath();
-      g.arc(x, y, 2.6, 0, Math.PI * 2);
+      g.arc(x, y, s.big ? 4 : 2.6, 0, Math.PI * 2);
       g.fill();
     }
   }
@@ -211,6 +231,7 @@
     if (!cur) return;
     const f = cur.f;
     drawBricks(pal, g, f.bricks, st.W);
+    drawLoot(pal, g, f.pw, now);
     for (let i = 0; i < cur.men.length; i++) {
       const m = cur.men[i];
       if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now);
@@ -237,8 +258,10 @@
       const nick = ctx.nickOf(i);
       if (!nick) continue;
       const m = men[i] || {};
+      const perks = String(m.perks || '').split('').map((k) => PERK[k] || '').join('');
       html += '<span class="tchip s' + i + (m.alive === false ? ' out' : '') + '">'
-        + ctx.esc(nick) + ' <b>' + (m.frags || 0) + '</b>' + (m.back > 0 ? ' <span class="tback">⌛</span>' : '') + '</span>';
+        + ctx.esc(nick) + ' <b>' + (m.frags || 0) + '</b>' + (perks ? ' <span class="tperks">' + perks + '</span>' : '')
+        + (m.back > 0 ? ' <span class="tback">⌛</span>' : '') + '</span>';
     }
     if (f && f.phase === 'go') html += '<span class="tchip tclock">' + clock(f.left || 0) + '</span>';
     if (el.dataset.sig !== html) {

@@ -179,6 +179,7 @@ public sealed class Tanks : Game
         t = Core.Ticks,
         p = Men(),
         s = Shots(),
+        pw = Loot(),
         bricks = Core.BrickCells(),
         phase = _phase,
         startIn = _startIn,
@@ -196,13 +197,25 @@ public sealed class Tanks : Game
         t = Core.Ticks,
         p = Men(),
         s = Shots(),
+        pw = Loot(),
         bricks = Core.BrickCells(),
         phase = _phase,
         startIn = _startIn,
         left = Math.Max(0, TanksCore.MatchTicks - Core.Ticks),
     };
 
-    object[] Shots() => [.. Core.Shells.Select(s => (object)new { i = s.Id, x = s.X, y = s.Y, d = s.Dir })];
+    object[] Shots() => [.. Core.Shells.Select(s => (object)new { i = s.Id, x = s.X, y = s.Y, d = s.Dir, big = s.Pierce })];
+
+    object[] Loot() => [.. Core.Drops.Select(d => (object)new { x = Core.X(d.Cell), y = Core.Y(d.Cell), kind = Kind(d.Kind) })];
+
+    static string Kind(TankBonus kind) => kind switch
+    {
+        TankBonus.Speed => "speed",
+        TankBonus.Twin => "twin",
+        TankBonus.Rapid => "rapid",
+        TankBonus.Shield => "shield",
+        _ => "pierce",
+    };
 
     /// <summary>Танки по місцях; до старту «живий» = «за місцем хтось сидить», щоб лобі показувало, кого чекати.</summary>
     object[] Men() =>
@@ -217,6 +230,7 @@ public sealed class Tanks : Game
             frags = t.Frags,
             reload = t.Reload,
             back = t.Respawn,
+            perks = (t.Fast ? "s" : "") + (t.Twin ? "t" : "") + (t.Rapid ? "r" : "") + (t.Pierce ? "p" : ""),
         }),
     ];
 }

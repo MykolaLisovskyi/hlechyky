@@ -4,6 +4,20 @@ namespace Hlechyky.Games.Impl;
 public enum TankTile { Free, Steel, Brick }
 
 /// <summary>
+/// Що випадає з розбитої цегли: ⚡ швидкість, 🔫 два снаряди в польоті, 🚀 швидкий снаряд і коротша
+/// перезарядка, 🛡 щит на п'ять секунд, 💥 пробивний снаряд (ламає сталь, крізь цеглу летить далі).
+/// </summary>
+public enum TankBonus { Speed, Twin, Rapid, Shield, Pierce }
+
+/// <summary>Бонус, що лежить на клітинці й чекає, поки хтось на нього наїде. Довго не лежить.</summary>
+public sealed class TankDrop
+{
+    public required int Cell { get; init; }
+    public required TankBonus Kind { get; init; }
+    public int Ttl;
+}
+
+/// <summary>
 /// Танк одного місця. Рух клітинний, як у бомбера: їде з <see cref="Cell"/> у сусідню в напрямку
 /// <see cref="Move"/>, <see cref="Step"/> — скільки дванадцятих шляху позаду. Куди повернувся востаннє
 /// (<see cref="Dir"/>) — туди й дуло.
@@ -29,10 +43,21 @@ public sealed class Tank
     /// <summary>Тиків до повернення на поле; 0 — не чекає.</summary>
     public int Respawn;
     public int Frags;
-    /// <summary>Свій снаряд зараз летить — другого не буде.</summary>
-    public bool ShellOut;
+    /// <summary>Скільки своїх снарядів зараз летить; ліміт — один, з 🔫 — два.</summary>
+    public int ShellsOut;
     /// <summary>Стартовий кут.</summary>
     public int Home;
+    // Бонуси. Згорають разом із танком: той, хто вирвався вперед, не тікає назавжди.
+    /// <summary>⚡ клітинка за 3 тики замість 4.</summary>
+    public bool Fast;
+    /// <summary>🔫 два снаряди в польоті.</summary>
+    public bool Twin;
+    /// <summary>🚀 снаряд 12/тик і перезарядка 6 тиків.</summary>
+    public bool Rapid;
+    /// <summary>💥 наступний снаряд пробивний.</summary>
+    public bool Pierce;
+
+    public void Strip() => Fast = Twin = Rapid = Pierce = false;
 }
 
 /// <summary>Снаряд у дванадцятих частках клітинки. Id — щоб клієнт вів саме його між кадрами.</summary>
@@ -41,6 +66,9 @@ public sealed class Shell
     public required int Id { get; init; }
     public required int Owner { get; init; }
     public required int Dir { get; init; }
+    public required int Speed { get; init; }
+    /// <summary>💥: ламає сталь (крім рамки) і летить крізь цеглу, ламаючи її дорогою.</summary>
+    public bool Pierce { get; init; }
     public int X, Y;
 }
 
@@ -73,10 +101,15 @@ public sealed class TanksCore
     /// <summary>25 кадрів на секунду: крок каркаса 20 мс ділить його рівно.</summary>
     public const int TickMs = 40;
     public const int Sub = 12;
-    /// <summary>Клітинка за 4 тики — 160 мс.</summary>
-    public const int StepSub = 3;
-    /// <summary>Снаряд: 8 дванадцятих за тик, ≈ 17 клітинок/с. Менше за клітинку — жодну не перескочить.</summary>
-    public const int ShellSpeed = 8;
+    /// <summary>Клітинка за 4 тики — 160 мс; з ⚡ — 4/тик, клітинка за 3 тики.</summary>
+    public const int StepSub = 3, FastStepSub = 4;
+    /// <summary>Снаряд: 8 дванадцятих за тик, ≈ 17 клітинок/с; з 🚀 — 12, рівно клітинка за тик. Жодну не перескочить.</summary>
+    public const int ShellSpeed = 8, RapidShellSpeed = 12;
+    public const int RapidReloadTicks = 6;
+    /// <summary>🛡 із цегли — п'ять секунд.</summary>
+    public const int BonusShieldTicks = 125;
+    /// <summary>З якою ймовірністю розбита цегла лишає бонус і скільки він лежить (25 с — щоб устигнути доїхати через пів мапи).</summary>
+    public const int DropChance = 25, DropTicks = 625;
     /// <summary>Звідки вилітає снаряд: центр танка плюс стільки в напрямку дула.</summary>
     public const int ShellNose = 7;
     /// <summary>Пів танка в дванадцятих — для влучання снаряда.</summary>
@@ -101,6 +134,7 @@ public sealed class TanksCore
     public TankTile[] Tiles { get; }
     public Tank[] Tanks { get; }
     public List<Shell> Shells { get; } = [];
+    public List<TankDrop> Drops { get; } = [];
     public int Ticks { get; private set; }
     int _nextShell;
 
@@ -139,6 +173,7 @@ public sealed class TanksCore
     {
         Ticks = 0;
         Shells.Clear();
+        Drops.Clear();
         for (var y = 0; y < H; y++)
             for (var x = 0; x < W; x++)
                 Tiles[Cell(x, y)] = x == 0 || y == 0 || x == W - 1 || y == H - 1 ? TankTile.Steel : TankTile.Free;
@@ -183,16 +218,21 @@ public sealed class TanksCore
         if (t.Want >= 0 && t.Alive && t.Move < 0) t.Dir = t.Want;
     }
 
-    /// <summary>Постріл із дула. false — не на полі, снаряд уже летить або перезарядка.</summary>
+    /// <summary>Постріл із дула. false — не на полі, снарядів у польоті вже досить або перезарядка.</summary>
     public bool Fire(int seat)
     {
         if (seat < 0 || seat >= Tanks.Length) return false;
         var t = Tanks[seat];
-        if (!t.Alive || t.ShellOut || t.Reload > 0) return false;
+        if (!t.Alive || t.ShellsOut >= (t.Twin ? 2 : 1) || t.Reload > 0) return false;
         var (dx, dy) = Deltas[t.Dir];
-        Shells.Add(new Shell { Id = ++_nextShell, Owner = seat, Dir = t.Dir, X = CenterX(t) + dx * ShellNose, Y = CenterY(t) + dy * ShellNose });
-        t.ShellOut = true;
-        t.Reload = ReloadTicks;
+        Shells.Add(new Shell
+        {
+            Id = ++_nextShell, Owner = seat, Dir = t.Dir, Speed = t.Rapid ? RapidShellSpeed : ShellSpeed, Pierce = t.Pierce,
+            X = CenterX(t) + dx * ShellNose, Y = CenterY(t) + dy * ShellNose,
+        });
+        t.Pierce = false;   // 💥 — на один постріл
+        t.ShellsOut++;
+        t.Reload = t.Rapid ? RapidReloadTicks : ReloadTicks;
         return true;
     }
 
@@ -207,6 +247,7 @@ public sealed class TanksCore
         Ticks++;
         Timers();
         Walk();
+        Collect();
         Fly();
     }
 
@@ -219,6 +260,42 @@ public sealed class TanksCore
             if (t.Shield > 0) t.Shield--;
             if (t.Respawn > 0 && --t.Respawn == 0) Spawn(t);
         }
+        Drops.RemoveAll(d => --d.Ttl <= 0);
+    }
+
+    /// <summary>Наїхав на бонус — забрав. Клітинка «в якій центр», як у бомбера.</summary>
+    void Collect()
+    {
+        foreach (var t in Tanks)
+        {
+            if (!t.Alive) continue;
+            var cell = Cell(CenterX(t) / Sub, CenterY(t) / Sub);
+            var i = Drops.FindIndex(d => d.Cell == cell);
+            if (i < 0) continue;
+            Apply(t, Drops[i].Kind);
+            Drops.RemoveAt(i);
+        }
+    }
+
+    public static void Apply(Tank t, TankBonus kind)
+    {
+        switch (kind)
+        {
+            case TankBonus.Speed: t.Fast = true; break;
+            case TankBonus.Twin: t.Twin = true; break;
+            case TankBonus.Rapid: t.Rapid = true; break;
+            case TankBonus.Shield: t.Shield = Math.Max(t.Shield, BonusShieldTicks); break;
+            case TankBonus.Pierce: t.Pierce = true; break;
+        }
+    }
+
+    /// <summary>Цегла розлетілась: іноді під нею щось лежить.</summary>
+    void Break(int cell)
+    {
+        Tiles[cell] = TankTile.Free;
+        if (_rng.Next(100) >= DropChance || Drops.Any(d => d.Cell == cell)) return;
+        var kinds = Enum.GetValues<TankBonus>();
+        Drops.Add(new TankDrop { Cell = cell, Kind = kinds[_rng.Next(kinds.Length)], Ttl = DropTicks });
     }
 
     /// <summary>Повернення на свій старт, а як він зайнятий — на найближчий вільний; зі щитом.</summary>
@@ -252,7 +329,7 @@ public sealed class TanksCore
                 t.Move = t.Want;
                 t.Step = 0;
             }
-            t.Step += StepSub;
+            t.Step += t.Fast ? FastStepSub : StepSub;
             if (t.Step < Sub) continue;
             t.Cell = Ahead(t.Cell, t.Move);
             t.Step = 0;
@@ -267,16 +344,23 @@ public sealed class TanksCore
         foreach (var s in Shells)
         {
             var (dx, dy) = Deltas[s.Dir];
-            s.X += dx * ShellSpeed;
-            s.Y += dy * ShellSpeed;
+            s.X += dx * s.Speed;
+            s.Y += dy * s.Speed;
             // Снаряд — точка; клітинка, в якій вона зараз. За краєм поля він просто зникає.
             var (cx, cy) = (s.X / Sub, s.Y / Sub);
             if (s.X < 0 || s.Y < 0 || cx >= W || cy >= H) { gone.Add(s); continue; }
             var cell = Cell(cx, cy);
+            var border = cx == 0 || cy == 0 || cx == W - 1 || cy == H - 1;
             switch (Tiles[cell])
             {
-                case TankTile.Steel: gone.Add(s); continue;
-                case TankTile.Brick: Tiles[cell] = TankTile.Free; gone.Add(s); continue;
+                case TankTile.Steel:
+                    if (s.Pierce && !border) Tiles[cell] = TankTile.Free;   // 💥 ламає сталь, але не рамку
+                    gone.Add(s);
+                    continue;
+                case TankTile.Brick:
+                    Break(cell);
+                    if (!s.Pierce) { gone.Add(s); continue; }               // 💥 летить далі крізь цеглу
+                    break;
             }
             foreach (var (t, i) in Tanks.Select((t, i) => (t, i)))
             {
@@ -299,7 +383,7 @@ public sealed class TanksCore
         foreach (var s in gone)
         {
             Shells.Remove(s);
-            Tanks[s.Owner].ShellOut = false;
+            Tanks[s.Owner].ShellsOut = Math.Max(0, Tanks[s.Owner].ShellsOut - 1);
         }
     }
 
@@ -310,6 +394,7 @@ public sealed class TanksCore
         t.Step = 0;
         t.Shield = 0;
         t.Respawn = RespawnTicks;
+        t.Strip();
         if (by >= 0 && by < Tanks.Length) Tanks[by].Frags++;
     }
 

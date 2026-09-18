@@ -315,7 +315,7 @@ public class TanksTests
         Assert.Empty(core.Shells);
         Assert.True(core.Tanks[0].Alive);
         Assert.True(core.Tanks[1].Alive);
-        Assert.False(core.Tanks[0].ShellOut);
+        Assert.Equal(0, core.Tanks[0].ShellsOut);
         Assert.True(core.Fire(0));              // снаряд зник — можна знову
     }
 
@@ -343,6 +343,141 @@ public class TanksTests
         Assert.Equal(3, t.Frags);
         Steps(core, TanksCore.RespawnTicks + 5);
         Assert.False(t.Alive);
+    }
+
+    // ---------- бонуси ----------
+
+    [Fact]
+    public void A_broken_brick_sometimes_leaves_a_bonus_that_lies_for_a_while()
+    {
+        var drops = 0; var bricks = 0;
+        for (var seed = 1; seed <= 30; seed++)
+        {
+            var core = Empty(seed);
+            Put(core, 0, 5, 5, dir: 0);
+            core.Tiles[core.Cell(7, 5)] = TankTile.Brick;
+            core.Fire(0);
+            Steps(core, 3);
+            bricks++;
+            Assert.Equal(TankTile.Free, At(core, 7, 5));
+            if (core.Drops.Count == 1) { drops++; Assert.Equal(core.Cell(7, 5), core.Drops[0].Cell); }
+        }
+        Assert.InRange(drops, 3, 15);   // ~25 % із тридцяти
+    }
+
+    [Fact]
+    public void A_bonus_expires_if_nobody_picks_it_up()
+    {
+        var core = Empty();
+        core.Drops.Add(new TankDrop { Cell = core.Cell(5, 5), Kind = TankBonus.Speed, Ttl = TanksCore.DropTicks });
+        Steps(core, TanksCore.DropTicks - 1);
+        Assert.Single(core.Drops);
+        Steps(core, 1);
+        Assert.Empty(core.Drops);
+    }
+
+    [Fact]
+    public void Driving_onto_a_bonus_applies_it_and_death_strips_everything()
+    {
+        var core = Empty();
+        var t = Put(core, 0, 5, 5, dir: 0);
+        core.Drops.Add(new TankDrop { Cell = core.Cell(6, 5), Kind = TankBonus.Speed, Ttl = 100 });
+        core.Turn(0, 0);
+        Steps(core, 4);
+        Assert.True(t.Fast);
+        Assert.Empty(core.Drops);
+        core.Turn(0, -1);
+        // Швидкий: клітинка за три тики
+        Steps(core, 1);
+        core.Turn(0, 0);
+        Steps(core, 3);
+        Assert.Equal(core.Cell(7, 5), t.Cell);
+        core.Turn(0, -1);
+
+        TanksCore.Apply(t, TankBonus.Twin);
+        TanksCore.Apply(t, TankBonus.Rapid);
+        TanksCore.Apply(t, TankBonus.Pierce);
+        var killer = Put(core, 1, 12, 5, dir: 2);
+        for (var x = 8; x < 12; x++) core.Tiles[core.Cell(x, 5)] = TankTile.Free;
+        core.Fire(1);
+        Steps(core, 10);
+        Assert.False(t.Alive);
+        Assert.False(t.Fast); Assert.False(t.Twin); Assert.False(t.Rapid); Assert.False(t.Pierce);
+        Assert.Equal(1, killer.Frags);
+    }
+
+    [Fact]
+    public void Twin_allows_two_shells_and_rapid_makes_them_faster()
+    {
+        var core = Empty();
+        var t = Put(core, 0, 3, 5, dir: 0);
+        TanksCore.Apply(t, TankBonus.Twin);
+        TanksCore.Apply(t, TankBonus.Rapid);
+        Assert.True(core.Fire(0));
+        Assert.False(core.Fire(0));                 // перезарядка, хоч і коротка
+        Steps(core, TanksCore.RapidReloadTicks);
+        Assert.True(core.Fire(0));
+        Assert.Equal(2, core.Shells.Count);
+        Steps(core, TanksCore.RapidReloadTicks);
+        Assert.False(core.Fire(0));                 // третього не буде
+        var x0 = core.Shells[0].X;
+        Steps(core, 1);
+        Assert.Equal(TanksCore.RapidShellSpeed, core.Shells[0].X - x0);
+    }
+
+    [Fact]
+    public void A_piercing_shell_breaks_steel_and_flies_through_bricks_but_not_the_border()
+    {
+        var core = Empty();
+        var t = Put(core, 0, 3, 5, dir: 0);
+        core.Tiles[core.Cell(5, 5)] = TankTile.Brick;
+        core.Tiles[core.Cell(6, 5)] = TankTile.Brick;
+        core.Tiles[core.Cell(8, 5)] = TankTile.Steel;
+        TanksCore.Apply(t, TankBonus.Pierce);
+        core.Fire(0);
+        Assert.False(t.Pierce);                     // на один постріл
+        Steps(core, 8);
+        Assert.Equal(TankTile.Free, At(core, 5, 5));
+        Assert.Equal(TankTile.Free, At(core, 6, 5));
+        Assert.Equal(TankTile.Free, At(core, 8, 5));
+        Assert.Empty(core.Shells);                  // сталь ламає й на ній зникає
+
+        TanksCore.Apply(t, TankBonus.Pierce);
+        t.Reload = 0;
+        core.Fire(0);
+        Steps(core, 40);
+        Assert.Equal(TankTile.Steel, At(core, core.W - 1, 5));   // рамка стоїть
+    }
+
+    [Fact]
+    public void A_shield_bonus_protects_for_five_seconds()
+    {
+        var core = Empty();
+        var t = Put(core, 0, 9, 5);
+        TanksCore.Apply(t, TankBonus.Shield);
+        Assert.Equal(TanksCore.BonusShieldTicks, t.Shield);
+        Put(core, 1, 5, 5, dir: 0);
+        core.Fire(1);
+        Steps(core, 8);
+        Assert.True(t.Alive);
+        Assert.Equal(0, core.Tanks[1].Frags);
+    }
+
+    [Fact]
+    public void The_frame_shows_loot_and_perks()
+    {
+        var h = Table();
+        Ready(h);
+        var core = Core(h);
+        core.Drops.Add(new TankDrop { Cell = core.Cell(5, 5), Kind = TankBonus.Rapid, Ttl = 100 });
+        TanksCore.Apply(core.Tanks[0], TankBonus.Speed);
+        TanksCore.Apply(core.Tanks[0], TankBonus.Pierce);
+        h.Tick(1);
+        var v = h.View(null);
+        var loot = Assert.Single(v.GetProperty("pw").EnumerateArray());
+        Assert.Equal("rapid", loot.GetProperty("kind").GetString());
+        Assert.Equal(5, loot.GetProperty("x").GetInt32());
+        Assert.Equal("sp", v.GetProperty("p")[0].GetProperty("perks").GetString());
     }
 
     // ---------- партія ----------

@@ -22,6 +22,7 @@
 }
 .tchip b { color: var(--text); font-variant-numeric: tabular-nums; }
 .tchip .tback { color: var(--muted); }
+.tchip .tperks { font-size: .92em; }
 .tchip.out { opacity: .55; }
 .tchip.s0 { color: var(--accent); }
 .tchip.s1 { color: var(--ok); }
