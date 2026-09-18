@@ -109,7 +109,7 @@ public sealed class TanksCore
     /// <summary>🛡 із цегли — п'ять секунд.</summary>
     public const int BonusShieldTicks = 125;
     /// <summary>З якою ймовірністю розбита цегла лишає бонус і скільки він лежить (25 с — щоб устигнути доїхати через пів мапи).</summary>
-    public const int DropChance = 25, DropTicks = 625;
+    public const int DropChance = 40, DropTicks = 625;
     /// <summary>Звідки вилітає снаряд: центр танка плюс стільки в напрямку дула.</summary>
     public const int ShellNose = 7;
     /// <summary>Пів танка в дванадцятих — для влучання снаряда.</summary>
@@ -337,6 +337,9 @@ public sealed class TanksCore
         }
     }
 
+    /// <summary>Крок підльоту: ділить і 8, і 12, тож снаряд оглядає кожну клітинку, крізь яку пролітає.</summary>
+    const int FlySub = 4;
+
     void Fly()
     {
         if (Shells.Count == 0) return;
@@ -344,32 +347,13 @@ public sealed class TanksCore
         foreach (var s in Shells)
         {
             var (dx, dy) = Deltas[s.Dir];
-            s.X += dx * s.Speed;
-            s.Y += dy * s.Speed;
-            // Снаряд — точка; клітинка, в якій вона зараз. За краєм поля він просто зникає.
-            var (cx, cy) = (s.X / Sub, s.Y / Sub);
-            if (s.X < 0 || s.Y < 0 || cx >= W || cy >= H) { gone.Add(s); continue; }
-            var cell = Cell(cx, cy);
-            var border = cx == 0 || cy == 0 || cx == W - 1 || cy == H - 1;
-            switch (Tiles[cell])
+            // Не «стрибком» на всю швидкість, а підкроками: інакше швидкий снаряд перескакував би клітинку
+            // з цеглою (стартує на першій дванадцятій сусідньої клітинки — і за тик опинявся вже за нею).
+            for (var flown = 0; flown < s.Speed && !gone.Contains(s); flown += FlySub)
             {
-                case TankTile.Steel:
-                    if (s.Pierce && !border) Tiles[cell] = TankTile.Free;   // 💥 ламає сталь, але не рамку
-                    gone.Add(s);
-                    continue;
-                case TankTile.Brick:
-                    Break(cell);
-                    if (!s.Pierce) { gone.Add(s); continue; }               // 💥 летить далі крізь цеглу
-                    break;
-            }
-            foreach (var (t, i) in Tanks.Select((t, i) => (t, i)))
-            {
-                if (i == s.Owner || !t.Alive) continue;
-                if (Math.Abs(s.X - CenterX(t)) > Half || Math.Abs(s.Y - CenterY(t)) > Half) continue;
-                gone.Add(s);
-                if (t.Shield > 0) break;
-                Kill(t, s.Owner);
-                break;
+                s.X += dx * FlySub;
+                s.Y += dy * FlySub;
+                Land(s, gone);
             }
         }
         // Два снаряди в одній точці гасять один одного — і лоб у лоб, і навздогін.
@@ -384,6 +368,35 @@ public sealed class TanksCore
         {
             Shells.Remove(s);
             Tanks[s.Owner].ShellsOut = Math.Max(0, Tanks[s.Owner].ShellsOut - 1);
+        }
+    }
+
+    /// <summary>Де снаряд зараз: край, сталь, цегла чи чужий танк. Снаряд — точка; клітинка — та, в якій вона.</summary>
+    void Land(Shell s, HashSet<Shell> gone)
+    {
+        var (cx, cy) = (s.X / Sub, s.Y / Sub);
+        if (s.X < 0 || s.Y < 0 || cx >= W || cy >= H) { gone.Add(s); return; }
+        var cell = Cell(cx, cy);
+        var border = cx == 0 || cy == 0 || cx == W - 1 || cy == H - 1;
+        switch (Tiles[cell])
+        {
+            case TankTile.Steel:
+                if (s.Pierce && !border) Tiles[cell] = TankTile.Free;   // 💥 ламає сталь, але не рамку
+                gone.Add(s);
+                return;
+            case TankTile.Brick:
+                Break(cell);
+                if (!s.Pierce) { gone.Add(s); return; }                  // 💥 летить далі крізь цеглу
+                break;
+        }
+        for (var i = 0; i < Tanks.Length; i++)
+        {
+            var t = Tanks[i];
+            if (i == s.Owner || !t.Alive) continue;
+            if (Math.Abs(s.X - CenterX(t)) > Half || Math.Abs(s.Y - CenterY(t)) > Half) continue;
+            gone.Add(s);
+            if (t.Shield == 0) Kill(t, s.Owner);
+            return;
         }
     }
 

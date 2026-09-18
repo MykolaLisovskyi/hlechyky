@@ -92,19 +92,30 @@
     }
   }
 
+  /// Бонус має кричати з поля: жовта плитка з ореолом, що дихає, і великий смайл. На темній мапі з
+  /// цеглою кольору глини тьмяна плитка губилась — люди проїжджали повз.
   function drawLoot(pal, g, drops, now) {
     for (const d of drops || []) {
-      const x = d.x * PX, y = d.y * PX;
-      g.fillStyle = pal.panel;
-      g.globalAlpha = 0.8 + 0.2 * Math.sin(now / 160);
+      const cx = d.x * PX + PX / 2, cy = d.y * PX + PX / 2;
+      const beat = 1 + 0.08 * Math.sin(now / 140);
+      g.globalAlpha = 0.28 + 0.14 * Math.sin(now / 140);
+      g.fillStyle = pal.accent;
       g.beginPath();
-      g.roundRect(x + 3, y + 3, PX - 6, PX - 6, 6);
+      g.arc(cx, cy, PX * 0.75 * beat, 0, Math.PI * 2);
       g.fill();
       g.globalAlpha = 1;
-      g.font = '12px system-ui, sans-serif';
+      const half = (PX / 2 - 2) * beat;
+      g.fillStyle = pal.accent;
+      g.strokeStyle = pal.dark;
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.roundRect(cx - half, cy - half, half * 2, half * 2, 5);
+      g.fill();
+      g.stroke();
+      g.font = '14px system-ui, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText(GLYPH[d.kind] || '?', x + PX / 2, y + PX / 2 + 1);
+      g.fillText(GLYPH[d.kind] || '?', cx, cy + 1);
     }
   }
 
@@ -127,7 +138,7 @@
     g.beginPath();
     g.arc(cx, cy, PX * 0.2, 0, Math.PI * 2);
     g.fill();
-    g.strokeStyle = pal.dark;
+    g.strokeStyle = String(m.perks || '').includes('p') ? pal.danger : pal.dark;   // 💥 у стволі — червоне дуло
     g.lineWidth = 3;
     g.lineCap = 'round';
     g.beginPath();
@@ -157,6 +168,15 @@
       g.lineTo(x, y);
       g.stroke();
       g.globalAlpha = 1;
+      if (s.big) {
+        // 💥 пробивний: червоне ядро з ореолом — щоб було видно, що цей летить крізь усе
+        g.globalAlpha = 0.45;
+        g.fillStyle = pal.danger;
+        g.beginPath();
+        g.arc(x, y, 7, 0, Math.PI * 2);
+        g.fill();
+        g.globalAlpha = 1;
+      }
       g.fillStyle = s.big ? pal.danger : pal.text;
       g.beginPath();
       g.arc(x, y, s.big ? 4 : 2.6, 0, Math.PI * 2);

@@ -362,7 +362,7 @@ public class TanksTests
             Assert.Equal(TankTile.Free, At(core, 7, 5));
             if (core.Drops.Count == 1) { drops++; Assert.Equal(core.Cell(7, 5), core.Drops[0].Cell); }
         }
-        Assert.InRange(drops, 3, 15);   // ~25 % із тридцяти
+        Assert.InRange(drops, 6, 20);   // ~40 % із тридцяти
     }
 
     [Fact]
@@ -689,5 +689,60 @@ public class TanksTests
         var game = (Tanks)h.Room.Game;
         var field = typeof(Tanks).GetField("_core", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         return (TanksCore)field.GetValue(game)!;
+    }
+}
+
+/// <summary>Скарга з поля: «можна вбивати крізь цеглу». Перевіряємо всі способи, якими це могло б статись.</summary>
+public class TanksThroughBrickTests
+{
+    static TanksCore Empty(int seed = 1) { var c = new TanksCore(new Random(seed)); c.Layout(); return c; }
+    static Tank Put(TanksCore core, int seat, int x, int y, int dir = 0)
+    {
+        var t = core.Tanks[seat];
+        t.Cell = core.Cell(x, y); t.Move = -1; t.Step = 0; t.Want = -1; t.Dir = dir; t.Plays = true; t.Alive = true;
+        return t;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]   // 🚀 — снаряд рівно клітинка за тик
+    public void A_plain_shell_never_reaches_a_tank_right_behind_a_brick(bool rapid)
+    {
+        var core = Empty();
+        var a = Put(core, 0, 5, 5, dir: 0);
+        if (rapid) TanksCore.Apply(a, TankBonus.Rapid);
+        core.Tiles[core.Cell(6, 5)] = TankTile.Brick;
+        var c = Put(core, 1, 7, 5);
+        core.Fire(0);
+        for (var i = 0; i < 6; i++) core.Step();
+        Assert.True(c.Alive);
+        Assert.Equal(TankTile.Free, core.Tiles[core.Cell(6, 5)]);   // цегла розлетілась, але снаряд на ній і зник
+        Assert.Empty(core.Shells);
+    }
+
+    [Fact]
+    public void A_shell_stops_on_a_brick_even_when_the_victim_is_rolling_up_to_it()
+    {
+        var core = Empty();
+        Put(core, 0, 5, 5, dir: 0);
+        core.Tiles[core.Cell(6, 5)] = TankTile.Brick;
+        var c = Put(core, 1, 8, 5);
+        core.Turn(1, 2);   // їде на цеглу з того боку
+        core.Fire(0);
+        for (var i = 0; i < 8; i++) core.Step();
+        Assert.True(c.Alive);
+    }
+
+    [Fact]
+    public void A_shell_fired_point_blank_into_a_brick_dies_there()
+    {
+        var core = Empty();
+        Put(core, 0, 5, 5, dir: 1);
+        core.Tiles[core.Cell(5, 6)] = TankTile.Brick;
+        var c = Put(core, 1, 5, 7);
+        core.Fire(0);
+        for (var i = 0; i < 4; i++) core.Step();
+        Assert.True(c.Alive);
+        Assert.Empty(core.Shells);
     }
 }
