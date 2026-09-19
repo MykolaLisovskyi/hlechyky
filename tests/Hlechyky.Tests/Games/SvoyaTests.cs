@@ -436,6 +436,51 @@ public class SvoyaTests
     }
 
     [Fact]
+    public void Appeal_accepted_voids_everything_that_happened_after_that_answer()
+    {
+        var h = Table(nicks: ["Оля", "Петро"]);
+        var c = Open(h, theme: 1, q: 1);                      // Дніпро, 200
+        var o = Other(h, c);
+        h.Act(c, "buzz");
+        h.Act(c, "answer", new { text = "ріка Дніпр" });      // автомат не взяв
+        h.Act(o, "buzz");
+        h.Act(o, "answer", new { text = "Дніпро" });          // другий відповів правильно
+        Assert.Equal(-200, Score(h, c));
+        Assert.Equal(200, Score(h, o));
+        Assert.Equal(Svoya.Reveal, Phase(h));
+        Assert.True(h.Act(c, "appeal").Ok);
+        Assert.Contains("скасовано", h.Act(0, "judge", new { seat = c, accept = true }).Message);
+        Assert.Equal(200, Score(h, c));                       // мінус знято, плюс нараховано
+        Assert.Equal(0, Score(h, o));                         // а чужий плюс — скасовано: запитання закрилося раніше
+        var tries = h.View(null).GetProperty("tries");
+        Assert.Equal(1, tries.GetArrayLength());
+        Assert.True(tries[0].GetProperty("ok").GetBoolean());
+        Assert.Equal(c, h.View(null).GetProperty("correct").GetInt32());
+        Until(h, Svoya.Board);
+        Assert.Equal(c, Chooser(h));
+    }
+
+    [Fact]
+    public void Appeal_accepted_refunds_a_later_wrong_answer_too()
+    {
+        var h = Table(nicks: ["Оля", "Петро"]);
+        var c = Open(h, theme: 1, q: 1);                      // Дніпро, 200
+        var o = Other(h, c);
+        h.Act(c, "buzz");
+        h.Act(c, "answer", new { text = "ріка Дніпр" });
+        h.Act(o, "buzz");
+        h.Act(o, "answer", new { text = "Десна" });           // обоє в мінусі — запитання закрито
+        Assert.Equal(Svoya.Reveal, Phase(h));
+        h.Act(o, "appeal");
+        h.Act(c, "appeal");
+        Assert.True(h.Act(0, "judge", new { seat = c, accept = true }).Ok);
+        Assert.Equal(200, Score(h, c));
+        Assert.Equal(0, Score(h, o));                         // його промах уже нічого не значив
+        Assert.Equal(0, h.View(null).GetProperty("appeals").GetArrayLength());   // і його апеляція згасла
+        Assert.Equal("Нема що судити", h.Act(0, "judge", new { seat = o, accept = true }).Message);
+    }
+
+    [Fact]
     public void Appeal_rejected_or_ignored_changes_nothing()
     {
         var h = Table();

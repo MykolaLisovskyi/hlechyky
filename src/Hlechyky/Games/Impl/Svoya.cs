@@ -112,6 +112,8 @@ public sealed partial class Svoya : Game
     int? _correct;
     readonly HashSet<int> _wrong = [];
     readonly List<Try> _tries = [];
+    /// <summary>Вироки на це запитання по порядку (і серія гравця до вироку) — щоб прийнята апеляція відкотила все, що було після.</summary>
+    readonly List<Verdict> _verdicts = [];
     readonly List<Press> _presses = [];
     DateTimeOffset _opened;
     /// <summary>Коли голос дочитає запитання (і скільки читання тривало всього) — натиснули раніше, а він дочитує.</summary>
@@ -153,6 +155,7 @@ public sealed partial class Svoya : Game
     int[]? _endScores;
 
     sealed record Try(int Seat, string? Text, bool Ok);
+    sealed record Verdict(int Seat, bool Ok, int Streak);
     sealed record Press(int Seat, int Ms);
     sealed record Appeal(int Seat, string Text);
     sealed record Say(int Id, string Text, string? Url);
@@ -498,6 +501,7 @@ public sealed partial class Svoya : Game
 
     void Right(int seat)
     {
+        _verdicts.Add(new Verdict(seat, true, _streak[seat]));
         _scores[seat] += _price;
         _streak[seat]++;
         _anyRight = true;
@@ -509,6 +513,7 @@ public sealed partial class Svoya : Game
 
     void Wrong(int seat, string? text)
     {
+        _verdicts.Add(new Verdict(seat, false, _streak[seat]));
         _scores[seat] -= _price;
         _streak[seat] = 0;
         _wrong.Add(seat);
@@ -573,6 +578,7 @@ public sealed partial class Svoya : Game
         _wrong.Clear();
         _lastWrong = null;
         _tries.Clear();
+        _verdicts.Clear();
         _presses.Clear();
         _readEnd = null;
         _appeals.Clear();
@@ -786,17 +792,45 @@ public sealed partial class Svoya : Game
         if (appeal is null) return ActResult.Fail("Цей гравець не оскаржував");
         _appeals.Remove(appeal);
         var accept = Bool(payload, "accept") ?? false;
-        if (accept)
-        {
-            _scores[who] += 2 * _price;          // мінус скасовано, плюс нараховано
-            _wrong.Remove(who);
-            var i = _tries.FindLastIndex(t => t.Seat == who && !t.Ok);
-            if (i >= 0) _tries[i] = _tries[i] with { Ok = true };
-            _correct ??= who;
-            _chooser = _correct;
-        }
+        var voided = accept ? Accept(who) : 0;
         _dirty = true;
-        return ActResult.Accept(accept ? $"{Ctx.NickOf(who)}: зараховано" : $"{Ctx.NickOf(who)}: не зараховано");
+        return ActResult.Accept(!accept ? $"{Ctx.NickOf(who)}: не зараховано"
+            : voided == 0 ? $"{Ctx.NickOf(who)}: зараховано"
+            : $"{Ctx.NickOf(who)}: зараховано, відповіді після — скасовано");
+    }
+
+    /// <summary>
+    /// Апеляцію прийнято: відповідь була правильна, отже запитання закрилося ще тоді. Мінус скасовано, плюс нараховано,
+    /// а все, що сталося після (чужий плюс, чужі мінуси, прострочки), відкочується — як у турнірному регламенті.
+    /// Повертає, скільки пізніших вироків скасовано.
+    /// </summary>
+    int Accept(int who)
+    {
+        var at = _verdicts.FindLastIndex(v => v.Seat == who && !v.Ok);
+        var later = at >= 0 ? _verdicts.Skip(at + 1).ToList() : [];
+        for (var k = later.Count - 1; k >= 0; k--)
+        {
+            var v = later[k];
+            _scores[v.Seat] += v.Ok ? -_price : _price;
+            _streak[v.Seat] = v.Streak;
+            _wrong.Remove(v.Seat);
+            _appeals.RemoveAll(a => a.Seat == v.Seat);
+            var t = _tries.FindLastIndex(x => x.Seat == v.Seat);
+            if (t >= 0) _tries.RemoveAt(t);
+        }
+        var prev = at >= 0 ? _verdicts[at].Streak : _streak[who];   // серія, яку його «промах» був обірвав
+        if (at >= 0) { _verdicts.RemoveRange(at, _verdicts.Count - at); _verdicts.Add(new Verdict(who, true, prev)); }
+        _scores[who] += 2 * _price;          // мінус скасовано, плюс нараховано
+        _streak[who] = prev + 1;
+        _anyRight = true;
+        _wrong.Remove(who);
+        var i = _tries.FindLastIndex(t => t.Seat == who && !t.Ok);
+        if (i >= 0) _tries[i] = _tries[i] with { Ok = true };
+        _lastWrong = _verdicts.LastOrDefault(v => !v.Ok)?.Seat;
+        _correct = who;
+        _chooser = who;
+        _nobodyRun = 0;
+        return later.Count;
     }
 
     // ---------- живий ведучий ----------
