@@ -46,7 +46,7 @@ public sealed class NoVoice : ISvoyaVoice
 /// Пакет обирає господар ще в лобі (<see cref="ActsInLobby"/>): у статичні опції кімнати список пакетів не
 /// передати. Час — через <see cref="IRoomContext.Clock"/>, тик раз на <see cref="TickMs"/>.
 /// </summary>
-public sealed class Svoya : Game
+public sealed partial class Svoya : Game
 {
     public const int TickMs = 250;
     const int Seats = 9;
@@ -206,6 +206,7 @@ public sealed class Svoya : Game
         _round = 0;
         _played.Clear();
         ClearQuestion();
+        ClearFinal();
         var players = Players().ToList();
         _chooser = players.Count > 0 ? players[Ctx.Rng.Next(players.Count)] : null;
         if (_pack is not null) _packs?.NotePlayed(_pack.Id);
@@ -243,7 +244,7 @@ public sealed class Svoya : Game
         {
             case Intro: BeginBoard(); break;
             case Board: AutoPick(); break;
-            case Reading: BeginBuzz(); break;
+            case Reading: AfterReading(); break;
             case Buzz: BeginReveal(); break;
             case Answering:
                 // живий ведучий судить сам: його таймер — лише підказка гравцеві, що час би вже й сказати
@@ -251,6 +252,7 @@ public sealed class Svoya : Game
                 else { _until = null; _dirty = true; }
                 break;
             case Reveal: AfterReveal(); break;
+            default: SpecialTimeout(); break;
         }
         return Flush();
     }
@@ -286,7 +288,7 @@ public sealed class Svoya : Game
             Buzz => _buzzSec * 1000,
             Answering => _answerSec * 1000,
             Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + 1200),
-            _ => 0,
+            _ => SpecialMs(),
         };
         _totalMs = ms;
         _until = _pending is not null || ms <= 0 ? null : Now.AddMilliseconds(ms);
@@ -340,7 +342,9 @@ public sealed class Svoya : Game
         _cell = (t, q);
         _q = R.Themes[t].Questions[q];
         _price = _q.Price;
-        BeginReading();
+        if (_q.Type == SvoyaQuestion.Cat) BeginCat();
+        else if (_q.Type == SvoyaQuestion.Auction) BeginAuction();
+        else BeginReading();
     }
 
     void BeginReading()
@@ -348,6 +352,14 @@ public sealed class Svoya : Game
         Phase(Reading);
         if (Machine) Speak(_q!.Text); else Silence();
         Arm();
+    }
+
+    /// <summary>Дочитали: звичайне запитання — кнопка; кіт чи аукціон — одразу відповідає той, кому воно дісталось.</summary>
+    void AfterReading()
+    {
+        if (_solo is { } s && IsPlayer(s)) BeginAnswering(s);
+        else if (_solo is not null) BeginReveal();
+        else BeginBuzz();
     }
 
     void BeginBuzz()
@@ -385,6 +397,8 @@ public sealed class Svoya : Game
         _scores[seat] -= _price;
         _wrong.Add(seat);
         _answering = null;
+        // кіт і аукціон — для одного: помилився, і запитання закрите
+        if (_solo is not null) { BeginReveal(); return; }
         if (_mode == Auto) Speak(WrongLine(), wait: false);
         BeginBuzz();
     }
@@ -407,8 +421,8 @@ public sealed class Svoya : Game
     {
         _round++;
         _played.Clear();
-        // фінал (і спецклітинки) — етап 4; поки що партія закінчується на останньому звичайному раунді
-        if (_round >= _pack!.Rounds.Count || R.IsFinal) { Over(null); return; }
+        if (_round >= _pack!.Rounds.Count) { Over(null); return; }
+        if (R.IsFinal) { BeginFinal(); return; }
         PrepareRound(_round);
         BeginIntro();
     }
@@ -424,6 +438,7 @@ public sealed class Svoya : Game
         _tries.Clear();
         _presses.Clear();
         _appeals.Clear();
+        ClearSpecial();
     }
 
     void Over(string? error)
@@ -468,7 +483,13 @@ public sealed class Svoya : Game
         _dirty = true;
         if (!Players().Any()) { Over(null); return; }
         if (_chooser == seat) _chooser = Players().First();
-        if (_answering == seat) BeginBuzz();       // пішов, не відповівши — кнопка знову відкрита, без штрафу
+        if (_answering == seat)
+        {
+            // пішов, не відповівши: звичайне запитання — кнопка знову відкрита, кіт чи аукціон — закрите; без штрафу
+            if (_solo == seat) BeginReveal(); else BeginBuzz();
+            return;
+        }
+        SpecialLeave(seat);
     }
 
     // =========================================================================================
@@ -519,6 +540,8 @@ public sealed class Svoya : Game
         if (_phase == Done) return ActResult.Fail("Партію зіграно");
         if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
         if (seat == _host) return HostAct(action, payload);
+        if (_paused && action is not "appeal") return ActResult.Fail("Пауза");
+        if (SpecialAct(seat, action, payload) is { } special) return special;
         return action switch
         {
             "pick" => Pick(seat, payload),
@@ -548,6 +571,7 @@ public sealed class Svoya : Game
     {
         if (!IsPlayer(seat)) return ActResult.Fail("Ти тут не граєш");
         if (_paused) return ActResult.Fail("Пауза");
+        if (_solo is not null) return ActResult.Fail(_solo == seat ? "Відповідай — кнопка тут не потрібна" : "Це запитання — лише для одного гравця");
         if (_wrong.Contains(seat)) return ActResult.Fail("Свою спробу на це запитання ти вже використав(-ла)");
         if (_phase == Reading && !_early) return ActResult.Fail("Ще читають — зачекай");
         if (_phase is Answering && _answering is { } who)
@@ -654,11 +678,12 @@ public sealed class Svoya : Game
                 return ActResult.Accept($"{Ctx.NickOf(s)} {(delta > 0 ? "+" : "−")}{Math.Abs(delta)}");
         }
         if (_paused) return ActResult.Fail("Пауза — спершу «Далі гра»");
+        if (SpecialHostAct(action, payload) is { } special) return special;
         switch (action)
         {
             case "open":
                 if (_phase != Reading) return ActResult.Fail("Зараз нема що відкривати");
-                BeginBuzz();
+                AfterReading();
                 return ActResult.Done;
             case "verdict":
                 if (_phase != Answering || _answering is not { } who) return ActResult.Fail("Зараз ніхто не відповідає");
@@ -683,8 +708,8 @@ public sealed class Svoya : Game
     public override object View(int? seat)
     {
         var isHost = _mode == Live && seat is { } hs && hs == (_phase == Lobby ? Ctx.HostSeat : _host);
-        var open = _phase is Reveal;
-        var showQuestion = _q is not null && _phase is Reading or Buzz or Answering or Reveal;
+        var open = _phase is Reveal or FinalReveal;
+        var showQuestion = _q is not null && _phase is Reading or Buzz or Answering or Reveal or FinalQuestion or FinalJudge or FinalReveal;
         var inRound = _pack is not null && _phase is not (Lobby or Done) && _round < _pack.Rounds.Count;
         return new
         {
@@ -745,14 +770,19 @@ public sealed class Svoya : Game
             {
                 isHost,
                 canPick = _phase == Board && !_paused && (me == _chooser || isHost),
-                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _answering is null
+                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _answering is null && _solo is null
                     && (_phase == Buzz || (_phase == Reading && _early)),
                 canAnswer = _mode == Auto && _phase == Answering && _answering == me,
                 canAppeal = _mode == Auto && _phase == Reveal && !_appeals.Any(a => a.Seat == me)
                     && _tries.Any(t => t.Seat == me && !t.Ok && t.Text is not null),
                 canJudge = _mode == Auto && _phase == Reveal && _appeals.Count > 0 && me == Ctx.HostSeat,
                 canChoosePack = _phase == Lobby && me == Ctx.HostSeat,
+                special = SpecialMe(me, isHost),
             },
+            solo = _solo,
+            cat = CatView(),
+            auction = AuctionView(),
+            final = FinalView(seat, isHost),
             left = _left.Order().ToArray(),
             error = _error,
             result = _result,

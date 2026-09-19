@@ -127,10 +127,10 @@
   function tvHtml(ctx, v) {
     const q = v.question;
     if (!q) return '';
-    const open = v.phase === 'reveal';
+    const open = v.phase === 'reveal' || v.phase === 'finale';
     const a = v.answer;
     let html = '<div class="svtv' + (open ? ' open' : '') + '">'
-      + '<div class="svq-head"><span>' + esc(q.theme) + '</span><b>' + q.price + '</b></div>'
+      + '<div class="svq-head"><span>' + esc(q.theme) + '</span><b>' + (q.price > 0 ? q.price : '🏁') + '</b></div>'
       + (q.text ? '<div class="svq-text">' + esc(q.text) + '</div>' : '')
       + mediaHtml(v, q.media, 'q');
     if (a && open) {
@@ -181,7 +181,7 @@
       row.push(btn('verdict', '✗ Ні', 'ghost svno', ' data-ok="0"'));
     }
     if (v.phase === 'reading' || v.phase === 'buzz' || v.phase === 'answering') row.push(btn('nobody', 'Ніхто — показати відповідь'));
-    if (v.phase === 'intro' || v.phase === 'reveal') row.push(btn('next', 'Далі ▶', 'primary'));
+    if (v.phase === 'intro' || v.phase === 'reveal' || v.phase === 'finale') row.push(btn('next', 'Далі ▶', 'primary'));
     row.push(v.paused ? btn('resume', '▶ Далі гра', 'primary') : btn('pause', '⏸ Пауза'));
     if (v.voice && v.voice.available)
       row.push(btn('voice', v.voice.on ? '🗣 Читає голос — вимкнути' : '🗣 Хай читає голос', 'ghost', ' data-on="' + (v.voice.on ? '0' : '1') + '"'));
@@ -331,6 +331,113 @@
     el.play().catch(() => { /* браузер не дав — є кнопка ▶ на самому плеєрі */ });
   }
 
+  // ---------- кіт, аукціон, фінал ----------
+
+  const sp = (v) => (v.me && v.me.special) || {};
+
+  function catHtml(ctx, v) {
+    const c = v.cat || {};
+    const me = sp(v);
+    let html = '<div class="svbig">🐱 Кіт у мішку!</div>';
+    if (c.to == null) {
+      if (me.canGive) {
+        html += '<div class="svwho">Кому віддаси запитання?</div><div class="svrow center">';
+        for (let i = 0; i < seatsOf(ctx); i++) {
+          if (!ctx.nickOf(i) || i === v.host || i === c.from || (v.left || []).indexOf(i) >= 0) continue;
+          html += '<button type="button" class="primary" data-do="give" data-seat="' + i + '">' + esc(nick(ctx, i)) + '</button>';
+        }
+        html += '</div>';
+      } else html += '<div class="svwho">' + esc(nick(ctx, c.from)) + ' вирішує, кому віддати кота</div>';
+    } else if (c.choosing) {
+      html += '<div class="svwho">Кіт дістався: ' + esc(nick(ctx, c.to)) + '</div>';
+      html += me.canCatPrice
+        ? '<div class="svrow center"><button type="button" class="ghost" data-do="catPrice" data-max="0">За ' + c.min + '</button>'
+          + '<button type="button" class="primary" data-do="catPrice" data-max="1">За ' + c.max + '</button></div>'
+        : '<div class="svwho">обирає ціну: ' + c.min + ' або ' + c.max + '</div>';
+    }
+    return html;
+  }
+
+  function auctionHtml(ctx, v) {
+    const a = v.auction || {};
+    const me = sp(v);
+    let html = '<div class="svbig">🔨 Аукціон</div>'
+      + '<div class="svauc"><span>Номінал <b>' + a.nominal + '</b></span>'
+      + '<span>Ставка <b>' + a.current + '</b>' + (a.holder != null ? ' — ' + esc(nick(ctx, a.holder)) : '') + (a.allIn ? ' 💥 ва-банк' : '') + '</span></div>';
+    if (a.turn != null) html += '<div class="svwho">' + (a.turn === ctx.seat ? 'Твій хід у торгах' : 'Торгується ' + esc(nick(ctx, a.turn))) + '</div>';
+    const row = [];
+    if (me.canAllIn) row.push('<button type="button" class="ghost" data-do="allin">💥 Ва-банк (' + ((v.scores || [])[ctx.seat] || 0) + ')</button>');
+    if (me.canPass) row.push('<button type="button" class="ghost" data-do="pass">Пас</button>');
+    if (me.canPassFor) row.push('<button type="button" class="ghost" data-do="passFor">Пас за ' + esc(nick(ctx, a.turn)) + '</button>');
+    if (row.length) html += '<div class="svrow center">' + row.join('') + '</div>';
+    if ((a.bids || []).length) {
+      html += '<div class="svbids">' + a.bids.map((b) => '<span>' + esc(nick(ctx, b.seat)) + ': '
+        + (b.what === 'pass' ? 'пас' : b.what === 'allin' ? 'ва-банк ' + b.amount : b.amount) + '</span>').join('') + '</div>';
+    }
+    return html;
+  }
+
+  function finalHtml(ctx, v) {
+    const f = v.final || {};
+    const me = sp(v);
+    const themes = f.themes || [];
+    let html = '';
+    if (v.phase === 'strike') {
+      html += '<div class="svbig">🏁 Фінал</div><div class="svwho">' + (me.canStrike && f.turn === ctx.seat ? 'Викресли тему, яка тобі не до душі'
+        : me.canStrike ? 'Викреслює ' + esc(nick(ctx, f.turn)) + ' — можеш за нього' : 'Викреслює ' + esc(nick(ctx, f.turn))) + '</div>';
+      html += '<div class="svfthemes">' + themes.map((t, i) => (f.struck || []).indexOf(i) >= 0
+        ? '<span class="svft struck">' + esc(t) + '</span>'
+        : '<button type="button" class="svft"' + (me.canStrike ? ' data-do="strike" data-theme="' + i + '"' : ' disabled') + '>' + esc(t) + '</button>').join('') + '</div>';
+      return html;
+    }
+    const theme = f.theme >= 0 ? themes[f.theme] : '';
+    if (v.phase === 'bet') {
+      html += '<div class="svbig">🏁 ' + esc(theme) + '</div>'
+        + '<div class="svwho">' + (me.canBet ? (me.bet ? 'Твоя ставка: ' + me.bet + '. Можна змінити, поки йде час' : 'Скільки ставиш?') : 'Фіналісти роблять ставки') + '</div>';
+    }
+    if (v.phase === 'final' || v.phase === 'judging' || v.phase === 'finale') html += tvHtml(ctx, v);
+    if (v.phase === 'final' && me.answer) html += '<div class="svwho">Твоя відповідь: «' + esc(me.answer) + '» — можна переписати</div>';
+    const rows = f.rows || [];
+    const done = f.betted || [];
+    html += '<div class="svfinal">' + (f.finalists || []).map((s) => {
+      const r = rows.find((x) => x.seat === s);
+      const flag = v.phase === 'bet' ? (done.indexOf(s) >= 0 ? '✓ ставку зроблено' : '…')
+        : v.phase === 'final' ? ((f.answered || []).indexOf(s) >= 0 ? '✓ відповідь є' : '…') : '';
+      let cell = '<span class="svn">' + esc(nick(ctx, s)) + '</span>';
+      if (r && r.answer != null && v.phase !== 'bet') cell += '<i>«' + esc(r.answer) + '»</i>';
+      if (r && r.bet != null) cell += '<em>' + r.bet + '</em>';
+      if (r && r.ok != null) cell += r.ok ? '<b class="ok">✓</b>' : '<b class="no">✗</b>';
+      if (me.canFinalJudge) cell += '<button type="button" class="ghost small" data-do="finalVerdict" data-seat="' + s + '" data-ok="1">✓</button>'
+        + '<button type="button" class="ghost small" data-do="finalVerdict" data-seat="' + s + '" data-ok="0">✗</button>';
+      if (flag) cell += '<span class="muted small">' + flag + '</span>';
+      return '<div class="svfrow">' + cell + '</div>';
+    }).join('') + '</div>';
+    if (me.canFinalJudge) html += '<div class="svrow center"><button type="button" class="primary" data-do="next">Розкрити ▶</button></div>';
+    return html;
+  }
+
+  /// Числове поле для ставки в аукціоні й у фіналі — живе окремо від перемальовки, як і пошук.
+  function numForm(root, ctx, v) {
+    const form = root.querySelector('.svnum');
+    const me = sp(v);
+    const a = v.auction || {};
+    const mine = (v.scores || [])[ctx.seat] || 0;
+    let mode = '';
+    if (v.phase === 'auction' && me.canBid) mode = 'bid';
+    else if (v.phase === 'bet' && me.canBet) mode = 'bet';
+    const was = form.dataset.mode || '';
+    form.hidden = !mode;
+    form.dataset.mode = mode;
+    if (!mode) return;
+    const input = form.querySelector('input');
+    const min = mode === 'bid' ? a.minBid : 1;
+    input.min = min;
+    input.max = mine;
+    form.querySelector('span').textContent = 'Ставка (' + min + '…' + mine + ')';
+    form.querySelector('button').textContent = mode === 'bid' ? 'Підняти' : me.bet ? 'Змінити' : 'Поставити';
+    if (was !== mode) { input.value = String(min); setTimeout(() => input.focus(), 0); }
+  }
+
   // ---------- збирання ----------
 
   function headText(ctx, v) {
@@ -355,8 +462,12 @@
     if (v.phase === 'done') {
       const res = v.result || {};
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
-      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Ніхто не вийшов у плюс') + '</div></div>';
+      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Ніхто не вийшов у плюс') + '</div></div>'
+        + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
+    if (v.phase === 'cat') return catHtml(ctx, v);
+    if (v.phase === 'auction') return auctionHtml(ctx, v);
+    if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
     return tvHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
   }
 
@@ -378,7 +489,7 @@
 
     // велика кнопка: гравцям, коли йде запитання
     const buzz = root.querySelector('.svbuzz');
-    const showBuzz = ctx.mine && !me.isHost && ctx.playing && ['reading', 'buzz', 'answering'].indexOf(v.phase) >= 0;
+    const showBuzz = ctx.mine && !me.isHost && ctx.playing && ['reading', 'buzz', 'answering'].indexOf(v.phase) >= 0 && v.solo == null;
     buzz.hidden = !showBuzz;
     buzz.disabled = !me.canBuzz;
     buzz.classList.toggle('live', !!me.canBuzz);
@@ -388,12 +499,14 @@
     // поле відповіді (лише в auto, лише тому, хто натиснув)
     const form = root.querySelector('.svform');
     const was = !form.hidden;
-    form.hidden = !me.canAnswer;
-    if (me.canAnswer && !was) {
+    const canType = me.canAnswer || sp(v).canFinalAnswer;
+    form.hidden = !canType;
+    if (canType && !was) {
       const input = form.querySelector('input');
       input.value = '';
       setTimeout(() => input.focus(), 0);
     }
+    numForm(root, ctx, v);
     speakerBtn(root, ctx);
     voice(root, ctx, v);
     autoplayMedia(root, ctx, v);
@@ -415,6 +528,10 @@
       case 'verdict': act('verdict', { ok: d.ok === '1' }); break;
       case 'adjust': act('adjust', { seat: +d.seat, delta: +d.d }); break;
       case 'voice': act('voice', { on: d.on === '1' }); break;
+      case 'give': act('give', { seat: +d.seat }); break;
+      case 'catPrice': act('catPrice', { max: d.max === '1' }); break;
+      case 'strike': act('strike', { theme: +d.theme }); break;
+      case 'finalVerdict': act('finalVerdict', { seat: +d.seat, ok: d.ok === '1' }); break;
       default: act(d.do); break;
     }
   }
@@ -435,6 +552,7 @@
         + '<button type="button" class="svbuzz" data-do="buzz" hidden>🔔</button>'
         + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
         + '<button class="primary" type="submit">➤</button></form>'
+        + '<form class="svnum" hidden><span class="muted small"></span><input type="number" inputmode="numeric"><button class="primary" type="submit"></button></form>'
         + '<div class="svscores"></div>'
         + '</div>';
       const s = st(root);
@@ -454,12 +572,21 @@
       s.sayId = (ctx.view && ctx.view.say && ctx.view.say.id) || 0;
       const search = root.querySelector('.svsearch');
       search.addEventListener('input', () => { s.query = search.value; if (root._ctx) render(root, root._ctx); });
+      root.querySelector('.svnum').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const c = root._ctx;
+        const f = e.currentTarget;
+        const amount = parseInt(f.querySelector('input').value, 10);
+        if (!c || !Number.isFinite(amount)) return;
+        c.act(f.dataset.mode === 'bid' ? 'bid' : 'bet', { amount });
+      });
       root.querySelector('.svform').addEventListener('submit', (e) => {
         e.preventDefault();
         const input = e.currentTarget.querySelector('input');
         const text = input.value.trim();
         if (!text || !root._ctx) return;
-        root._ctx.act('answer', { text }).then((r) => { if (r && r.ok) input.value = ''; });
+        const final = root._ctx.view && root._ctx.view.phase === 'final';
+        root._ctx.act('answer', { text }).then((r) => { if (r && r.ok && !final) input.value = ''; });
       });
       s.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
       render(root, ctx);
@@ -498,7 +625,14 @@
         case 'answering':
           if (v.answering === ctx.seat) return v.mode === 'live' ? 'Кажи відповідь уголос!' : 'Пиши відповідь!';
           return me.isHost ? nick(ctx, v.answering) + ' відповідає — суди' : 'Відповідає ' + nick(ctx, v.answering);
-        case 'reveal': return v.correct != null ? 'Правильно відповів ' + nick(ctx, v.correct) : 'Ніхто не відповів';
+        case 'reveal': return v.correct != null ? 'Правильно: ' + nick(ctx, v.correct) : 'Ніхто не відповів';
+        case 'cat': return 'Кіт у мішку';
+        case 'auction': return v.auction && v.auction.turn === ctx.seat ? 'Твій хід у торгах' : 'Аукціон';
+        case 'strike': return 'Фінал: викреслюємо теми';
+        case 'bet': return 'Фінал: ставки';
+        case 'final': return sp(v).canFinalAnswer ? 'Пиши відповідь — у всіх 30 секунд' : 'Фіналісти пишуть відповіді';
+        case 'judging': return me.isHost ? 'Оціни відповіді й розкривай' : 'Ведучий перевіряє відповіді';
+        case 'finale': return 'Розкриваємо фінал';
       }
       return '';
     },

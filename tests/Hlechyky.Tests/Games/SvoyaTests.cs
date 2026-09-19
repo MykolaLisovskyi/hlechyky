@@ -20,6 +20,36 @@ sealed class FakeSvoyaPacks : ISvoyaPackSource
         var secret = SvoyaPackTests.Mini();
         secret.Id = "p_secret";
         Packs["p_secret"] = (secret, "олег");
+        var nofinal = SvoyaPackTests.Mini();
+        nofinal.Rounds.RemoveAt(1);
+        nofinal.Id = "b_nofinal";
+        SvoyaBuiltin.Stamp(nofinal, "nofinal");
+        Packs["b_nofinal"] = (nofinal, "");
+    }
+
+    /// <summary>Вбудований пакет із одним раундом (одна тема, задані типи й ціни) і фіналом на дві теми.</summary>
+    public string Add(string id, params (string Type, int Price)[] cells)
+    {
+        var p = new SvoyaPack { Id = id, Title = id };
+        p.Rounds.Add(new SvoyaRound
+        {
+            Name = "Раунд",
+            Themes = [new SvoyaTheme
+            {
+                Name = "Тема",
+                Questions = [.. cells.Select((c, i) => new SvoyaQuestion { Price = c.Price, Type = c.Type, Text = "Питання " + (i + 1), Answer = "відповідь" + (i + 1) })],
+            }],
+        });
+        p.Rounds.Add(new SvoyaRound
+        {
+            Name = "Фінал",
+            Type = SvoyaRound.Final,
+            Themes = [new SvoyaTheme { Name = "Ф1", Questions = [new SvoyaQuestion { Text = "Фінал один", Answer = "фінал1" }] },
+                      new SvoyaTheme { Name = "Ф2", Questions = [new SvoyaQuestion { Text = "Фінал два", Answer = "фінал2" }] }],
+        });
+        SvoyaBuiltin.Stamp(p, id);
+        Packs[id] = (p, "");
+        return id;
     }
 
     public SvoyaPack? Playable(string id, string hostNick) =>
@@ -43,7 +73,7 @@ sealed class FakeSvoyaVoice(double seconds = 2, bool ready = true) : ISvoyaVoice
 public class SvoyaTests
 {
     internal static RoomHarness Table(object? options = null, string[]? nicks = null, ISvoyaVoice? voice = null,
-        FakeSvoyaPacks? packs = null, int seed = 5, bool start = true)
+        FakeSvoyaPacks? packs = null, int seed = 5, bool start = true, string pack = "b_mini")
     {
         var sc = new ServiceCollection();
         sc.AddSingleton<ISvoyaPackSource>(packs ?? new FakeSvoyaPacks());
@@ -51,7 +81,7 @@ public class SvoyaTests
         var h = new RoomHarness("svoya", options, seed, sc.BuildServiceProvider());
         foreach (var n in nicks ?? ["Оля", "Петро"]) h.Join(n);
         if (!start) return h;
-        Assert.True(h.Act(0, "pack", new { id = "b_mini" }).Ok);
+        Assert.True(h.Act(0, "pack", new { id = pack }).Ok);
         Assert.True(h.Start().Ok, h.Reply.Message);
         return h;
     }
@@ -388,7 +418,7 @@ public class SvoyaTests
     [Fact]
     public void Game_ends_after_the_last_round_with_the_best_score_winning()
     {
-        var h = Table();
+        var h = Table(pack: "b_nofinal");
         PlayRound(h, i => i == 3 ? 0 : 1);                  // Петро 100+200+100, Оля 200
         Until(h, Svoya.Done, 400);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
@@ -401,12 +431,12 @@ public class SvoyaTests
     [Fact]
     public void Rematch_keeps_the_pack()
     {
-        var h = Table();
+        var h = Table(pack: "b_nofinal");
         PlayRound(h, _ => 0);
         Until(h, Svoya.Done, 400);
         Assert.True(h.Rematch().Ok);
         Assert.Equal(Svoya.Intro, Phase(h));
-        Assert.Equal("Міні", h.View(null).GetProperty("pack").GetProperty("title").GetString());
+        Assert.Equal("b_nofinal", h.View(null).GetProperty("pack").GetProperty("id").GetString());
         Assert.All(h.View(null).GetProperty("scores").EnumerateArray(), s => Assert.Equal(0, s.GetInt32()));
     }
 
@@ -497,11 +527,8 @@ public class SvoyaTests
 /// <summary>Живий ведучий (specs/svoya.md §3.0): господар не грає, читає сам і судить.</summary>
 public class SvoyaLiveTests
 {
-    static RoomHarness Live(string[]? nicks = null, object? extra = null)
-    {
-        var h = SvoyaTests.Table(new { host = "live", buzz = "10", answer = "15" }, nicks ?? ["Ведучий", "Оля", "Петро"]);
-        return h;
-    }
+    static RoomHarness Live(string[]? nicks = null, string pack = "b_mini") =>
+        SvoyaTests.Table(new { host = "live", buzz = "10", answer = "15" }, nicks ?? ["Ведучий", "Оля", "Петро"], pack: pack);
 
     static string Phase(RoomHarness h) => SvoyaTests.Phase(h);
 
@@ -554,7 +581,7 @@ public class SvoyaLiveTests
     [Fact]
     public void Host_opens_the_button_and_judges()
     {
-        var h = Live(extra: null);
+        var h = Live();
         var c = OpenLive(h);
         Assert.Equal(Svoya.Reading, Phase(h));
         Assert.True(h.Act(0, "open").Ok);
@@ -657,7 +684,7 @@ public class SvoyaLiveTests
     [Fact]
     public void Live_game_ends_with_players_only_in_the_result()
     {
-        var h = Live();
+        var h = Live(pack: "b_nofinal");
         h.Act(0, "adjust", new { seat = 1, delta = 500 });
         for (var i = 0; i < 4; i++)
         {
