@@ -699,6 +699,10 @@
     },
 
     onKey(e, ctx) {
+      // Esc за столом посеред партії — з'їдаємо, щоб ядро не кинуло гравця в лобі. Свого Esc у грі нема,
+      // а на Steam Deck кнопка B, якою закривають екранну клавіатуру після відповіді, приходить саме як
+      // Escape — і вже після того, як поле відповіді сховалось і фокус із нього злетів.
+      if (e.key === 'Escape') return !!(ctx.mine && ctx.playing);
       // пробіл — кнопка (коли не друкуєш відповідь)
       if (e.key !== ' ' && e.code !== 'Space') return false;
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return false;
