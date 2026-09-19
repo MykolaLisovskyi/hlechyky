@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games.Impl;
@@ -17,6 +18,12 @@ public static class SvoyaSetup
             Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.BuiltinDir),
             sp.GetService<ILogger<SvoyaBuiltin>>()));
         services.AddSingleton(sp => new SvoyaFiles(Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.MediaDir)));
+        // голос ведучого: edge-tts у фоні, кеш cache/tts
+        services.AddOptions<TtsOptions>().BindConfiguration("Tts");
+        services.TryAddSingleton<ITtsEngine, EdgeTtsEngine>();
+        services.AddSingleton<TtsService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TtsService>());
+        services.AddSingleton<ISvoyaVoice, SvoyaVoice>();
         services.AddSingleton<SvoyaPacks>();
         services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
         return services;
@@ -77,6 +84,12 @@ public static class SvoyaSetup
         app.MapDelete(Root + "/{id}", (HttpContext c, string id, SvoyaPacks packs) => Reply(packs.Delete(id, User(c))));
 
         app.MapPost(Root + "/{id}/copy", (HttpContext c, string id, SvoyaPacks packs) => Reply(packs.Copy(id, User(c))));
+
+        // «Озвучити»: поставити всі репліки пакета в чергу (POST) і дивитись, скільки вже готово (GET)
+        app.MapGet(Root + "/{id}/tts", (HttpContext c, string id, SvoyaPacks packs) => Reply(packs.Voice(id, User(c), start: false)));
+        app.MapPost(Root + "/{id}/tts", (HttpContext c, string id, SvoyaPacks packs) => Reply(packs.Voice(id, User(c), start: true)));
+
+        SvoyaVoice.Map(app);                                  // /api/games/svoya/tts/<хеш>.mp3
 
         app.MapPost(Root + "/{id}/hide", (HttpContext c, string id, HideRequest req, SvoyaPacks packs) =>
             Reply(packs.Hide(id, User(c), req.Hidden)));

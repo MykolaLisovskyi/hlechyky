@@ -130,3 +130,7 @@ audio.svmedia { width: min(420px, 100%); }
   .svcell { min-height: 40px; font-size: 1em; }
   .svscores { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- голос ---------- */
+.svspk { margin-left: auto; white-space: nowrap; }
+.svspk.on { color: var(--accent); }

@@ -34,7 +34,8 @@ sealed class FakeSvoyaVoice(double seconds = 2, bool ready = true) : ISvoyaVoice
     public bool Ready_ = ready;
     public readonly List<string> Prepared = [];
     public bool Enabled => true;
-    public void Prepare(string voice, IEnumerable<string> texts) => Prepared.AddRange(texts);
+    public readonly List<string> Urgent = [];
+    public void Prepare(string voice, IEnumerable<string> texts, bool urgent = false) => (urgent ? Urgent : Prepared).AddRange(texts);
     public SvoyaClip? Ready(string voice, string text) => Ready_ ? new SvoyaClip($"/tts/{text.Length}.mp3", seconds) : null;
 }
 

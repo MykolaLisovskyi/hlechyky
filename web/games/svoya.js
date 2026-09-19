@@ -11,11 +11,11 @@
       answer: { text, accept[], comment, media } | null,   // усім — після розкриття; живому ведучому — одразу
       answering, correct, until, totalMs, paused, leftMs, waiting,
       scores[], wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], appeals: [{ seat, text }],
-      say: { id, text, url } | null,
+      say: { id, text, url } | null, voice: { on, available },
       me: { isHost, canPick, canBuzz, canAnswer, canAppeal, canJudge, canChoosePack } | null,
       left[], error, result }
   Ходи: pack {id} (лобі, господар) · pick {theme, q} · buzz · answer {text} · appeal · judge {seat, accept}
-        живий ведучий: open · verdict {ok} · nobody · next · pause · resume · adjust {seat, delta}
+        живий ведучий: open · verdict {ok} · nobody · next · pause · resume · adjust {seat, delta} · voice {on}
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -28,7 +28,7 @@
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 9);
 
   function st(root) {
-    if (!root._sv) root._sv = { timer: 0, packs: null, packsAt: 0, loadingPacks: false, query: '', sayId: 0, media: '' };
+    if (!root._sv) root._sv = { timer: 0, packs: null, packsAt: 0, loadingPacks: false, query: '', sayId: 0, media: '', speaking: false, radioMuted: null };
     return root._sv;
   }
 
@@ -183,6 +183,8 @@
     if (v.phase === 'reading' || v.phase === 'buzz' || v.phase === 'answering') row.push(btn('nobody', 'Ніхто — показати відповідь'));
     if (v.phase === 'intro' || v.phase === 'reveal') row.push(btn('next', 'Далі ▶', 'primary'));
     row.push(v.paused ? btn('resume', '▶ Далі гра', 'primary') : btn('pause', '⏸ Пауза'));
+    if (v.voice && v.voice.available)
+      row.push(btn('voice', v.voice.on ? '🗣 Читає голос — вимкнути' : '🗣 Хай читає голос', 'ghost', ' data-on="' + (v.voice.on ? '0' : '1') + '"'));
     html += '<div class="svrow">' + row.join('') + '</div>';
     if ((v.presses || []).length) {
       html += '<div class="svpresses">🔔 ' + v.presses.map((p, i) => '<span' + (i === 0 ? ' class="first"' : '') + '>'
@@ -239,6 +241,94 @@
     bar.classList.toggle('hot', (v.phase === 'buzz' || v.phase === 'answering') && left < 4000);
     const t = String(Math.ceil(left / 1000));
     if (span.textContent !== t) span.textContent = t;
+  }
+
+  // ---------- голос ведучого ----------
+  // Звучить лише там, де ввімкнено «🔊 Ведучий тут»: типово — у глядача (телевізор) і в господаря столу, щоб
+  // не лунало з восьми телефонів разом. Вибір живе в localStorage. Радіо на час репліки глушимо, як у Melody.
+
+  const SPK_KEY = 'svoyaSpeaker';
+
+  function speakerOn(ctx) {
+    let saved = null;
+    try { saved = localStorage.getItem(SPK_KEY); } catch { /* приватне вікно */ }
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+    const host = ctx.room && ctx.me && String(ctx.room.host || '').toLowerCase() === String(ctx.me.nick || '').toLowerCase();
+    return ctx.seat == null || !!host;
+  }
+
+  function setSpeaker(on) {
+    try { localStorage.setItem(SPK_KEY, on ? '1' : '0'); } catch { /* приватне вікно */ }
+  }
+
+  function radio() { return document.getElementById('audio'); }
+
+  function duck(s, on) {
+    const r = radio();
+    if (!r) return;
+    if (on && s.radioMuted == null) { s.radioMuted = r.muted; r.muted = true; }
+    if (!on && s.radioMuted != null) { r.muted = s.radioMuted; s.radioMuted = null; }
+  }
+
+  function hush(root) {
+    const s = st(root);
+    const a = root.querySelector('.svvoice');
+    if (a && !a.paused) a.pause();
+    if (window.speechSynthesis && s.speaking) { try { speechSynthesis.cancel(); } catch { /* нема */ } }
+    s.speaking = false;
+    duck(s, false);
+  }
+
+  function ukVoice() {
+    if (!window.speechSynthesis) return null;
+    return speechSynthesis.getVoices().find((x) => /^uk/i.test(x.lang)) || null;
+  }
+
+  function voice(root, ctx, v) {
+    const s = st(root);
+    const say = v.say;
+    if (v.phase === 'answering' || v.phase === 'done' || v.phase === 'lobby') { if (s.speaking) hush(root); }
+    if (!say || say.id === s.sayId) return;
+    s.sayId = say.id;
+    if (!speakerOn(ctx) || !ctx.playing) return;
+    hush(root);
+    if (say.url) {
+      const a = root.querySelector('.svvoice');
+      a.src = say.url;
+      duck(s, true);
+      s.speaking = true;
+      a.play().catch(() => { s.speaking = false; duck(s, false); });
+    } else {
+      const uk = ukVoice();
+      if (!uk) return;                                         // без українського голосу краще тиша, ніж англійський акцент
+      const u = new SpeechSynthesisUtterance(say.text);
+      u.voice = uk; u.lang = uk.lang; u.rate = 1.05;
+      u.onend = u.onerror = () => { s.speaking = false; duck(s, false); };
+      duck(s, true);
+      s.speaking = true;
+      speechSynthesis.speak(u);
+    }
+  }
+
+  function speakerBtn(root, ctx) {
+    const b = root.querySelector('.svspk');
+    const on = speakerOn(ctx);
+    const text = on ? '🔊 Ведучий тут' : '🔇 Ведучий';
+    if (b.textContent !== text) b.textContent = text;
+    b.title = on ? 'Голос ведучого звучить на цьому пристрої. Натисни — вимкнути' : 'Голос ведучого тут мовчить. Натисни — хай звучить тут (телевізор, колонка)';
+    b.classList.toggle('on', on);
+  }
+
+  /// Медіа запитання (звук, відео) грає там само, де й голос.
+  function autoplayMedia(root, ctx, v) {
+    const s = st(root);
+    const el = root.querySelector('.svmedia.q');
+    const key = v.phase === 'reading' && el ? v.round + ':' + (v.cell ? v.cell.theme + '/' + v.cell.q : '') : '';
+    if (key === s.media) return;
+    s.media = key;
+    if (!key || !speakerOn(ctx) || !el.play) return;
+    el.play().catch(() => { /* браузер не дав — є кнопка ▶ на самому плеєрі */ });
   }
 
   // ---------- збирання ----------
@@ -304,6 +394,9 @@
       input.value = '';
       setTimeout(() => input.focus(), 0);
     }
+    speakerBtn(root, ctx);
+    voice(root, ctx, v);
+    autoplayMedia(root, ctx, v);
     timer(root, ctx);
   }
 
@@ -321,6 +414,7 @@
       case 'judge': act('judge', { seat: +d.seat, accept: d.ok === '1' }); break;
       case 'verdict': act('verdict', { ok: d.ok === '1' }); break;
       case 'adjust': act('adjust', { seat: +d.seat, delta: +d.d }); break;
+      case 'voice': act('voice', { on: d.on === '1' }); break;
       default: act(d.do); break;
     }
   }
@@ -332,7 +426,9 @@
 
     mount(root, ctx) {
       root.innerHTML = '<div class="svwrap">'
-        + '<div class="svtop"><div class="svhead muted small"></div><div class="svtime"><i></i><span></span></div></div>'
+        + '<div class="svtop"><div class="svhead muted small"></div><button type="button" class="ghost small svspk"></button>'
+        + '<div class="svtime"><i></i><span></span></div></div>'
+        + '<audio class="svvoice" preload="auto"></audio>'
         + '<input class="svsearch" type="search" placeholder="знайти пакет…" hidden>'
         + '<div class="svstage"></div>'
         + '<div class="svhostbox"></div>'
@@ -343,6 +439,19 @@
         + '</div>';
       const s = st(root);
       root.addEventListener('click', (e) => onClick(root, e));
+      root.querySelector('.svspk').addEventListener('click', () => {
+        const c = root._ctx;
+        if (!c) return;
+        const on = !speakerOn(c);
+        setSpeaker(on);
+        if (!on) hush(root);
+        speakerBtn(root, c);
+      });
+      const a = root.querySelector('.svvoice');
+      const done = () => { s.speaking = false; duck(s, false); };
+      a.addEventListener('ended', done);
+      // F5 посеред репліки — стару не повторюємо: звучить лише те, що ведучий скаже вже при нас
+      s.sayId = (ctx.view && ctx.view.say && ctx.view.say.id) || 0;
       const search = root.querySelector('.svsearch');
       search.addEventListener('input', () => { s.query = search.value; if (root._ctx) render(root, root._ctx); });
       root.querySelector('.svform').addEventListener('submit', (e) => {
@@ -361,6 +470,7 @@
     unmount(root) {
       const s = root._sv;
       if (s) clearInterval(s.timer);
+      hush(root);
     },
 
     onKey(e, ctx) {

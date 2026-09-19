@@ -22,8 +22,8 @@ public interface ISvoyaVoice
 {
     /// <summary>Чи є голос узагалі (edge-tts стоїть і ввімкнений). Ні — ведучий «читає» мовчки, за оцінкою часу.</summary>
     bool Enabled { get; }
-    /// <summary>Поставити репліки в чергу на озвучку. Не блокує.</summary>
-    void Prepare(string voice, IEnumerable<string> texts);
+    /// <summary>Поставити репліки в чергу на озвучку. Не блокує. <paramref name="urgent"/> — на початок черги.</summary>
+    void Prepare(string voice, IEnumerable<string> texts, bool urgent = false);
     /// <summary>Готова репліка або null (ще готується чи не вийшла).</summary>
     SvoyaClip? Ready(string voice, string text);
 }
@@ -33,7 +33,7 @@ public sealed class NoVoice : ISvoyaVoice
 {
     public static readonly NoVoice Instance = new();
     public bool Enabled => false;
-    public void Prepare(string voice, IEnumerable<string> texts) { }
+    public void Prepare(string voice, IEnumerable<string> texts, bool urgent = false) { }
     public SvoyaClip? Ready(string voice, string text) => null;
 }
 
@@ -91,6 +91,8 @@ public sealed class Svoya : Game
     int _answerSec = 15, _buzzSec = 10;
     bool _early = true;
     string _voiceName = "ostap";
+    /// <summary>Живий ведучий попросив, щоб запитання читав голос (тумблер на пульті).</summary>
+    bool _liveVoice;
 
     // ---------- пакет ----------
     SvoyaPack? _pack;
@@ -136,6 +138,19 @@ public sealed class Svoya : Game
     sealed record Say(int Id, string Text, string? Url);
 
     DateTimeOffset Now => Ctx.Clock.UtcNow;
+
+    // Голос — чужий код (черга, диск). Його збій не має валити партію: гра тоді просто читає мовчки.
+    void Prepare(IEnumerable<string> texts, bool urgent = false)
+    {
+        try { _voice.Prepare(_voiceName, texts, urgent); }
+        catch (Exception) { /* без голосу */ }
+    }
+
+    SvoyaClip? Clip(string text)
+    {
+        try { return _voice.Ready(_voiceName, text); }
+        catch (Exception) { return null; }
+    }
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
@@ -198,20 +213,17 @@ public sealed class Svoya : Game
         BeginIntro();
     }
 
-    bool VoiceOn => _mode == Auto && _voiceName != "none" && _voice.Enabled;
+    /// <summary>Голос звучить: в auto — якщо його не вимкнули в лобі; у live — якщо ведучий попросив читати за нього.</summary>
+    bool VoiceOn => (_mode == Auto || _liveVoice) && _voiceName != "none" && _voice.Enabled;
+
+    /// <summary>Хто в цій партії читає вголос: автомат (auto, або live з увімкненим голосом) чи жива людина.</summary>
+    bool Machine => _mode == Auto || _liveVoice;
 
     /// <summary>Попросити озвучити раунд наперед: вступ, усі запитання, відповіді й коментарі.</summary>
     void PrepareRound(int round)
     {
         if (!VoiceOn || _pack is null || round >= _pack.Rounds.Count) return;
-        var r = _pack.Rounds[round];
-        var texts = new List<string> { IntroLine(r) };
-        foreach (var q in r.Themes.SelectMany(t => t.Questions))
-        {
-            if (q.Text.Length > 0) texts.Add(q.Text);
-            texts.Add(NobodyLine(q));
-        }
-        _voice.Prepare(_voiceName, texts);
+        Prepare(SvoyaLines.Round(_pack.Rounds[round]));
     }
 
     public override TickResult Tick()
@@ -220,7 +232,7 @@ public sealed class Svoya : Game
         if (_phase is Done or Lobby) return Flush();
         if (_pending is not null)
         {
-            var clip = _voice.Ready(_voiceName, _pending);
+            var clip = Clip(_pending);
             if (clip is null && now < _pendingUntil) return Flush();
             Voiced(_pending, clip);
             Arm();
@@ -284,7 +296,8 @@ public sealed class Svoya : Game
     int ReadMs()
     {
         var media = (_q?.Media?.Seconds ?? 0) * 1000;
-        if (_mode == Live) return _q is { Text.Length: 0 } && media > 0 ? media + 500 : LiveReadMs;
+        // живий ведучий читає сам; якщо ж голос читає за нього — кнопка відкривається, як у автомата
+        if (_mode == Live && !_liveVoice) return _q is { Text.Length: 0 } && media > 0 ? media + 500 : LiveReadMs;
         return Math.Max((int)(_speech * 1000), media) + 400;
     }
 
@@ -292,15 +305,11 @@ public sealed class Svoya : Game
     // Фази
     // =========================================================================================
 
-    static string IntroLine(SvoyaRound r) => $"{r.Name}. Теми: {string.Join(", ", r.Themes.Select(t => t.Name))}.";
-
-    static string NobodyLine(SvoyaQuestion q) => $"Правильна відповідь — {q.Answer}." + (q.Comment is { } c ? " " + c : "");
-
     void BeginIntro()
     {
         Phase(Intro);
         ClearQuestion();
-        if (_mode == Auto) Speak(IntroLine(R)); else Silence();
+        if (Machine) Speak(SvoyaLines.Intro(R)); else Silence();
         Arm();
     }
 
@@ -337,7 +346,7 @@ public sealed class Svoya : Game
     void BeginReading()
     {
         Phase(Reading);
-        if (_mode == Auto) Speak(_q!.Text); else Silence();
+        if (Machine) Speak(_q!.Text); else Silence();
         Arm();
     }
 
@@ -354,14 +363,13 @@ public sealed class Svoya : Game
     {
         _answering = seat;
         Phase(Answering);
-        if (_mode == Auto && VoiceOn)
-            _voice.Prepare(_voiceName, [RightLine(seat), WrongLine()]);
+        if (VoiceOn) Prepare([RightLine(seat), WrongLine()], urgent: true);
         Arm();
     }
 
-    string RightLine(int seat) => $"Правильно, {Ctx.NickOf(seat)}! Плюс {_price}." + (_q?.Comment is { } c ? " " + c : "");
+    string RightLine(int seat) => SvoyaLines.Right(Ctx.NickOf(seat), _price, _q);
 
-    string WrongLine() => $"Ні. Мінус {_price}.";
+    string WrongLine() => SvoyaLines.Wrong(_price);
 
     void Right(int seat)
     {
@@ -385,7 +393,7 @@ public sealed class Svoya : Game
     {
         _answering = null;
         Phase(Reveal);
-        if (_mode == Auto) Speak(_correct is { } s ? RightLine(s) : NobodyLine(_q!)); else Silence();
+        if (Machine) Speak(_correct is { } s ? RightLine(s) : SvoyaLines.Nobody(_q!)); else Silence();
         Arm();
     }
 
@@ -477,9 +485,9 @@ public sealed class Svoya : Game
         _speech = 0;
         if (string.IsNullOrWhiteSpace(text)) { Silence(); return; }
         if (!VoiceOn) { Voiced(text, null); return; }
-        var clip = _voice.Ready(_voiceName, text);
+        var clip = Clip(text);
         if (clip is not null || !wait) { Voiced(text, clip); return; }
-        _voice.Prepare(_voiceName, [text]);
+        Prepare([text], urgent: true);
         _say = null;
         _pending = text;
         _pendingUntil = Now.AddMilliseconds(VoiceWaitMs);
@@ -631,6 +639,12 @@ public sealed class Svoya : Game
                 if (_until is not null) _until = Now + (_pauseLeft > TimeSpan.Zero ? _pauseLeft : TimeSpan.Zero);
                 _dirty = true;
                 return ActResult.Done;
+            case "voice":
+                if (_voiceName == "none" || !_voice.Enabled) return ActResult.Fail("Голосу на цьому столі нема");
+                _liveVoice = Bool(payload, "on") ?? !_liveVoice;
+                if (_liveVoice) PrepareRound(_round);
+                _dirty = true;
+                return ActResult.Accept(_liveVoice ? "Голос читає за тебе" : "Читаєш сам");
             case "adjust":
                 if (Int(payload, "seat") is not { } s || s < 0 || s >= Seats || s == _host || !Ctx.Seated(s)) return ActResult.Fail("Такого гравця нема");
                 var delta = Int(payload, "delta") ?? 0;
@@ -678,6 +692,7 @@ public sealed class Svoya : Game
             mode = _mode,
             host = _mode == Live ? (_phase == Lobby ? Ctx.HostSeat : _host) : (int?)null,
             options = new { answer = _answerSec, buzz = _buzzSec, early = _early, voice = _voiceName },
+            voice = new { on = VoiceOn, available = _voiceName != "none" && _voice.Enabled },
             pack = _pack is null ? null : new
             {
                 id = _pack.Id,

@@ -130,7 +130,7 @@ public sealed class SvoyaBuiltin
 /// бо гостя «Вася» підробить будь-хто, назвавшись так само.
 /// </summary>
 public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFiles files, IClock clock,
-    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null) : ISvoyaPackSource
+    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null, ISvoyaVoice? voice = null) : ISvoyaPackSource
 {
     readonly ILogger _log = (ILogger?)log ?? NullLogger.Instance;
     SvoyaOptions O => options?.CurrentValue ?? new SvoyaOptions();
@@ -240,6 +240,8 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
             return SvoyaReply.Fail($"Усі твої пакети разом більші за {O.UserMaxMb} МБ медіа");
         var problems = Problems(pack);
         store.Update(Row(pack, row.OwnerKey, row.OwnerNick, problems.Count == 0, bytes, pack.CreatedAt) with { Hidden = row.Hidden });
+        // готовий пакет озвучуємо наперед, у фоні: до першої партії більшість реплік уже лежатиме в кеші
+        if (problems.Count == 0) voice?.Prepare(VoiceName, SvoyaLines.All(pack));
         return new SvoyaReply(true, problems.Count == 0 ? "Збережено" : "Збережено як чернетку", new { ready = problems.Count == 0, problems, updatedAt = pack.UpdatedAt });
     }
 
@@ -291,6 +293,25 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
     {
         if (!u.Admin) return SvoyaReply.Fail("Це вміє тільки господар");
         return store.SetHidden(id, hidden) ? new SvoyaReply(true, hidden ? "Сховано" : "Знову видно") : SvoyaReply.Fail(NoPack);
+    }
+
+    /// <summary>Голос, яким озвучуємо наперед (типовий у лобі).</summary>
+    public const string VoiceName = "ostap";
+
+    /// <summary>
+    /// «Озвучити»: скільки реплік пакета вже готово; <paramref name="start"/> — ще й поставити решту в чергу.
+    /// Лише автору чи адміну (у репліках — відповіді).
+    /// </summary>
+    public SvoyaReply Voice(string id, SvoyaUser u, bool start)
+    {
+        SvoyaPack pack;
+        if (builtin.Get(id) is { } b) { if (!u.Admin) return SvoyaReply.Fail(NotYours); pack = b; }
+        else if (store.Get(id) is { } row) { if (!CanEdit(u, row)) return SvoyaReply.Fail(NotYours); pack = row.Pack(); }
+        else return SvoyaReply.Fail(NoPack);
+        if (voice is null || !voice.Enabled) return SvoyaReply.Fail("Голосу на сервері нема");
+        var lines = SvoyaLines.All(pack).Distinct().ToList();
+        if (start) voice.Prepare(VoiceName, lines);
+        return new SvoyaReply(true, "", new { ready = lines.Count(l => voice.Ready(VoiceName, l) is not null), total = lines.Count });
     }
 
     // ---------- для гри ----------
