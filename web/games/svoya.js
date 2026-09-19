@@ -536,6 +536,51 @@
     }
   }
 
+  // ---------- панель конструктора ----------
+  // Сам конструктор — у svoya-packs.js і вантажиться, лише коли панель відкрили: гравцям за столом він ні до чого.
+
+  let packsModule = null;
+
+  function loadConstructor() {
+    if (window.SvoyaPacks) return Promise.resolve();
+    if (!packsModule) {
+      packsModule = new Promise((ok, fail) => {
+        const el = document.createElement('script');
+        el.src = '/games/svoya-packs.js';
+        el.onload = ok;
+        el.onerror = () => { packsModule = null; fail(new Error('конструктор не завантажився')); };
+        document.head.appendChild(el);
+      });
+    }
+    return packsModule;
+  }
+
+  HGames.registerPanel({
+    id: 'svoya',
+    title: 'Своя гра',
+    icon: '🎯',
+    mount(host, ctx) {
+      if (window.SvoyaPacks) { window.SvoyaPacks.mount(host, ctx); return; }
+      host.innerHTML = '<div class="svwait"><span class="spin"></span> відкриваю конструктор…</div>';
+      loadConstructor().then(() => window.SvoyaPacks.mount(host, ctx))
+        .catch((e) => { host.innerHTML = '<div class="svwait">' + esc(e.message) + '</div>'; });
+    },
+    update(host, ctx) { if (window.SvoyaPacks) window.SvoyaPacks.update(host, ctx); },
+  });
+
+  // Та сама пастка каркаса, що й у ad-contest.js: після F5 на вкладці «Своя гра» core малює тіло панелі ще до
+  // того, як цей модуль її зареєстрував, і лишає «Панель зникла.». Перемикаємо вкладку туди й назад за людину.
+  setTimeout(() => {
+    const bar = document.querySelector('.gbar');
+    const mine = bar && bar.querySelector('.gnav [data-panel="x:svoya"].on');
+    const box = bar && bar.parentElement;
+    if (!mine || !box || box.querySelector('.spk')) return;
+    const other = box.querySelector('[data-panel^="g:"]') || box.querySelector('[data-panel]:not([data-panel="x:svoya"])');
+    if (!other) return;
+    other.click();
+    (bar.querySelector('.gnav [data-panel="x:svoya"]') || mine).click();
+  }, 0);
+
   HGames.register({
     id: 'svoya',
     icon: ICON,

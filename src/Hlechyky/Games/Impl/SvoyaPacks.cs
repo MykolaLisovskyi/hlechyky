@@ -130,7 +130,8 @@ public sealed class SvoyaBuiltin
 /// бо гостя «Вася» підробить будь-хто, назвавшись так само.
 /// </summary>
 public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFiles files, IClock clock,
-    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null, ISvoyaVoice? voice = null) : ISvoyaPackSource
+    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null, ISvoyaVoice? voice = null,
+    SvoyaUploads? uploads = null) : ISvoyaPackSource
 {
     readonly ILogger _log = (ILogger?)log ?? NullLogger.Instance;
     SvoyaOptions O => options?.CurrentValue ?? new SvoyaOptions();
@@ -240,6 +241,7 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
             return SvoyaReply.Fail($"Усі твої пакети разом більші за {O.UserMaxMb} МБ медіа");
         var problems = Problems(pack);
         store.Update(Row(pack, row.OwnerKey, row.OwnerNick, problems.Count == 0, bytes, pack.CreatedAt) with { Hidden = row.Hidden });
+        uploads?.Sweep(pack);                                      // медіа, яке пакет уже не згадує, — геть (зі запасом часу)
         // готовий пакет озвучуємо наперед, у фоні: до першої партії більшість реплік уже лежатиме в кеші
         if (problems.Count == 0) voice?.Prepare(VoiceName, SvoyaLines.All(pack));
         return new SvoyaReply(true, problems.Count == 0 ? "Збережено" : "Збережено як чернетку", new { ready = problems.Count == 0, problems, updatedAt = pack.UpdatedAt });

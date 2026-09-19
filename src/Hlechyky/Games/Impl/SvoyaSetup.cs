@@ -24,12 +24,15 @@ public static class SvoyaSetup
         services.AddSingleton<TtsService>();
         services.AddHostedService(sp => sp.GetRequiredService<TtsService>());
         services.AddSingleton<ISvoyaVoice, SvoyaVoice>();
+        services.TryAddSingleton<ISvoyaTranscoder, FfmpegTranscoder>();
+        services.AddSingleton<SvoyaUploads>();
         services.AddSingleton<SvoyaPacks>();
         services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
         return services;
     }
 
     public sealed record HideRequest(bool Hidden);
+    public sealed record CheckRequest(string? Text, string[]? Answers);
 
     static SvoyaUser User(HttpContext c) => new(Auth.Nick(c), Auth.IsUser(c), Auth.IsAdmin(c));
 
@@ -90,6 +93,32 @@ public static class SvoyaSetup
         app.MapPost(Root + "/{id}/tts", (HttpContext c, string id, SvoyaPacks packs) => Reply(packs.Voice(id, User(c), start: true)));
 
         SvoyaVoice.Map(app);                                  // /api/games/svoya/tts/<хеш>.mp3
+
+        // медіа: одне поле file у multipart; відео — до 60 МБ, тож ліміт тіла піднімаємо саме тут
+        app.MapPost(Root + "/{id}/media", async (HttpContext c, string id, SvoyaUploads uploads, CancellationToken ct) =>
+        {
+            if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = SvoyaUploads.VideoMax + 1024 * 1024;
+            if (!c.Request.HasFormContentType) return Reply(SvoyaReply.Fail("Файл має прийти формою (поле file)"));
+            IFormCollection form;
+            try { form = await c.Request.ReadFormAsync(ct); }
+            catch (Exception ex) when (ex is InvalidDataException or BadHttpRequestException) { return Reply(SvoyaReply.Fail("Завеликий файл")); }
+            if (form.Files["file"] is not { } file) return Reply(SvoyaReply.Fail("Нема файла"));
+            await using var body = file.OpenReadStream();
+            return Reply(await uploads.UploadAsync(id, User(c), file.FileName, body, ct));
+        });
+
+        // роздача — лише за точним іменем (хеш), без списків тек
+        app.MapGet("/api/games/svoya/media/{packId}/{name}", (string packId, string name, HttpContext c, SvoyaUploads uploads) =>
+        {
+            if (uploads.FileOf(packId, name) is not { } path) return Results.NotFound();
+            c.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            return Results.File(path, SvoyaUploads.ContentType(name), enableRangeProcessing: true);
+        });
+
+        // «а якщо напишуть…» у конструкторі: той самий автомат, що й у грі
+        app.MapPost("/api/games/svoya/check", (CheckRequest req) =>
+            Results.Ok(new { ok = SvoyaAnswer.Hits(req.Text, (req.Answers ?? []).Take(SvoyaPack.MaxAccept + 1)) }));
 
         app.MapPost(Root + "/{id}/hide", (HttpContext c, string id, HideRequest req, SvoyaPacks packs) =>
             Reply(packs.Hide(id, User(c), req.Hidden)));
