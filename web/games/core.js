@@ -1273,7 +1273,9 @@
       const i = extraPanels.findIndex((x) => x.id === p.id);
       if (i >= 0) extraPanels[i] = p; else extraPanels.push(p);
       renderShell();
-      if (view.kind === 'panel' && view.id === 'x:' + p.id) renderView();
+      // Після F5 на вкладці панелі тіло малюється ще до модуля («Панель зникла.») і chromeFor уже
+      // стоїть — без скидання renderView вважав би його намальованим і лишив напис назавжди.
+      if (view.kind === 'panel' && view.id === 'x:' + p.id) { chromeFor = null; renderView(); }
     },
 
     has: (id) => !!modules[id],

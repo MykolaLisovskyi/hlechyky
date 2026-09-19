@@ -568,18 +568,6 @@
     update(host, ctx) { if (window.SvoyaPacks) window.SvoyaPacks.update(host, ctx); },
   });
 
-  // Пастка каркаса (та сама, що описана в ad-contest.js): після F5 на вкладці «Своя гра» core малює тіло панелі
-  // ще до того, як цей модуль її зареєстрував, лишає «Панель зникла.» і вже не перемальовує. Перемикаємо вкладку
-  // на лобі й назад за людину. Вкладки — кнопки .gnav [data-go].
-  setTimeout(() => {
-    const ours = () => document.querySelector('.gnav [data-go="x:svoya"]');
-    const lobby = document.querySelector('.gnav [data-go=""]');
-    if (!ours() || !ours().classList.contains('on') || !lobby || document.querySelector('.spk')) return;
-    if (!document.querySelector('.gview .gempty')) return;
-    lobby.click();
-    setTimeout(() => { const b = ours(); if (b) b.click(); }, 50);
-  }, 0);
-
   HGames.register({
     id: 'svoya',
     icon: ICON,

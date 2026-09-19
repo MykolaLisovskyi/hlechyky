@@ -528,26 +528,6 @@
     update: (host, ctx) => { attach(host, ctx); paint(host, ctx); },
   });
 
-  /*
-    Штовхаємо каркас, коли запам'ятана вкладка — саме наша.
-
-    core.js у show() малює тіло панелі ДО того, як завантажаться модулі: renderExtra('ads') нашої
-    панелі ще не знає, пише «Панель зникла.» і запам'ятовує chromeFor = 'x:ads'. Далі модуль таки
-    приходить, registerPanel чесно кличе renderPanel(), але той бачить chromeFor === panel і вважає,
-    що тіло вже намальоване, — і напис лишається, поки людина сама не перемкне панель туди-сюди.
-    Робимо це перемикання за неї (сусідня вкладка лобі малюється без жодного запиту). Вкладки —
-    кнопки .gnav [data-go] (лобі — data-go=""); так само зроблено в svoya.js.
-    Прибрати, щойно registerPanel скидатиме chromeFor сам — див. «Потрібно від каркаса» у spec.
-  */
-  setTimeout(() => {
-    const mine = () => document.querySelector('.gnav [data-go="x:ads"]');
-    const lobby = document.querySelector('.gnav [data-go=""]');
-    if (!mine() || !mine().classList.contains('on') || !lobby || document.querySelector('.rkpanel')) return;
-    if (!document.querySelector('.gview .gempty')) return;
-    lobby.click();
-    setTimeout(() => { const b = mine(); if (b) b.click(); }, 50);
-  }, 0);
-
   HGames.register({
     id: 'ad-contest',
     icon: ICON,
