@@ -18,6 +18,10 @@ public static class SvoyaSetup
             Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.BuiltinDir),
             sp.GetService<ILogger<SvoyaBuiltin>>()));
         services.AddSingleton(sp => new SvoyaFiles(Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.MediaDir)));
+        // характер ведучого: книга фраз, читається раз на старті; нема — ведучий сухий
+        services.AddSingleton(sp => SvoyaPhrases.Load(
+            Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.HostFile),
+            sp.GetService<ILogger<SvoyaPhrases>>()));
         // голос ведучого: edge-tts у фоні, кеш cache/tts
         services.AddOptions<TtsOptions>().BindConfiguration("Tts");
         services.TryAddSingleton<ITtsEngine, EdgeTtsEngine>();

@@ -78,6 +78,7 @@ button.svcell:disabled { opacity: 1; cursor: default; }
 audio.svmedia { width: min(420px, 100%); }
 .svanswer { font-family: var(--display); font-size: 1.5em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
 .svcomment { opacity: .85; max-width: 50ch; }
+.svsay { align-self: center; text-align: center; font-style: italic; opacity: .9; max-width: 60ch; overflow-wrap: anywhere; }
 
 .svtries { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .svtry { padding: 3px 9px; border-radius: 999px; font-size: .9em; }

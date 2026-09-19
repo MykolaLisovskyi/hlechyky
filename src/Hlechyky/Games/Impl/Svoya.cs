@@ -87,6 +87,7 @@ public sealed partial class Svoya : Game
     // ---------- налаштування ----------
     ISvoyaPackSource? _packs;
     ISvoyaVoice _voice = NoVoice.Instance;
+    SvoyaPhrases _phrases = SvoyaPhrases.Plain;
     string _mode = Auto;
     int _answerSec = 15, _buzzSec = 10;
     bool _early = true;
@@ -135,6 +136,22 @@ public sealed partial class Svoya : Game
     DateTimeOffset _pendingUntil;
     double _speech;
 
+    // ---------- характер ведучого (specs/svoya.md §11) ----------
+    /// <summary>Яку репліку з пулу казали минулого разу — щоб не повторювати ту саму двічі поспіль.</summary>
+    readonly Dictionary<string, int> _lastPick = [];
+    /// <summary>Скільки правильних поспіль у кожного (скидається його ж помилкою).</summary>
+    readonly int[] _streak = new int[Seats];
+    bool _anyRight;
+    /// <summary>Скільки запитань поспіль лишились без відповіді.</summary>
+    int _nobodyRun;
+    /// <summary>Репліки, обрані наперед (щоб озвучити, поки гравець думає): на «так», «ні», час, промах, що закриває запитання, «ніхто».</summary>
+    string? _rightLine, _wrongLine, _timeoutLine, _missLine, _nobodyLine;
+    /// <summary>Хто помилився останнім на цьому запитанні — його промах міг закрити запитання.</summary>
+    int? _lastWrong;
+    /// <summary>Підсумок партії, обраний наперед, і рахунок, для якого його обирали (розійшовся — обрати наново).</summary>
+    string? _endLine;
+    int[]? _endScores;
+
     sealed record Try(int Seat, string? Text, bool Ok);
     sealed record Press(int Seat, int Ms);
     sealed record Appeal(int Seat, string Text);
@@ -159,6 +176,7 @@ public sealed partial class Svoya : Game
     {
         _packs = Ctx.Services.GetService<ISvoyaPackSource>();
         _voice = Ctx.Services.GetService<ISvoyaVoice>() ?? NoVoice.Instance;
+        _phrases = Ctx.Services.GetService<SvoyaPhrases>() ?? SvoyaPhrases.Plain;
         _mode = options.GetValueOrDefault("host") == Live ? Live : Auto;
         if (int.TryParse(options.GetValueOrDefault("answer"), out var a) && AnswerChoices.Contains(a)) _answerSec = a;
         if (int.TryParse(options.GetValueOrDefault("buzz"), out var b) && BuzzChoices.Contains(b)) _buzzSec = b;
@@ -208,6 +226,12 @@ public sealed partial class Svoya : Game
         _pending = null;
         _round = 0;
         _played.Clear();
+        _lastPick.Clear();
+        Array.Clear(_streak);
+        _anyRight = false;
+        _nobodyRun = 0;
+        _endLine = null;
+        _endScores = null;
         ClearQuestion();
         ClearFinal();
         var players = Players().ToList();
@@ -223,11 +247,86 @@ public sealed partial class Svoya : Game
     /// <summary>Хто в цій партії читає вголос: автомат (auto, або live з увімкненим голосом) чи жива людина.</summary>
     bool Machine => _mode == Auto || _liveVoice;
 
-    /// <summary>Попросити озвучити раунд наперед: вступ, усі запитання, відповіді й коментарі.</summary>
+    /// <summary>Попросити озвучити раунд наперед: вступ (усі варіанти), запитання, відповіді, коментарі й репліки без підстановок.</summary>
     void PrepareRound(int round)
     {
         if (!VoiceOn || _pack is null || round >= _pack.Rounds.Count) return;
-        Prepare(SvoyaLines.Round(_pack.Rounds[round]));
+        var r = _pack.Rounds[round];
+        Prepare(SvoyaLines.Round(r));
+        var themes = string.Join(", ", r.Themes.Select(t => t.Name));
+        Prepare(_phrases.Pool("intro").Select(t => SvoyaPhrases.Fill(t, ("round", r.Name), ("themes", themes))));
+        Prepare(_phrases.Pure());
+    }
+
+    // ---------- характер ведучого ----------
+
+    /// <summary>Репліка з пулу навмання (не та, що минулого разу) з підстановками.</summary>
+    string Line(string key, params (string Key, string Value)[] vars) => SvoyaPhrases.Fill(_phrases.Pick(key, Ctx.Rng, _lastPick), vars);
+
+    static string Tail(SvoyaQuestion? q) => q?.Comment is { Length: > 0 } c ? " " + c : "";
+
+    /// <summary>Вступ раунду; з другого раунду — з лідером, якщо він один і в плюсі.</summary>
+    string IntroLine()
+    {
+        var themes = string.Join(", ", R.Themes.Select(t => t.Name));
+        if (_round > 0 && Leader() is { } l)
+            return Line("introLead", ("round", R.Name), ("themes", themes), ("nick", Ctx.NickOf(l) ?? ""), ("sum", NumberWords.Say(_scores[l])));
+        return Line("intro", ("round", R.Name), ("themes", themes));
+    }
+
+    /// <summary>Єдиний лідер у плюсі серед двох і більше гравців; інакше null.</summary>
+    int? Leader()
+    {
+        var players = Players().ToList();
+        if (players.Count < 2) return null;
+        var best = players.Max(s => _scores[s]);
+        if (best <= 0) return null;
+        var tops = players.Where(s => _scores[s] == best).ToList();
+        return tops.Count == 1 ? tops[0] : null;
+    }
+
+    /// <summary>
+    /// Обрати репліки на обидва результати ще до відповіді (їх треба озвучити, поки гравець думає) — за
+    /// ситуацією: перша правильна в партії, серія з трьох, вихід у лідери, з мінуса, найдорожча клітинка;
+    /// помилка — у мінус, на найдорожчій, звичайна; окремо — час вийшов і промах, після якого запитання закрите
+    /// (кіт, аукціон, останній із гравців): тоді «ніхто» не звучить, і правильну відповідь каже ця репліка.
+    /// </summary>
+    void ChooseVerdicts(int seat)
+    {
+        var nick = Ctx.NickOf(seat) ?? "";
+        var sum = NumberWords.Say(_price);
+        var others = Players().Where(s => s != seat).ToList();
+        var top = others.Count > 0 ? others.Max(s => _scores[s]) : 0;
+        var big = _price >= RoundPrices().Max;
+        var rightKey = !_anyRight ? "rightFirst"
+            : _streak[seat] >= 2 ? "rightStreak"
+            : others.Count > 0 && _scores[seat] <= top && _scores[seat] + _price > top ? "rightLead"
+            : _scores[seat] < 0 && _scores[seat] + _price >= 0 ? "rightBack"
+            : big ? "rightBig" : "right";
+        var wrongKey = _scores[seat] >= 0 && _scores[seat] - _price < 0 ? "wrongMinus" : big ? "wrongBig" : "wrong";
+        _rightLine = Line(rightKey, ("nick", nick), ("sum", sum)) + Tail(_q);
+        _wrongLine = Line(wrongKey, ("nick", nick), ("sum", sum));
+        _timeoutLine = Line("timeout", ("nick", nick), ("sum", sum));
+        _missLine = Line("wrongLast", ("nick", nick), ("sum", sum), ("answer", _q!.Answer)) + Tail(_q);
+    }
+
+    /// <summary>Підсумок партії за рахунком: перемога, нічия, ніхто в плюсі. Порожньо — мовчати.</summary>
+    string EndLine(int[] scores)
+    {
+        var seats = Players().ToArray();
+        var best = seats.Length == 0 ? 0 : seats.Max(s => scores[s]);
+        var winners = best > 0 ? seats.Where(s => scores[s] == best).ToList() : [];
+        return winners.Count == 0 ? Line("endNobody")
+            : winners.Count == 1 ? Line("endWin", ("nick", Ctx.NickOf(winners[0]) ?? ""), ("sum", NumberWords.Say(best)))
+            : Line("endDraw", ("nicks", string.Join(" і ", winners.Select(s => Ctx.NickOf(s) ?? ""))));
+    }
+
+    /// <summary>Обрати й озвучити підсумок наперед: результат уже видно (остання клітинка чи ставки фіналу), а часу — секунди.</summary>
+    void PrepareEnd(int[] scores)
+    {
+        _endLine = EndLine(scores);
+        _endScores = (int[])scores.Clone();
+        if (VoiceOn && _endLine.Length > 0) Prepare([_endLine], urgent: true);
     }
 
     public override TickResult Tick()
@@ -317,7 +416,7 @@ public sealed partial class Svoya : Game
     {
         Phase(Intro);
         ClearQuestion();
-        if (Machine) Speak(SvoyaLines.Intro(R)); else Silence();
+        if (Machine) Speak(IntroLine()); else Silence();
         Arm();
     }
 
@@ -348,6 +447,9 @@ public sealed partial class Svoya : Game
         _cell = (t, q);
         _q = R.Themes[t].Questions[q];
         _price = _q.Price;
+        // «ніхто» обираємо вже тут: до розкриття — читання й кнопка, голос устигне
+        _nobodyLine = Line(_nobodyRun > 0 ? "nobodyAgain" : "nobody", ("answer", _q.Answer)) + Tail(_q);
+        if (VoiceOn) Prepare([_nobodyLine], urgent: true);
         if (_q.Type == SvoyaQuestion.Cat) BeginCat();
         else if (_q.Type == SvoyaQuestion.Auction) BeginAuction();
         else BeginReading();
@@ -389,17 +491,16 @@ public sealed partial class Svoya : Game
     {
         _answering = seat;
         Phase(Answering);
-        if (VoiceOn) Prepare([RightLine(seat), WrongLine()], urgent: true);
+        ChooseVerdicts(seat);
+        if (VoiceOn) Prepare(new[] { _rightLine, _wrongLine, _timeoutLine, _missLine }.OfType<string>(), urgent: true);
         Arm();
     }
-
-    string RightLine(int seat) => SvoyaLines.Right(Ctx.NickOf(seat), _price, _q);
-
-    string WrongLine() => SvoyaLines.Wrong(_price);
 
     void Right(int seat)
     {
         _scores[seat] += _price;
+        _streak[seat]++;
+        _anyRight = true;
         _correct = seat;
         _chooser = seat;
         _answering = null;
@@ -409,12 +510,16 @@ public sealed partial class Svoya : Game
     void Wrong(int seat, string? text)
     {
         _scores[seat] -= _price;
+        _streak[seat] = 0;
         _wrong.Add(seat);
+        _lastWrong = seat;
         _answering = null;
         // кіт і аукціон — для одного: помилився, і запитання закрите
         if (_solo is not null) { BeginReveal(); return; }
-        // голос ще читає — не перебиваємо його «Ні»: хрестик і мінус і так видно
-        if (_mode == Auto && ReadLeftMs() == 0) Speak(WrongLine(), wait: false);
+        // голос ще читає — не перебиваємо його «Ні»: хрестик і мінус і так видно. Без тексту — вийшов час.
+        // Промахнувся останній, кому було можна, — «Ні» скаже розкриття разом із відповіддю (BeginReveal)
+        var closes = !Players().Any(s => !_wrong.Contains(s));
+        if (_mode == Auto && ReadLeftMs() == 0 && !closes) Speak((text is null ? _timeoutLine : _wrongLine) ?? SvoyaLines.Wrong(_price), wait: false);
         NextOrBuzz();
     }
 
@@ -429,7 +534,16 @@ public sealed partial class Svoya : Game
     {
         _answering = null;
         Phase(Reveal);
-        if (Machine) Speak(_correct is { } s ? RightLine(s) : SvoyaLines.Nobody(_q!)); else Silence();
+        // запитання закрив чийсь промах (кіт, аукціон, останній із гравців) — це не «ніхто»
+        var missed = _correct is null && _lastWrong is { } lw && (_solo == lw || !Players().Any(s => !_wrong.Contains(s)));
+        _nobodyRun = _correct is null && !missed ? _nobodyRun + 1 : 0;
+        if (Machine)
+            Speak(_correct is { } s ? _rightLine ?? SvoyaLines.Right(Ctx.NickOf(s), _price, _q)
+                : missed ? _missLine ?? SvoyaLines.Nobody(_q!)
+                : _nobodyLine ?? SvoyaLines.Nobody(_q!));
+        else Silence();
+        // остання клітинка партії без фіналу: переможець уже відомий — хай підсумок озвучиться, поки показуємо відповідь
+        if (!HasOpen() && _round + 1 >= _pack!.Rounds.Count) PrepareEnd(_scores);
         Arm();
     }
 
@@ -457,6 +571,7 @@ public sealed partial class Svoya : Game
         _answering = null;
         _correct = null;
         _wrong.Clear();
+        _lastWrong = null;
         _tries.Clear();
         _presses.Clear();
         _readEnd = null;
@@ -479,6 +594,12 @@ public sealed partial class Svoya : Game
         // «Знавець» — лише за перемогу над кимось: соло-партія з автоматом ачівки не дає
         if (seats.Length >= 2) foreach (var w in winners) Ctx.Award(w, 0, "ach:svoya-win");
         _result = new { winners, scores = (int[])_scores.Clone() };
+        // підсумок голосом: обраний наперед, якщо рахунок відтоді не змінився (апеляція на останньому запитанні — змінює)
+        if (error is null && Machine)
+        {
+            if (_endLine is null || _endScores is null || !_endScores.SequenceEqual(_scores)) _endLine = EndLine(_scores);
+            Speak(_endLine, wait: false);
+        }
         if (error is not null && seats.Length == 0)
         {
             Ctx.Finish([], $"{Info.Title}: {error}");

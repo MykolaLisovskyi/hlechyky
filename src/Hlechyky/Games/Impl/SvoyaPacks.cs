@@ -11,6 +11,8 @@ public sealed class SvoyaOptions
     public string BuiltinDir { get; set; } = "data/svoya/builtin";
     /// <summary>Медіа пакетів користувачів: <c>&lt;MediaDir&gt;/&lt;packId&gt;/&lt;sha1&gt;.&lt;ext&gt;</c>.</summary>
     public string MediaDir { get; set; } = "data/svoya/media";
+    /// <summary>Книга фраз ведучого (specs/svoya.md §11); нема — ведучий сухий.</summary>
+    public string HostFile { get; set; } = "data/svoya/host.json";
     public int PackMaxMb { get; set; } = 150;
     public int UserMaxMb { get; set; } = 500;
     /// <summary>Скільки пакетів може мати один нік (адмін — без меж).</summary>

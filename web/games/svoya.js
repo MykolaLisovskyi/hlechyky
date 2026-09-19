@@ -141,6 +141,18 @@
     return html + '</div>';
   }
 
+  /// Репліка ведучого текстом — після вердикту й на фініші, щоб і той, у кого голос вимкнено, бачив, що він сказав.
+  /// Запитання (його читають у reading) і коментар автора (він і так під відповіддю) не дублюємо.
+  function sayHtml(v) {
+    const s = v.say;
+    if (!s || !s.text || ['buzz', 'answering', 'reveal', 'done'].indexOf(v.phase) < 0) return '';
+    if (v.question && s.text === v.question.text) return '';
+    let t = s.text;
+    const c = v.answer && v.answer.comment;
+    if (c && t.length > c.length && t.slice(-c.length) === c) t = t.slice(0, -c.length).trim();
+    return t ? '<div class="svsay">🎙 ' + esc(t) + '</div>' : '';
+  }
+
   /// Хто що відповідав (у auto — написане, у live — лише ✓/✗ на рахунку).
   function triesHtml(ctx, v) {
     const t = v.tries || [];
@@ -320,7 +332,8 @@
     const line = v.say;
     if (!line || line.id === s.sayId) return;
     s.sayId = line.id;
-    if (!speakerOn(ctx) || !ctx.playing) return;
+    // на фініші кімната вже не «грає», а підсумок ведучого — саме тоді
+    if (!speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
     // запитання голос дочитує завжди, навіть коли вже хтось відповідає: наступна репліка чекає на нього
     if (s.speaking && s.question) { s.next = line; return; }
     hush(root);
@@ -504,12 +517,13 @@
       const res = v.result || {};
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
       return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Ніхто не вийшов у плюс') + '</div></div>'
+        + sayHtml(v)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
     if (v.phase === 'cat') return catHtml(ctx, v);
     if (v.phase === 'auction') return auctionHtml(ctx, v);
     if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
-    return tvHtml(ctx, v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
+    return tvHtml(ctx, v) + sayHtml(v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
   }
 
   function set(el, html) { if (el._html !== html) { el._html = html; el.innerHTML = html; } }

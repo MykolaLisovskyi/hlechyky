@@ -51,19 +51,23 @@ public static class NumberWords
 }
 
 /// <summary>
-/// Репліки ведучого. В одному місці — бо ті самі тексти й кажуть у грі, й озвучують наперед: різниця в одну
-/// кому дала б інший хеш і репліку, якої в кеші нема.
+/// Сухі репліки ведучого — перший рядок відповідного пулу <see cref="SvoyaPhrases.Plain"/>. В одному місці — бо
+/// ті самі тексти й кажуть у грі, й озвучують наперед: різниця в одну кому дала б інший хеш і репліку, якої в
+/// кеші нема. Живий характер (пули з host.json) обирає гра сама, див. <see cref="SvoyaPhrases"/>.
 /// </summary>
 public static class SvoyaLines
 {
-    public static string Intro(SvoyaRound r) => $"{r.Name}. Теми: {string.Join(", ", r.Themes.Select(t => t.Name))}.";
+    public static string Intro(SvoyaRound r) =>
+        Plain("intro", ("round", r.Name), ("themes", string.Join(", ", r.Themes.Select(t => t.Name))));
 
-    public static string Nobody(SvoyaQuestion q) => $"Правильна відповідь — {q.Answer}." + Tail(q);
+    public static string Nobody(SvoyaQuestion q) => Plain("nobody", ("answer", q.Answer)) + Tail(q);
 
     public static string Right(string? nick, int price, SvoyaQuestion? q) =>
-        $"Правильно, {nick}! Плюс {NumberWords.Say(price)}." + (q is null ? "" : Tail(q));
+        Plain("right", ("nick", nick ?? ""), ("sum", NumberWords.Say(price))) + (q is null ? "" : Tail(q));
 
-    public static string Wrong(int price) => $"Ні. Мінус {NumberWords.Say(price)}.";
+    public static string Wrong(int price) => Plain("wrong", ("sum", NumberWords.Say(price)));
+
+    static string Plain(string key, params (string Key, string Value)[] vars) => SvoyaPhrases.Fill(SvoyaPhrases.Plain.Pool(key)[0], vars);
 
     static string Tail(SvoyaQuestion q) => q.Comment is { Length: > 0 } c ? " " + c : "";
 

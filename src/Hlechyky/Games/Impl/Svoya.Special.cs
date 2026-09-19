@@ -39,6 +39,8 @@ public sealed partial class Svoya
     readonly Dictionary<int, string> _finalAnswers = [];
     readonly Dictionary<int, bool> _finalOk = [];
     readonly List<int> _revealOrder = [];
+    /// <summary>Репліки розкриття фіналу, обрані наперед разом із підсумком.</summary>
+    readonly Dictionary<int, string> _finalLines = [];
     int _revealed;
     int _finalTheme = -1;
 
@@ -63,6 +65,7 @@ public sealed partial class Svoya
         _finalAnswers.Clear();
         _finalOk.Clear();
         _revealOrder.Clear();
+        _finalLines.Clear();
         _revealed = 0;
         _finalTheme = -1;
     }
@@ -105,7 +108,7 @@ public sealed partial class Svoya
         Phase(Cat);
         _catTo = null;
         _catChoosing = false;
-        if (Machine) Speak("Кіт у мішку!"); else Silence();
+        if (Machine) Speak(Line("cat")); else Silence();
         // один гравець — віддавати нікому: кіт дістається йому ж
         if (Players().Count() == 1) { Give(_chooser ?? Players().First()); return; }
         Arm();
@@ -180,7 +183,7 @@ public sealed partial class Svoya
         _passed.Clear();
         _bids.Clear();
         _turn = _chooser;
-        if (Machine) Speak("Аукціон!"); else Silence();
+        if (Machine) Speak(Line("auction")); else Silence();
         AdvanceAuction(fromCurrent: true);
     }
 
@@ -283,7 +286,7 @@ public sealed partial class Svoya
         PrepareRound(_round);
         Phase(Strike);
         _turn = _finalists[0];
-        if (Machine) Speak(SvoyaLines.Intro(R)); else Silence();
+        if (Machine) Speak(IntroLine()); else Silence();
         if (R.Themes.Count == 1) { ChooseFinalTheme(0); return; }
         Arm();
     }
@@ -322,7 +325,7 @@ public sealed partial class Svoya
         _q = R.Themes[theme].Questions[0];
         _cell = (theme, 0);
         Phase(Bet);
-        if (Machine) Speak($"Тема фіналу — {R.Themes[theme].Name}. Робіть ставки."); else Silence();
+        if (Machine) Speak(Line("finalBets", ("theme", R.Themes[theme].Name))); else Silence();
         Arm();
     }
 
@@ -381,7 +384,13 @@ public sealed partial class Svoya
         _revealOrder.Clear();
         _revealOrder.AddRange(_finalists.Where(s => !_left.Contains(s)).OrderBy(s => _scores[s]).ThenBy(s => s));
         _revealed = 0;
-        if (VoiceOn) Prepare(_revealOrder.Select(FinalLine), urgent: true);
+        // ставки й вердикти вже відомі — підсумок можна обрати зараз; репліки фіналістів кладемо в чергу після нього, щоб вони були перші
+        var projected = (int[])_scores.Clone();
+        foreach (var s in _revealOrder) projected[s] += _finalOk.GetValueOrDefault(s) ? _bets.GetValueOrDefault(s, 1) : -_bets.GetValueOrDefault(s, 1);
+        PrepareEnd(projected);
+        _finalLines.Clear();
+        foreach (var s in _revealOrder) _finalLines[s] = FinalLine(s);
+        if (VoiceOn) Prepare(_revealOrder.Select(s => _finalLines[s]), urgent: true);
         Phase(FinalReveal);
         NextFinalReveal();
     }
@@ -390,8 +399,10 @@ public sealed partial class Svoya
     {
         var ok = _finalOk.GetValueOrDefault(seat);
         var said = _finalAnswers.GetValueOrDefault(seat);
-        return $"{Ctx.NickOf(seat)}: {(string.IsNullOrEmpty(said) ? "без відповіді" : said)}. "
-            + (ok ? "Правильно! Плюс " : "Ні. Мінус ") + NumberWords.Say(_bets.GetValueOrDefault(seat, 1)) + ".";
+        var nick = Ctx.NickOf(seat) ?? "";
+        var sum = NumberWords.Say(_bets.GetValueOrDefault(seat, 1));
+        if (string.IsNullOrEmpty(said) && !ok) return Line("finalNone", ("nick", nick), ("sum", sum));
+        return Line(ok ? "finalRight" : "finalWrong", ("nick", nick), ("said", string.IsNullOrEmpty(said) ? "без відповіді" : said), ("sum", sum));
     }
 
     void NextFinalReveal()
@@ -400,7 +411,7 @@ public sealed partial class Svoya
         var s = _revealOrder[_revealed++];
         var bet = _bets.GetValueOrDefault(s, 1);
         _scores[s] += _finalOk.GetValueOrDefault(s) ? bet : -bet;
-        if (Machine) Speak(FinalLine(s)); else Silence();
+        if (Machine) Speak(_finalLines.TryGetValue(s, out var line) ? line : FinalLine(s)); else Silence();
         Arm();
         _dirty = true;
     }

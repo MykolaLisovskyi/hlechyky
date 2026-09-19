@@ -25,6 +25,11 @@ data/words/*
 !data/telephone/
 # Список українських виконавців для «Вгадай мелодію».
 !data/melody/
+# «Своя гра»: вбудовані пакети й книга фраз ведучого їдуть разом із грою; медіа користувачів (data/svoya/media) — ні.
+!data/svoya/
+data/svoya/*
+!data/svoya/builtin/
+!data/svoya/host.json
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
