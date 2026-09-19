@@ -18,6 +18,7 @@ public static class SvoyaSetup
             sp.GetService<ILogger<SvoyaBuiltin>>()));
         services.AddSingleton(sp => new SvoyaFiles(Paths.Resolve(sp.GetRequiredService<IOptionsMonitor<SvoyaOptions>>().CurrentValue.MediaDir)));
         services.AddSingleton<SvoyaPacks>();
+        services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
         return services;
     }
 

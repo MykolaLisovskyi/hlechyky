@@ -202,3 +202,32 @@ public sealed class TestBadConfigure : Game
 
     public override object View(int? seat) => new { turn = 0 };
 }
+
+/// <summary>
+/// Стіл, який налаштовують у лобі (як пакет «Своєї гри»): господар обирає «пакет» ходом ще до старту, а без
+/// нього «Почати» відмовляє. Бачить, хто зараз господар (<see cref="IRoomContext.HostSeat"/>). З тиком — бо в лобі
+/// тика нема, і вид після ходу мусить розіслати сам каркас.
+/// </summary>
+public sealed class TestLobby : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-lobby", "Тестове лобі", "тестове лобі", GameGroup.Party, 1, 4, TickMs: 100, Start: StartMode.ByHost);
+
+    public string? Pack { get; private set; }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => Pack is null ? "Оберіть пакет" : null;
+
+    public override void Start() { }
+
+    public override ActResult Act(int seat, string action, JsonElement payload)
+    {
+        if (action != "pack") return ActResult.Fail("Тут так не ходять");
+        if (seat != Ctx.HostSeat) return ActResult.Fail("Пакет обирає господар");
+        Pack = payload.GetProperty("id").GetString();
+        return ActResult.Done;
+    }
+
+    public override object View(int? seat) => new { pack = Pack, host = Ctx.HostSeat };
+}

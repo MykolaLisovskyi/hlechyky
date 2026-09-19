@@ -1,0 +1,396 @@
+/*
+  «Своя гра». Правила, час і перевірка відповідей — на сервері (Impl/Svoya.cs); модуль малює поле, запитання,
+  кнопку й рахунок і шле наміри.
+
+  Вид (подія 'room', свій для кожного місця — гра Hidden):
+    { phase: 'lobby'|'intro'|'board'|'reading'|'buzz'|'answering'|'reveal'|'done', mode: 'auto'|'live',
+      host: seat|null, options: { answer, buzz, early, voice },
+      pack: { id, title, description, author, rounds: [{ name, final, themes[] }] } | null,
+      round, rounds, roundName, board: [{ theme, cells: [{ price, open }] }] | null,
+      chooser, cell: { theme, q } | null, question: { theme, price, text, media } | null,
+      answer: { text, accept[], comment, media } | null,   // усім — після розкриття; живому ведучому — одразу
+      answering, correct, until, totalMs, paused, leftMs, waiting,
+      scores[], wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], appeals: [{ seat, text }],
+      say: { id, text, url } | null,
+      me: { isHost, canPick, canBuzz, canAnswer, canAppeal, canJudge, canChoosePack } | null,
+      left[], error, result }
+  Ходи: pack {id} (лобі, господар) · pick {theme, q} · buzz · answer {text} · appeal · judge {seat, accept}
+        живий ведучий: open · verdict {ok} · nobody · next · pause · resume · adjust {seat, delta}
+*/
+(() => {
+  const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="var(--accent)" stroke-width="1.4"/>'
+    + '<path d="M1.5 6.2h13M1.5 9.8h13M5.8 2.5v11M10.2 2.5v11" stroke="var(--accent)" stroke-width="1"/>'
+    + '<circle cx="12.4" cy="11.7" r="2.4" fill="var(--clay)"/></svg>';
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 9);
+
+  function st(root) {
+    if (!root._sv) root._sv = { timer: 0, packs: null, packsAt: 0, loadingPacks: false, query: '', sayId: 0, media: '' };
+    return root._sv;
+  }
+
+  /// Той самий api(), що в app.js: нік їде заголовком, помилка приходить полем message.
+  async function api(ctx, method, path, body) {
+    const r = await fetch(path, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent((ctx.me && ctx.me.nick) || '') },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let data = null;
+    try { data = await r.json(); } catch { /* без тіла */ }
+    if (!r.ok) throw new Error((data && data.message) || ('HTTP ' + r.status));
+    return data;
+  }
+
+  const mediaUrl = (v, m) => (m && v.pack ? '/api/games/svoya/media/' + encodeURIComponent(v.pack.id) + '/' + encodeURIComponent(m.file) : '');
+
+  function mediaHtml(v, m, cls) {
+    if (!m) return '';
+    const src = esc(mediaUrl(v, m));
+    if (m.kind === 'image') return '<img class="svmedia ' + cls + '" src="' + src + '" alt="">';
+    if (m.kind === 'audio') return '<audio class="svmedia ' + cls + '" src="' + src + '" controls preload="auto"></audio>';
+    if (m.kind === 'video') return '<video class="svmedia ' + cls + '" src="' + src + '" controls playsinline preload="auto"></video>';
+    return '';
+  }
+
+  const nick = (ctx, i) => ctx.nickOf(i) || ('місце ' + (i + 1));
+
+  // ---------- лобі: вибір пакета ----------
+
+  async function loadPacks(root, ctx, force) {
+    const s = st(root);
+    if (s.loadingPacks || (!force && s.packs && Date.now() - s.packsAt < 30000)) return;
+    s.loadingPacks = true;
+    try { s.packs = await api(ctx, 'GET', '/api/games/svoya/packs'); s.packsAt = Date.now(); }
+    catch (e) { ctx.toast('Пакети не завантажились: ' + e.message, 'err'); }
+    finally { s.loadingPacks = false; }
+    if (root._ctx) render(root, root._ctx);
+  }
+
+  function packRow(p, chosen) {
+    const themes = (p.rounds || []).filter((r) => !r.final).map((r) => r.themes.join(', ')).join(' · ');
+    return '<button type="button" class="svpack' + (chosen ? ' on' : '') + '" data-do="pack" data-id="' + esc(p.id) + '">'
+      + '<b>' + esc(p.title) + '</b>'
+      + '<span class="muted small">' + esc(p.author) + ' · ' + p.questions + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
+      + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
+      + '</button>';
+  }
+
+  function lobbyHtml(root, ctx, v) {
+    const s = st(root);
+    const me = v.me || {};
+    const head = '<div class="svmode muted small">Ведучий: ' + (v.mode === 'live'
+      ? '🎙 жива людина — ' + esc(nick(ctx, v.host)) + ' (не грає, читає й судить)'
+      : '🤖 автомат' + (v.options && v.options.voice !== 'none' ? ' з голосом' : '')) + '</div>';
+    const chosen = v.pack
+      ? '<div class="svchosen"><div class="svptitle">' + esc(v.pack.title) + '</div>'
+        + (v.pack.description ? '<div class="muted small">' + esc(v.pack.description) + '</div>' : '')
+        + '<div class="muted small">від ' + esc(v.pack.author) + '</div>'
+        + v.pack.rounds.map((r) => '<div class="svround"><b>' + esc(r.name) + (r.final ? ' 🏁' : '') + '</b> '
+          + r.themes.map((t) => '<span class="chip">' + esc(t) + '</span>').join(' ') + '</div>').join('')
+        + '</div>'
+      : '<div class="svwait">' + (me.canChoosePack ? 'Обери пакет запитань нижче' : 'Господар обирає пакет…') + '</div>';
+    if (!me.canChoosePack) return head + chosen;
+    if (!s.packs) { loadPacks(root, ctx); return head + chosen + '<div class="svwait"><span class="spin"></span> завантажую пакети…</div>'; }
+    const q = s.query.trim().toLowerCase();
+    const fits = (p) => !q || (p.title + ' ' + p.author + ' ' + (p.rounds || []).map((r) => r.themes.join(' ')).join(' ')).toLowerCase().includes(q);
+    const group = (title, list) => {
+      const items = (list || []).filter((p) => p.ready !== false).filter(fits);
+      return items.length ? '<div class="svgroup"><div class="muted small">' + title + '</div>'
+        + items.map((p) => packRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '';
+    };
+    const list = group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
+    return head + chosen + '<div class="svpicker">'
+      + (list || '<div class="svwait">' + (q ? 'Нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
+      + '</div>';
+  }
+
+  // ---------- поле ----------
+
+  function boardHtml(ctx, v) {
+    const me = v.me || {};
+    const cols = Math.max(...v.board.map((t) => t.cells.length));
+    return '<div class="svboard" style="--cols:' + cols + '">'
+      + v.board.map((t, ti) => '<div class="svtheme">' + esc(t.theme) + '</div>'
+        + t.cells.map((c, qi) => c.open
+          ? '<button type="button" class="svcell"' + (me.canPick ? ' data-do="pick" data-t="' + ti + '" data-q="' + qi + '"' : ' disabled') + '>' + c.price + '</button>'
+          : '<span class="svcell gone"></span>').join('')
+        + (t.cells.length < cols ? '<span class="svcell gone"></span>'.repeat(cols - t.cells.length) : '')).join('')
+      + '</div>';
+  }
+
+  // ---------- «телевізор»: запитання й відповідь ----------
+
+  function tvHtml(ctx, v) {
+    const q = v.question;
+    if (!q) return '';
+    const open = v.phase === 'reveal';
+    const a = v.answer;
+    let html = '<div class="svtv' + (open ? ' open' : '') + '">'
+      + '<div class="svq-head"><span>' + esc(q.theme) + '</span><b>' + q.price + '</b></div>'
+      + (q.text ? '<div class="svq-text">' + esc(q.text) + '</div>' : '')
+      + mediaHtml(v, q.media, 'q');
+    if (a && open) {
+      html += '<div class="svanswer">' + esc(a.text) + '</div>'
+        + (a.comment ? '<div class="svcomment">' + esc(a.comment) + '</div>' : '')
+        + mediaHtml(v, a.media, 'a');
+    }
+    return html + '</div>';
+  }
+
+  /// Хто що відповідав (у auto — написане, у live — лише ✓/✗ на рахунку).
+  function triesHtml(ctx, v) {
+    const t = v.tries || [];
+    if (!t.length) return '';
+    return '<div class="svtries">' + t.map((x) => '<span class="svtry ' + (x.ok ? 'ok' : 'no') + '">'
+      + esc(nick(ctx, x.seat)) + ': «' + esc(x.text || '') + '» ' + (x.ok ? '✓' : '✗') + '</span>').join('') + '</div>';
+  }
+
+  function appealsHtml(ctx, v) {
+    const me = v.me || {};
+    let html = '';
+    if (me.canAppeal) html += '<button type="button" class="ghost" data-do="appeal">⚖️ Оскаржити — я ж правильно написав</button>';
+    for (const a of v.appeals || []) {
+      html += '<div class="svappeal">⚖️ ' + esc(nick(ctx, a.seat)) + ' просить зарахувати «' + esc(a.text) + '»'
+        + (me.canJudge ? ' <button type="button" class="primary small" data-do="judge" data-seat="' + a.seat + '" data-ok="1">Зарахувати</button>'
+          + '<button type="button" class="ghost small" data-do="judge" data-seat="' + a.seat + '" data-ok="0">Ні</button>' : ' — вирішує господар')
+        + '</div>';
+    }
+    return html;
+  }
+
+  /// Пульт живого ведучого: відповідь (лише йому), черговість натискань, судейські кнопки.
+  function hostHtml(ctx, v) {
+    const me = v.me || {};
+    if (!me.isHost || v.phase === 'lobby' || v.phase === 'done') return '';
+    const a = v.answer;
+    const btn = (act, label, cls, extra) => '<button type="button" class="' + (cls || 'ghost') + '" data-do="' + act + '"' + (extra || '') + '>' + label + '</button>';
+    let html = '<div class="svhost"><div class="muted small">🎙 Пульт ведучого — це бачиш лише ти</div>';
+    if (a && v.phase !== 'reveal') {
+      html += '<div class="svhans"><b>' + esc(a.text) + '</b>'
+        + (a.accept && a.accept.length ? '<span class="muted small"> · також: ' + esc(a.accept.join('; ')) + '</span>' : '')
+        + (a.comment ? '<div class="muted small">' + esc(a.comment) + '</div>' : '') + '</div>';
+    }
+    const row = [];
+    if (v.phase === 'reading') row.push(btn('open', '🔔 Кнопка!', 'primary'));
+    if (v.phase === 'answering') {
+      row.push(btn('verdict', '✓ Правильно', 'primary svok', ' data-ok="1"'));
+      row.push(btn('verdict', '✗ Ні', 'ghost svno', ' data-ok="0"'));
+    }
+    if (v.phase === 'reading' || v.phase === 'buzz' || v.phase === 'answering') row.push(btn('nobody', 'Ніхто — показати відповідь'));
+    if (v.phase === 'intro' || v.phase === 'reveal') row.push(btn('next', 'Далі ▶', 'primary'));
+    row.push(v.paused ? btn('resume', '▶ Далі гра', 'primary') : btn('pause', '⏸ Пауза'));
+    html += '<div class="svrow">' + row.join('') + '</div>';
+    if ((v.presses || []).length) {
+      html += '<div class="svpresses">🔔 ' + v.presses.map((p, i) => '<span' + (i === 0 ? ' class="first"' : '') + '>'
+        + esc(nick(ctx, p.seat)) + ' <i>' + (p.ms / 1000).toFixed(2) + ' с</i></span>').join('') + '</div>';
+    }
+    return html + '</div>';
+  }
+
+  // ---------- рахунок ----------
+
+  function scoresHtml(ctx, v) {
+    const me = v.me || {};
+    const rows = [];
+    for (let i = 0; i < seatsOf(ctx); i++) {
+      const n = ctx.nickOf(i);
+      if (!n || i === v.host) continue;
+      rows.push({ i, n, score: (v.scores || [])[i] || 0 });
+    }
+    if (v.phase === 'done') rows.sort((a, b) => b.score - a.score);
+    const step = (v.question && v.question.price) || 100;
+    const left = v.left || [];
+    return rows.map((r) => {
+      const cls = ['svsc'];
+      if (r.i === ctx.seat) cls.push('me');
+      if (left.indexOf(r.i) >= 0) cls.push('off');
+      if (r.i === v.answering) cls.push('answering');
+      if (r.i === v.correct) cls.push('right');
+      if ((v.wrong || []).indexOf(r.i) >= 0) cls.push('wrong');
+      const tags = (r.i === v.chooser && v.phase === 'board' ? '<em title="обирає">👉</em>' : '')
+        + (r.i === v.answering ? '<em title="відповідає">🎤</em>' : '');
+      const adj = me.isHost && v.phase !== 'done'
+        ? '<span class="svadj"><button type="button" class="ghost small" data-do="adjust" data-seat="' + r.i + '" data-d="' + (-step) + '">−' + step + '</button>'
+          + '<button type="button" class="ghost small" data-do="adjust" data-seat="' + r.i + '" data-d="' + step + '">+' + step + '</button></span>'
+        : '';
+      return '<div class="' + cls.join(' ') + '"><span class="svn">' + esc(r.n) + '</span>' + tags + adj
+        + '<b class="' + (r.score < 0 ? 'neg' : '') + '">' + r.score + '</b></div>';
+    }).join('');
+  }
+
+  // ---------- таймер ----------
+
+  function timer(root, ctx) {
+    const v = ctx.view || {};
+    const box = root.querySelector('.svtime');
+    const span = box.querySelector('span');
+    const bar = box.querySelector('i');
+    const live = ctx.playing && v.phase !== 'lobby' && v.phase !== 'done';
+    box.style.visibility = live && (v.until || v.paused || v.waiting) ? 'visible' : 'hidden';
+    if (!live) return;
+    if (v.paused) { bar.style.width = '100%'; span.textContent = '⏸'; return; }
+    if (v.waiting || !v.until) { bar.style.width = '100%'; span.textContent = '…'; return; }
+    const left = Math.max(0, new Date(v.until).getTime() - Date.now());
+    bar.style.width = Math.max(0, Math.min(100, left / (v.totalMs || 1) * 100)) + '%';
+    bar.classList.toggle('hot', (v.phase === 'buzz' || v.phase === 'answering') && left < 4000);
+    const t = String(Math.ceil(left / 1000));
+    if (span.textContent !== t) span.textContent = t;
+  }
+
+  // ---------- збирання ----------
+
+  function headText(ctx, v) {
+    if (!ctx.playing && v.phase !== 'done') return 'Своя гра';
+    if (v.phase === 'done') return 'Партію зіграно';
+    return (v.roundName || '') + (v.rounds > 1 ? ' · ' + v.round + ' з ' + v.rounds : '');
+  }
+
+  function stageHtml(root, ctx, v) {
+    if (v.phase === 'lobby' || (ctx.room && ctx.room.status === 'lobby')) return lobbyHtml(root, ctx, v);
+    if (v.phase === 'intro') {
+      const r = v.pack && v.pack.rounds[v.round - 1];
+      return '<div class="svintro"><div class="svptitle">' + esc(v.roundName || '') + '</div>'
+        + (r ? r.themes.map((t) => '<div class="svitheme">' + esc(t) + '</div>').join('') : '') + '</div>';
+    }
+    if (v.phase === 'board') {
+      const me = v.me || {};
+      const who = v.chooser == null ? '' : me.canPick && ctx.seat === v.chooser ? 'Твій вибір — тисни клітинку'
+        : me.isHost ? 'Обирає ' + nick(ctx, v.chooser) + ' (можеш обрати й сам)' : 'Обирає ' + nick(ctx, v.chooser);
+      return '<div class="svwho">' + esc(who) + '</div>' + (v.board ? boardHtml(ctx, v) : '');
+    }
+    if (v.phase === 'done') {
+      const res = v.result || {};
+      const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
+      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Ніхто не вийшов у плюс') + '</div></div>';
+    }
+    return tvHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
+  }
+
+  function set(el, html) { if (el._html !== html) { el._html = html; el.innerHTML = html; } }
+
+  function render(root, ctx) {
+    root._ctx = ctx;
+    const v = ctx.view || {};
+    const me = v.me || {};
+    const head = root.querySelector('.svhead');
+    const text = headText(ctx, v);
+    if (head.textContent !== text) head.textContent = text;
+    set(root.querySelector('.svstage'), stageHtml(root, ctx, v));
+    set(root.querySelector('.svhostbox'), hostHtml(ctx, v));
+    set(root.querySelector('.svscores'), ctx.playing || v.phase === 'done' ? scoresHtml(ctx, v) : '');
+
+    // пошук пакетів — живе поле, тому не в stage (інакше перемальовка з'їдала б набране)
+    root.querySelector('.svsearch').hidden = !(v.phase === 'lobby' && me.canChoosePack && st(root).packs);
+
+    // велика кнопка: гравцям, коли йде запитання
+    const buzz = root.querySelector('.svbuzz');
+    const showBuzz = ctx.mine && !me.isHost && ctx.playing && ['reading', 'buzz', 'answering'].indexOf(v.phase) >= 0;
+    buzz.hidden = !showBuzz;
+    buzz.disabled = !me.canBuzz;
+    buzz.classList.toggle('live', !!me.canBuzz);
+    buzz.textContent = v.answering === ctx.seat ? '🎤 Відповідай!' : (v.wrong || []).indexOf(ctx.seat) >= 0 ? 'Спробу використано'
+      : v.answering != null ? '🎤 ' + nick(ctx, v.answering) : me.canBuzz ? '🔔 Я знаю!' : v.phase === 'reading' ? 'Слухаємо…' : '🔔';
+
+    // поле відповіді (лише в auto, лише тому, хто натиснув)
+    const form = root.querySelector('.svform');
+    const was = !form.hidden;
+    form.hidden = !me.canAnswer;
+    if (me.canAnswer && !was) {
+      const input = form.querySelector('input');
+      input.value = '';
+      setTimeout(() => input.focus(), 0);
+    }
+    timer(root, ctx);
+  }
+
+  function onClick(root, e) {
+    const b = e.target.closest('[data-do]');
+    const ctx = root._ctx;
+    if (!b || !ctx || b.disabled) return;
+    const d = b.dataset;
+    const act = (a, p) => ctx.act(a, p);
+    switch (d.do) {
+      case 'pack': act('pack', { id: d.id }); break;
+      case 'pick': act('pick', { theme: +d.t, q: +d.q }); break;
+      case 'buzz': act('buzz'); break;
+      case 'appeal': act('appeal'); break;
+      case 'judge': act('judge', { seat: +d.seat, accept: d.ok === '1' }); break;
+      case 'verdict': act('verdict', { ok: d.ok === '1' }); break;
+      case 'adjust': act('adjust', { seat: +d.seat, delta: +d.d }); break;
+      default: act(d.do); break;
+    }
+  }
+
+  HGames.register({
+    id: 'svoya',
+    icon: ICON,
+    seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x'],
+
+    mount(root, ctx) {
+      root.innerHTML = '<div class="svwrap">'
+        + '<div class="svtop"><div class="svhead muted small"></div><div class="svtime"><i></i><span></span></div></div>'
+        + '<input class="svsearch" type="search" placeholder="знайти пакет…" hidden>'
+        + '<div class="svstage"></div>'
+        + '<div class="svhostbox"></div>'
+        + '<button type="button" class="svbuzz" data-do="buzz" hidden>🔔</button>'
+        + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
+        + '<button class="primary" type="submit">➤</button></form>'
+        + '<div class="svscores"></div>'
+        + '</div>';
+      const s = st(root);
+      root.addEventListener('click', (e) => onClick(root, e));
+      const search = root.querySelector('.svsearch');
+      search.addEventListener('input', () => { s.query = search.value; if (root._ctx) render(root, root._ctx); });
+      root.querySelector('.svform').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = e.currentTarget.querySelector('input');
+        const text = input.value.trim();
+        if (!text || !root._ctx) return;
+        root._ctx.act('answer', { text }).then((r) => { if (r && r.ok) input.value = ''; });
+      });
+      s.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
+      render(root, ctx);
+    },
+
+    update(root, ctx) { render(root, ctx); },
+
+    unmount(root) {
+      const s = root._sv;
+      if (s) clearInterval(s.timer);
+    },
+
+    onKey(e, ctx) {
+      // пробіл — кнопка (коли не друкуєш відповідь)
+      if (e.key !== ' ' && e.code !== 'Space') return false;
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return false;
+      const v = ctx.view || {};
+      if (!(v.me && v.me.canBuzz)) return false;
+      ctx.act('buzz');
+      return true;
+    },
+
+    status(ctx) {
+      const v = ctx.view || {};
+      const me = v.me || {};
+      if (ctx.room && ctx.room.status === 'lobby') return v.pack ? 'Пакет «' + v.pack.title + '» — господар тисне «Почати»' : 'Господар обирає пакет';
+      if (v.phase === 'done' || !ctx.playing) return v.phase === 'done' ? (v.error || 'Партію зіграно') : '';
+      if (v.paused) return '⏸ Пауза';
+      if (v.waiting) return 'Ведучий збирається з думками…';
+      switch (v.phase) {
+        case 'intro': return 'Теми раунду';
+        case 'board': return me.canPick && ctx.seat === v.chooser ? 'Обирай запитання' : 'Обирає ' + nick(ctx, v.chooser);
+        case 'reading': return me.isHost ? 'Читай уголос і тисни «Кнопка!»' : me.canBuzz ? 'Знаєш — тисни!' : 'Слухаємо запитання';
+        case 'buzz': return me.isHost ? 'Чекаємо на кнопку' : me.canBuzz ? 'Кнопка відкрита — тисни!' : 'Кнопка відкрита';
+        case 'answering':
+          if (v.answering === ctx.seat) return v.mode === 'live' ? 'Кажи відповідь уголос!' : 'Пиши відповідь!';
+          return me.isHost ? nick(ctx, v.answering) + ' відповідає — суди' : 'Відповідає ' + nick(ctx, v.answering);
+        case 'reveal': return v.correct != null ? 'Правильно відповів ' + nick(ctx, v.correct) : 'Ніхто не відповів';
+      }
+      return '';
+    },
+  });
+})();

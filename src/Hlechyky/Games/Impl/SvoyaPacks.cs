@@ -130,7 +130,7 @@ public sealed class SvoyaBuiltin
 /// бо гостя «Вася» підробить будь-хто, назвавшись так само.
 /// </summary>
 public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFiles files, IClock clock,
-    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null)
+    IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null) : ISvoyaPackSource
 {
     readonly ILogger _log = (ILogger?)log ?? NullLogger.Instance;
     SvoyaOptions O => options?.CurrentValue ?? new SvoyaOptions();

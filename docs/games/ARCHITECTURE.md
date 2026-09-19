@@ -119,6 +119,8 @@ public abstract class Game
     public IRoomContext Ctx { get; set; }            // виставляє Rooms до Configure()
     public virtual string SeatName(int seat)        // «білі»/«чорні», «жовта»/«зелена»
     public virtual void Configure(IReadOnlyDictionary<string, string> options) { }
+    public virtual bool ActsInLobby => false;       // приймати Act ще в лобі (налаштування столу: пакет «Своєї гри»)
+    public virtual string? CanStart() => null;      // «Почати»/«Ще раз»: null — можна, інакше текст відмови
     public abstract void Start();                   // Lobby→Playing і кожен «Ще раз» (Ctx.Round уже збільшено)
     public virtual ActResult Act(int seat, string action, JsonElement payload);   // покроковий хід
     public virtual TickResult Tick();               // реалтайм; за замовчуванням нічого
@@ -139,6 +141,9 @@ public abstract class Game
   змінилось у повних видах (рахунок, кінець раунду) → розіслати `room`. `TickResult.None` — нічого.
 - Кінець партії гра оголошує сама: `Ctx.Finish(winners: [0], log: "шахи: X 1:0 Y")`. Нічия — порожній
   масив. Після цього `Act` більше не викликається (каркас відбиває), `Tick` теж.
+- `ActsInLobby` — для налаштувань, яких не передати статичними опціями (список пакетів росте без рестарту):
+  `Act` у лобі доходить до гри, а не відбивається «Чекаємо на гравців». `CanStart()` дає грі сказати «Оберіть
+  пакет» на «Почати» (і на «Ще раз»), після перевірки MinPlayers. Обидва — з «Своєї гри» (19.09.2026).
 - `View(seat)` мусить бути **JSON-серіалізовним анонімним/record-об'єктом**, camelCase на дроті робить
   SignalR. Не віддавати внутрішні колекції за посиланням — клонувати масиви.
 
@@ -159,6 +164,7 @@ public interface IRoomContext
     public IReadOnlyDictionary<string, string> Options { get; }
     public string? NickOf(int seat);
     public bool Seated(int seat);
+    public int? HostSeat { get; }                     // місце господаря столу зараз (після його виходу — найстарше зайняте)
     public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
     public void Log(string text);                     // рядок у Журнал усім
     public void Say(string text);                     // Дядько Глек каже в Балачки (kind "dj")

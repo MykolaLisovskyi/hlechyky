@@ -125,6 +125,37 @@ public class RoomsTests
         Assert.Equal(1, ((TestParty)h.Room.Game).Starts);
     }
 
+    [Fact]
+    public void Lobby_game_is_configured_by_the_host_before_start()
+    {
+        var h = new RoomHarness("t-lobby");
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.Equal("Оберіть пакет", h.Start().Message);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+
+        Assert.Equal("Пакет обирає господар", h.Act(1, "pack", new { id = "x" }).Message);
+        var before = h.Outbox.OfType<RoomViews>().Count();
+        Assert.True(h.Act(0, "pack", new { id = "x" }).Ok);
+        Assert.True(h.Outbox.OfType<RoomViews>().Count() > before);   // решта одразу бачить обраний пакет
+        Assert.Equal("x", h.View(1).GetProperty("pack").GetString());
+
+        Assert.True(h.Start().Ok);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Host_seat_follows_the_host()
+    {
+        var h = new RoomHarness("t-lobby");
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.Equal(0, h.View(null).GetProperty("host").GetInt32());
+        h.Leave("Оля");
+        Assert.Equal(1, h.View(null).GetProperty("host").GetInt32());
+        Assert.True(h.Act(1, "pack", new { id = "y" }).Ok);
+    }
+
     // ---------- ходи ----------
 
     [Fact]

@@ -1,0 +1,132 @@
+/*
+  «Своя гра». Кольори — змінними сайту; свої оголошені тут на :root.
+  Поле — синє, як у телевізійній грі, але з нашим золотом цін.
+*/
+:root {
+  --svboard: #14284a;
+  --svboard2: #1b3563;
+  --svok: rgba(123, 211, 137, .16);
+  --svno: rgba(229, 115, 115, .16);
+}
+
+.svwrap { width: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.svtop { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
+.svtime { position: relative; width: min(180px, 45%); height: 22px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.svtime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .25s linear; }
+.svtime i.hot { background: var(--danger); }
+.svtime span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.svstage { min-height: 220px; display: flex; flex-direction: column; gap: 10px; }
+.svwait { color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 18px 0; }
+.svwho { text-align: center; color: var(--muted); }
+.svmode { text-align: center; }
+
+/* ---------- лобі ---------- */
+.svchosen { background: var(--bg2); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.svptitle { font-family: var(--display); font-size: 1.35em; font-weight: 800; color: var(--accent); text-align: center; overflow-wrap: anywhere; }
+.svround { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.svround b { margin-right: 4px; }
+.svsearch { padding: 9px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.svpicker { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+.svgroup { display: flex; flex-direction: column; gap: 5px; }
+.svpack {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: 9px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.svpack:hover { border-color: var(--accent2); }
+.svpack.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.svthemes { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* ---------- вступ раунду ---------- */
+.svintro { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 0; }
+.svitheme {
+  padding: 8px 16px; min-width: min(360px, 100%); text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  background: var(--svboard); color: #fff; border-radius: 8px; animation: svin .4s ease both;
+}
+.svitheme:nth-child(3) { animation-delay: .15s; } .svitheme:nth-child(4) { animation-delay: .3s; }
+.svitheme:nth-child(5) { animation-delay: .45s; } .svitheme:nth-child(6) { animation-delay: .6s; }
+@keyframes svin { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .svitheme { animation: none; } }
+
+/* ---------- поле ---------- */
+.svboard {
+  display: grid; grid-template-columns: minmax(90px, 1.6fr) repeat(var(--cols), minmax(44px, 1fr)); gap: 4px;
+  background: #0b1830; padding: 6px; border-radius: 12px;
+}
+.svtheme {
+  display: flex; align-items: center; padding: 6px 8px; background: var(--svboard); color: #fff;
+  font-weight: 700; font-size: .85em; text-transform: uppercase; letter-spacing: .02em; border-radius: 6px; overflow-wrap: anywhere;
+}
+.svcell {
+  min-height: 48px; display: grid; place-items: center; background: var(--svboard2); color: var(--accent);
+  font-family: var(--display); font-weight: 800; font-size: 1.2em; border: 0; border-radius: 6px; font-variant-numeric: tabular-nums;
+}
+button.svcell:not(:disabled) { cursor: pointer; }
+button.svcell:not(:disabled):hover { background: var(--accent); color: var(--accent-ink); }
+button.svcell:disabled { opacity: 1; cursor: default; }
+.svcell.gone { background: rgba(255, 255, 255, .03); }
+
+/* ---------- телевізор ---------- */
+.svtv {
+  background: var(--svboard); color: #fff; border-radius: 14px; padding: 16px 18px 20px; min-height: 200px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+}
+.svq-head { align-self: stretch; display: flex; justify-content: space-between; gap: 10px; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; opacity: .8; }
+.svq-head b { color: var(--accent); font-size: 1.2em; }
+.svq-text { font-size: clamp(1.1em, 2.6vw, 1.7em); font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; max-width: 40ch; }
+.svmedia.q, .svmedia.a { max-width: 100%; max-height: 46vh; border-radius: 8px; }
+audio.svmedia { width: min(420px, 100%); }
+.svanswer { font-family: var(--display); font-size: 1.5em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
+.svcomment { opacity: .85; max-width: 50ch; }
+
+.svtries { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.svtry { padding: 3px 9px; border-radius: 999px; font-size: .9em; }
+.svtry.ok { background: var(--svok); color: var(--ok); }
+.svtry.no { background: var(--svno); color: var(--danger); }
+.svappeal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: center; }
+
+/* ---------- кнопка й відповідь ---------- */
+.svbuzz {
+  align-self: center; width: min(320px, 100%); min-height: 76px; font-size: 1.35em; font-weight: 800;
+  border-radius: 999px; border: 0; background: var(--panel3); color: var(--muted); cursor: default;
+}
+.svbuzz.live { background: var(--danger); color: #fff; cursor: pointer; box-shadow: 0 6px 20px rgba(229, 115, 115, .35); }
+.svbuzz.live:active { transform: scale(.97); }
+.svform { display: flex; gap: 6px; }
+.svform input {
+  flex: 1; min-width: 0; padding: 12px 14px; font-size: 1.1em;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--accent2); border-radius: 10px;
+}
+.svform input:focus { outline: none; border-color: var(--accent); }
+
+/* ---------- пульт живого ведучого ---------- */
+.svhost { border: 1px dashed var(--accent2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.svhans b { color: var(--accent); font-size: 1.15em; }
+.svrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.svok { background: var(--ok); color: #0f1f18; }
+.svno { color: var(--danger); }
+.svpresses { display: flex; flex-wrap: wrap; gap: 8px; font-size: .9em; }
+.svpresses span.first { color: var(--accent); font-weight: 700; }
+.svpresses i { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- рахунок ---------- */
+.svscores { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px; }
+.svsc { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg2); border-radius: 8px; }
+.svsc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.svsc.off { opacity: .45; }
+.svsc.answering { background: var(--panel3); box-shadow: 0 0 0 2px var(--accent) inset; }
+.svsc.right { background: var(--svok); }
+.svsc.wrong { background: var(--svno); }
+.svn { flex: 1; min-width: 4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svsc em { font-style: normal; }
+.svsc b { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+.svsc b.neg { color: var(--danger); }
+.svadj { display: flex; gap: 2px; flex: none; }
+.svadj button { padding: 2px 5px; font-size: .8em; }
+
+@media (max-width: 520px) {
+  .svboard { grid-template-columns: minmax(70px, 1.2fr) repeat(var(--cols), minmax(34px, 1fr)); gap: 3px; padding: 4px; }
+  .svtheme { font-size: .7em; padding: 4px; }
+  .svcell { min-height: 40px; font-size: 1em; }
+  .svscores { grid-template-columns: 1fr 1fr; }
+}

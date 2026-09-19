@@ -534,6 +534,7 @@ public sealed class Rooms
             if (!string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) return RoomOutcome.Fail(Say.HostOnly);
             if (room.Status != RoomStatus.Lobby) return RoomOutcome.Fail(room.Status == RoomStatus.Playing ? Say.Waiting : Say.Played);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
+            if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
             if (StartRound(room, outbox) is { } no) return new RoomOutcome(outbox, RoomReply.Fail(no));
         }
         outbox.Add(new LobbyChanged());
@@ -552,6 +553,7 @@ public sealed class Rooms
             if (!room.Has(nick)) return RoomOutcome.Fail(Say.NotPlaying);
             if (room.Status != RoomStatus.Finished) return RoomOutcome.Fail(Say.NotFinished);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
+            if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
 
             // Зсуваємо тих, хто сидить, по зайнятих місцях: у грі на двох це звичайний обмін ✕↔◯,
             // у компанії — «наступний починає», а порожні місця лишаються порожніми.
@@ -656,7 +658,8 @@ public sealed class Rooms
         lock (room.Sync)
         {
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
-            if (room.Status == RoomStatus.Lobby) return RoomOutcome.Fail(Say.Waiting);
+            // Налаштування столу до старту (Game.ActsInLobby) — теж хід; решта ігор у лобі чекає на гравців.
+            if (room.Status == RoomStatus.Lobby && !room.Game.ActsInLobby) return RoomOutcome.Fail(Say.Waiting);
             if (room.Status == RoomStatus.Finished) return RoomOutcome.Fail(Say.Played);
 
             var ctx = (RoomContext)room.Game.Ctx;
@@ -680,7 +683,8 @@ public sealed class Rooms
             {
                 room.LastActivity = _clock.UtcNow;
                 Persist(room, outbox);
-                if (counts) outbox.Add(new RoomViews(room.Id));
+                // реалтайм шле види з тика — але в лобі тика нема, тож налаштування столу розсилаємо одразу
+                if (counts || before == RoomStatus.Lobby) outbox.Add(new RoomViews(room.Id));
                 if (room.Status != before) outbox.Add(new LobbyChanged());
             }
             else if (counts && room.Status == before)
@@ -978,6 +982,8 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
     public string? NickOf(int seat) => seat >= 0 && seat < room.Seats.Length ? room.Seats[seat] : null;
 
     public bool Seated(int seat) => NickOf(seat) is not null;
+
+    public int? HostSeat => room.SeatOf(room.Host);
 
     /// <summary>Куди складати розсилку, поки гра щось робить. Поза цим блоком контекст мовчить.</summary>
     public IDisposable Collect(Outbox outbox)

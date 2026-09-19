@@ -123,6 +123,11 @@ public interface IRoomContext
     IServiceProvider Services { get; }
     string? NickOf(int seat);
     bool Seated(int seat);
+    /// <summary>
+    /// Місце господаря столу (того, хто тисне «Почати»); null, якщо він не сидить. Після виходу господаря ним
+    /// стає найстарше зайняте місце — тому це властивість, а не число, запам'ятоване на старті.
+    /// </summary>
+    int? HostSeat { get; }
     /// <summary>Партія скінчилась. Порожній winners — нічия. Другий виклик у тій самій партії ігнорується.</summary>
     void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
     /// <summary>Рядок у Журнал усім.</summary>
@@ -151,6 +156,19 @@ public abstract class Game
 
     /// <summary>Опції з лобі (варіант, розмір). Невалідні значення — GameError; тоді кімната не створюється.</summary>
     public virtual void Configure(IReadOnlyDictionary<string, string> options) { }
+
+    /// <summary>
+    /// Чи приймає гра ходи ще в лобі, до «Почати» — налаштування столу, яких не передати статичними опціями
+    /// (пакет «Своєї гри» обирається зі списку, що росте без рестарту сервера). Типово — ні: каркас відповідає
+    /// «Чекаємо на гравців».
+    /// </summary>
+    public virtual bool ActsInLobby => false;
+
+    /// <summary>
+    /// Чи можна вже починати (господар тисне «Почати» або хтось «Ще раз»): null — так, інакше текст відмови.
+    /// Кличеться під замком кімнати, після перевірки MinPlayers.
+    /// </summary>
+    public virtual string? CanStart() => null;
 
     /// <summary>Lobby→Playing і кожен «Ще раз» (Ctx.Round уже збільшено). Має дати чистий стан партії.</summary>
     public abstract void Start();
