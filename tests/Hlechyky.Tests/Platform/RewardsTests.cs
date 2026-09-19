@@ -151,6 +151,23 @@ public class RewardsTests
     }
 
     [Fact]
+    public void Explicit_attempts_are_written_next_to_the_time()
+    {
+        using var rig = new EconomyRig();
+        var day = rig.Daily.Today();
+        rig.Events.Raise(new SoloScoreEvent("mines-daily", "Оля", 245_000, ScoreOrder.LowerIsBetter,
+            $"daily:mines-daily:{day}:оля", rig.Clock.UtcNow, Attempts: 3));
+        rig.Events.Raise(new SoloScoreEvent("mines-daily", "Петро", 447_000, ScoreOrder.LowerIsBetter,
+            $"daily:mines-daily:{day}:петро", rig.Clock.UtcNow, Attempts: 1));
+
+        var row = rig.Daily.MyResult("Оля", "mines-daily");
+        Assert.Equal(3, row!.Attempts);
+        Assert.Equal(245_000, row.Ms);
+        // топ дня — спершу за спробами: з першого разу, хай і повільніше, стоїть вище
+        Assert.Equal(["Петро", "Оля"], rig.Daily.Top("mines-daily").Select(t => t.Nick));
+    }
+
+    [Fact]
     public void Daily_award_pays_once_a_day_and_again_tomorrow()
     {
         using var rig = new EconomyRig();

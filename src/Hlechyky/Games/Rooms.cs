@@ -1067,10 +1067,10 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         if (!string.IsNullOrWhiteSpace(text)) _out?.Add(new DjSays(text));
     }
 
-    public void Score(int seat, long value)
+    public void Score(int seat, long value, int? attempts = null)
     {
         if (NickOf(seat) is not { } nick) return;
-        var e = new SoloScoreEvent(room.Info.Id, nick, value, room.Info.Score, room.Key, rooms.Clock.UtcNow);
+        var e = new SoloScoreEvent(room.Info.Id, nick, value, room.Info.Score, room.Key, rooms.Clock.UtcNow, attempts);
         _out?.After(() => rooms.Events.Raise(e));
     }
 

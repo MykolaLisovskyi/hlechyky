@@ -671,6 +671,23 @@ public class MinesTests
     }
 
     [Fact]
+    public void Solving_after_booms_reports_the_real_attempt_count()
+    {
+        var h = DailyRoom();
+        var mirror = DailyMirror();
+        h.Act(0, "open", new { cell = MineCell(mirror, Cells(h, 0)) });
+        h.Act(0, "restart");
+        h.Act(0, "open", new { cell = MineCell(mirror, Cells(h, 0)) });
+        h.Act(0, "restart");
+        h.Clock.Advance(TimeSpan.FromSeconds(42));
+        SolveDaily(h, DailyMirror());
+
+        var score = Assert.Single(h.Scores);
+        Assert.Equal(3, score.Attempts);
+        Assert.Equal(42_000, score.Score);   // час — лише вдалої спроби
+    }
+
+    [Fact]
     public void A_run_faster_than_a_second_is_still_written_as_milliseconds()
     {
         var h = DailyRoom();

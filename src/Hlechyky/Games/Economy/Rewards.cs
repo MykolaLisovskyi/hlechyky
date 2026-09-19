@@ -153,10 +153,11 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             if (parts.Length >= 4 && DateOnly.TryParseExact(day, "yyyy-MM-dd", out _))
             {
                 var game = parts[1];
-                // подія несе одне число; за домовленістю (див. specs/daily.md, «Як реалізовано»)
+                // гра, що міряє і час, і спроби, передає спроби окремо — тоді Score це мілісекунди;
+                // інакше число одне, і за домовленістю (див. specs/daily.md, «Як реалізовано»)
                 // маленьке — це спроби, велике — мілісекунди
-                var (attempts, ms) = e.Score >= MsThreshold
-                    ? (1, (int)Math.Min(int.MaxValue, e.Score))
+                var (attempts, ms) = e.Attempts is { } a ? (Math.Max(1, a), (int)Math.Min(int.MaxValue, e.Score))
+                    : e.Score >= MsThreshold ? (1, (int)Math.Min(int.MaxValue, e.Score))
                     : ((int)Math.Max(1, e.Score), 0);
                 var row = daily.Record(game, e.Nick, solved: true, attempts, ms, day);
                 achievements.OnDaily(e.Nick, row, daily.Streak(e.Nick, game));

@@ -1099,6 +1099,15 @@
         + '</div>').join('') + '</div>';
   }
 
+  /// «за 1 спробу», «за 3 спроби», «за 6 спроб».
+  function tries(n) {
+    const t = n % 100, o = n % 10;
+    if (t > 10 && t < 20) return n + ' спроб';
+    if (o === 1) return n + ' спробу';
+    if (o >= 2 && o <= 4) return n + ' спроби';
+    return n + ' спроб';
+  }
+
   async function renderDaily(view, token) {
     view.innerHTML = '<div class="gwait"><span class="spin"></span> дивлюсь, що там сьогодні…</div>';
     let d;
@@ -1115,7 +1124,7 @@
         return '<div class="gdcard' + (solved ? ' done' : '') + '">'
           + '<div class="gt-head">' + iconOf(p.game) + '<b>' + esc(p.title || titleOf(p.game)) + '</b></div>'
           + '<div class="muted small">' + (solved
-            ? 'розв\'язано за ' + (p.me.attempts || '?') + ' спроб' + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
+            ? 'розв\'язано за ' + (p.me.attempts ? tries(p.me.attempts) : '? спроб') + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
             : 'ще не розв\'язано') + '</div>'
           + '<div class="gdmeta">' + (p.streak ? '<span class="chip">🔥 ' + p.streak + '</span>' : '')
           + (p.solvedCount != null ? '<span class="chip">' + p.solvedCount + ' вже розв\'язали</span>' : '') + '</div>'
