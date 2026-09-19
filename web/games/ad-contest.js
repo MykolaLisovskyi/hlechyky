@@ -535,18 +535,17 @@
     панелі ще не знає, пише «Панель зникла.» і запам'ятовує chromeFor = 'x:ads'. Далі модуль таки
     приходить, registerPanel чесно кличе renderPanel(), але той бачить chromeFor === panel і вважає,
     що тіло вже намальоване, — і напис лишається, поки людина сама не перемкне панель туди-сюди.
-    Робимо це перемикання за неї (сусідня вкладка лобі малюється без жодного запиту).
+    Робимо це перемикання за неї (сусідня вкладка лобі малюється без жодного запиту). Вкладки —
+    кнопки .gnav [data-go] (лобі — data-go=""); так само зроблено в svoya.js.
     Прибрати, щойно registerPanel скидатиме chromeFor сам — див. «Потрібно від каркаса» у spec.
   */
   setTimeout(() => {
-    const bar = document.querySelector('.gbar');
-    const mine = bar && bar.querySelector('.gnav [data-panel="x:ads"].on');
-    const root = bar && bar.parentElement;
-    if (!mine || !root || root.querySelector('.gxpanel.rkpanel')) return;
-    const other = root.querySelector('[data-panel^="g:"]') || root.querySelector('[data-panel]:not([data-panel="x:ads"])');
-    if (!other) return;
-    other.click();
-    (bar.querySelector('.gnav [data-panel="x:ads"]') || mine).click();
+    const mine = () => document.querySelector('.gnav [data-go="x:ads"]');
+    const lobby = document.querySelector('.gnav [data-go=""]');
+    if (!mine() || !mine().classList.contains('on') || !lobby || document.querySelector('.rkpanel')) return;
+    if (!document.querySelector('.gview .gempty')) return;
+    lobby.click();
+    setTimeout(() => { const b = mine(); if (b) b.click(); }, 50);
   }, 0);
 
   HGames.register({
