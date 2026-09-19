@@ -44,8 +44,9 @@ public interface IMelodySource
 /// Треки для гри: з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і з добірок
 /// (<see cref="MelodyClassics"/>), які за потреби знаходяться на YouTube Music і качаються в <c>cache/melody</c>.
 /// Уривки — через ffmpeg. Треки з 👎 (<c>melody_dislikes</c>) — і всі завантаження тієї самої пісні — не беремо.
-/// З радіо беремо все, що хоч раз звучало (<see cref="Heard"/>). Голосові, забанені й коротші за 45 секунд не
-/// беремо; одного виконавця в партії намагаємось не повторювати.
+/// З радіо беремо все, що хоч раз звучало (<see cref="Heard"/>), а в «Ті, що ми слухаємо» — лише те, що крутилось
+/// часто або лайкнуте (<see cref="Favourite"/>). Голосові, забанені й коротші за 45 секунд не беремо; одного
+/// виконавця в партії намагаємось не повторювати.
 /// </summary>
 public sealed class MelodyLibrary(
     Db? db, IOptionsMonitor<YtDlpOptions>? options, YtMusicClient? ytm = null, YtDlpService? ytdlp = null,
@@ -57,7 +58,11 @@ public sealed class MelodyLibrary(
 
     MelodyClassics Classics => classics ?? MelodyClassics.Default;
 
-    public sealed record Row(MelodyTrack Track, int Plays, string SongKey);
+    /// <summary>Трек із кешу радіо: скільки разів звучав і скільки слухачів поставили ❤ (<c>likes</c>).</summary>
+    public sealed record Row(MelodyTrack Track, int Plays, string SongKey, int Likes = 0);
+
+    /// <summary>Від скількох ефірів пісня — «та, що ми слухаємо» (якщо не лайкнута).</summary>
+    public const int FavPlays = 3;
 
     /// <summary>Усі придатні треки з бази (файл може вже не існувати) і ключі пісень із 👎.</summary>
     (List<Row> Rows, HashSet<string> Disliked) Load() => db!.With(c =>
@@ -68,7 +73,8 @@ public sealed class MelodyLibrary(
             // Скільки разів трек звучав на радіо — хай навіть його скіпнули: його чули.
             cmd.CommandText = """
                 SELECT t.id, t.title, t.artist, t.duration_sec, t.thumb_url, t.file_path,
-                       (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id) AS plays, t.song_key
+                       (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id) AS plays, t.song_key,
+                       (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id) AS likes
                 FROM tracks t
                 WHERE t.file_path IS NOT NULL AND t.id NOT LIKE $voice AND t.duration_sec >= $min
                   AND t.id NOT IN (SELECT track_id FROM bans)
@@ -83,7 +89,7 @@ public sealed class MelodyLibrary(
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 rows.Add(new Row(new MelodyTrack(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3),
-                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6), r.IsDBNull(7) ? "" : r.GetString(7)));
+                    r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5)), r.GetInt32(6), r.IsDBNull(7) ? "" : r.GetString(7), r.GetInt32(8)));
         }
         var disliked = new HashSet<string>(StringComparer.Ordinal);
         using (var cmd = c.CreateCommand())
@@ -106,8 +112,9 @@ public sealed class MelodyLibrary(
 
     /// <summary>
     /// По списку кандидатів на кожну обрану категорію, кожен перемішаний. Радіо: українське / решта
-    /// (<see cref="MelodyLanguage"/>), лише те, що звучало. Добірка: пісня з кешу, якщо та сама вже є (під
-    /// назвою з добірки — вона чистіша за ютубівську), інакше <see cref="MelodyTrack.Pending"/>; з 👎 — ні.
+    /// (<see cref="MelodyLanguage"/>), лише те, що звучало; «ті, що ми слухаємо» — часте й лайкнуте
+    /// (<see cref="Favourite"/>). Добірка: пісня з кешу, якщо та сама вже є (під назвою з добірки — вона чистіша
+    /// за ютубівську), інакше <see cref="MelodyTrack.Pending"/>; з 👎 — ні.
     /// </summary>
     public static List<List<MelodyTrack>> Pools(List<Row> cached, ISet<string> disliked, IReadOnlyList<string> categories, MelodyClassics classics, Random rng)
     {
@@ -120,6 +127,7 @@ public sealed class MelodyLibrary(
             List<MelodyTrack> pool;
             if (cat == MelodyCategories.Ua) pool = Heard(cached.Where(x => Ua().Contains(x.Track)));
             else if (cat == MelodyCategories.World) pool = Heard(cached.Where(x => !Ua().Contains(x.Track)));
+            else if (cat == MelodyCategories.Fav) pool = Favourite(cached);
             else
             {
                 byKey ??= cached.Where(x => x.SongKey.Length > 0).ToLookup(x => x.SongKey, StringComparer.Ordinal);
@@ -166,6 +174,14 @@ public sealed class MelodyLibrary(
         if (heard.Count >= count + 4) return heard;
         return [.. heard, .. list.Where(x => x.Plays == 0).Select(x => x.Track)];
     }
+
+    /// <summary>
+    /// «Ті, що ми слухаємо»: пісні, які на радіо крутились не менше <see cref="FavPlays"/> разів (скіпнуті теж
+    /// рахуються — їх чули) або яким хтось поставив ❤. Не верхівка чарту, а все, що справді в ротації: інакше
+    /// партії крутились би довкола тієї самої десятки. Мова не важить — це і українське, і світове разом.
+    /// </summary>
+    public static List<MelodyTrack> Favourite(IEnumerable<Row> all) =>
+        all.Where(x => x.Plays >= FavPlays || x.Likes > 0).Select(x => x.Track).ToList();
 
     static void Shuffle<T>(List<T> all, Random rng)
     {

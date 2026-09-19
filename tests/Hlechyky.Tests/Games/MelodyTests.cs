@@ -494,6 +494,30 @@ public class MelodyTests
     }
 
     [Fact]
+    public void Favourites_are_the_often_played_and_the_liked()
+    {
+        var rows = new List<MelodyLibrary.Row>
+        {
+            new(T("a", "Океан Ельзи", "Обійми"), 5, "", Likes: 0),        // часто — так
+            new(T("b", "Скрябін", "Мовчати"), 1, "", Likes: 2),           // рідко, але з ❤ — так
+            new(T("c", "Queen", "Bohemian Rhapsody"), 3, ""),             // рівно на межі — так
+            new(T("d", "Nirvana", "Lithium"), 2, ""),                      // двічі й без ❤ — ні
+            new(T("e", "The Doors", "People Are Strange"), 0, ""),        // ні разу — ні
+        };
+        Assert.Equal(["a", "b", "c"], MelodyLibrary.Favourite(rows).Select(t => t.Id).Order());
+
+        var pools = MelodyLibrary.Pools(rows, new HashSet<string>(), ["fav", "ua"], MelodyClassics.Empty, new Random(1));
+        Assert.Equal(2, pools.Count);
+        Assert.Equal(["a", "b", "c"], pools[0].Select(t => t.Id).Order());                  // мова не важить
+        Assert.Equal(["a", "b"], pools[1].Select(t => t.Id).Order());
+
+        Assert.Contains(MelodyCategories.Values(MelodyClassics.Empty), v => v.Value == "fav");
+        Assert.Contains("fav", MelodyCategories.Parse("all", MelodyClassics.Empty));
+        Assert.Equal(["fav"], MelodyCategories.Parse("fav", MelodyClassics.Empty));
+        Assert.Empty(MelodyClassics.Parse(["[fav] зайнято", "Queen — Bohemian Rhapsody"]).Categories);
+    }
+
+    [Fact]
     public void Picking_avoids_the_same_song_and_prefers_other_artists()
     {
         var list = new List<MelodyTrack>

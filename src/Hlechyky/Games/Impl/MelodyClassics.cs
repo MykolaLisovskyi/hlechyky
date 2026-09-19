@@ -3,19 +3,23 @@ using System.Text.RegularExpressions;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Категорії пісень у «Вгадай мелодію» (опція столу <c>cat</c>, можна кілька). Дві з радіо — українське й решта
-/// (<see cref="MelodyLanguage"/>) з того, що звучало, — і добірки з <see cref="MelodyClassics"/>, які гра
-/// докачує сама. <see cref="All"/> — «усе»: типове значення multi-опції, каркас зводить до нього порожній вибір.
+/// Категорії пісень у «Вгадай мелодію» (опція столу <c>cat</c>, можна кілька). Три з радіо — українське й решта
+/// (<see cref="MelodyLanguage"/>) з того, що звучало, та <see cref="Fav"/> — те, що крутиться найчастіше або
+/// лайкнуте, — і добірки з <see cref="MelodyClassics"/>, які гра докачує сама. <see cref="All"/> — «усе»: типове
+/// значення multi-опції, каркас зводить до нього порожній вибір.
 /// </summary>
 public static class MelodyCategories
 {
-    public const string All = "all", Ua = "ua", World = "world";
+    public const string All = "all", Ua = "ua", World = "world", Fav = "fav";
 
-    /// <summary>Обидві категорії з радіо — те, що гра брала до появи добірок.</summary>
+    /// <summary>Обидві мовні категорії з радіо — те, що гра брала до появи добірок.</summary>
     public static readonly IReadOnlyList<string> Radio = [Ua, World];
 
+    /// <summary>Коди, які не можна віддати добірці з файла.</summary>
+    public static readonly IReadOnlyList<string> Reserved = [All, Ua, World, Fav];
+
     public static IReadOnlyList<(string Value, string Label)> Values(MelodyClassics classics) =>
-        [(All, "Усе"), (Ua, "Українські з радіо"), (World, "Світові з радіо"), .. classics.Categories];
+        [(All, "Усе"), (Fav, "Ті, що ми слухаємо"), (Ua, "Українські з радіо"), (World, "Світові з радіо"), .. classics.Categories];
 
     /// <summary>Обрані категорії з рядка опції: «all», порожньо або самі невідомі — усі, крім самого «all».</summary>
     public static IReadOnlyList<string> Parse(string? value, MelodyClassics classics)
@@ -85,7 +89,7 @@ public sealed partial class MelodyClassics
             if (Header().Match(line) is { Success: true } h)
             {
                 var code = h.Groups[1].Value;
-                if (code is MelodyCategories.All or MelodyCategories.Ua or MelodyCategories.World || categories.Any(c => c.Item1 == code)) { current = null; continue; }
+                if (MelodyCategories.Reserved.Contains(code, StringComparer.Ordinal) || categories.Any(c => c.Item1 == code)) { current = null; continue; }
                 categories.Add((code, h.Groups[2].Value));
                 current = code;
                 continue;
