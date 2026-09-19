@@ -4,15 +4,15 @@
 
   Вид (подія 'room', свій для кожного місця — гра Hidden):
     { phase: 'lobby'|'intro'|'board'|'reading'|'buzz'|'answering'|'reveal'|'done', mode: 'auto'|'live',
-      host: seat|null, options: { answer, buzz, early, voice },
+      host: seat|null, options: { answer, buzz, early: 'on'|'off'|'lock', voice },
       pack: { id, title, description, author, rounds: [{ name, final, themes[] }] } | null,
       round, rounds, roundName, board: [{ theme, cells: [{ price, open }] }] | null,
       chooser, cell: { theme, q } | null, question: { theme, price, text, media } | null,
       answer: { text, accept[], comment, media } | null,   // усім — після розкриття; живому ведучому — одразу
       answering, correct, until, totalMs, paused, leftMs, waiting,
-      scores[], wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], appeals: [{ seat, text }],
+      scores[], wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], falseStart: [seat], appeals: [{ seat, text }],
       say: { id, text, url } | null, voice: { on, available },
-      me: { isHost, canPick, canBuzz, canAnswer, canAppeal, canJudge, canChoosePack } | null,
+      me: { isHost, canPick, canBuzz, lockMs, canAnswer, canAppeal, canJudge, canChoosePack } | null,
       left[], error, result }
   Ходи: pack {id} (лобі, господар) · pick {theme, q} · buzz · answer {text} · appeal · judge {seat, accept}
         живий ведучий: open · verdict {ok} · nobody · next · pause · resume · adjust {seat, delta} · voice {on}
@@ -204,9 +204,11 @@
   /// Черга на кнопку — усім: хто натиснув першим, другим…; помилився — закреслено, відповідає — виділено.
   function pressesHtml(ctx, v) {
     const p = v.presses || [];
-    if (!p.length) return '';
+    const fs = v.falseStart || [];
+    if (!p.length && !fs.length) return '';
     const wrong = v.wrong || [];
-    return '<div class="svpresses">🔔 ' + p.map((x, i) => {
+    const early = fs.map((s) => '<span class="no">⛔ ' + esc(nick(ctx, s)) + ' <i>фальстарт</i></span>').join('');
+    return '<div class="svpresses">🔔 ' + early + p.map((x, i) => {
       const cls = x.seat === v.answering ? 'now' : x.seat === v.correct ? 'ok' : wrong.indexOf(x.seat) >= 0 ? 'no' : '';
       return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + (i + 1) + '. ' + esc(nick(ctx, x.seat))
         + ' <i>' + (x.ms / 1000).toFixed(2) + ' с</i>' + (x.seat === v.answering ? ' 🎤' : '') + '</span>';
@@ -557,7 +559,9 @@
     buzz.disabled = !me.canBuzz;
     buzz.classList.toggle('live', !!me.canBuzz);
     const place = v.answering != null ? queuePlace(ctx, v) : 0;
+    const locked = !me.canBuzz && (v.falseStart || []).indexOf(ctx.seat) >= 0 && (v.phase === 'reading' || me.lockMs > 0);
     buzz.textContent = v.answering === ctx.seat ? '🎤 Відповідай!' : (v.wrong || []).indexOf(ctx.seat) >= 0 ? 'Спробу використано'
+      : locked ? '⛔ Фальстарт — чекай'
       : place ? '⏳ Ти в черзі ' + place + '-й'
       : v.answering != null ? (me.canBuzz ? '🔔 Я теж знаю! (у чергу)' : '🎤 ' + nick(ctx, v.answering))
       : me.canBuzz ? '🔔 Я знаю!' : v.phase === 'reading' ? 'Слухаємо…' : '🔔';
@@ -722,7 +726,10 @@
       switch (v.phase) {
         case 'intro': return 'Теми раунду';
         case 'board': return me.canPick && ctx.seat === v.chooser ? 'Обирай запитання' : 'Обирає ' + nick(ctx, v.chooser);
-        case 'reading': return me.isHost ? 'Читай уголос і тисни «Кнопка!»' : me.canBuzz ? 'Знаєш — тисни!' : 'Слухаємо запитання';
+        case 'reading':
+          if (me.isHost) return 'Читай уголос і тисни «Кнопка!»';
+          if (v.options && v.options.early === 'lock') return me.canBuzz ? 'Дослухай до кінця — раніше натиснеш, буде фальстарт' : 'Слухаємо запитання';
+          return me.canBuzz ? 'Знаєш — тисни!' : 'Слухаємо запитання';
         case 'buzz': return me.isHost ? 'Чекаємо на кнопку' : me.canBuzz ? 'Кнопка відкрита — тисни!' : 'Кнопка відкрита';
         case 'answering':
           if (v.answering === ctx.seat) return v.mode === 'live' ? 'Кажи відповідь уголос!' : 'Пиши відповідь!';

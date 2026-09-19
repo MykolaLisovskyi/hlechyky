@@ -217,6 +217,62 @@ public class SvoyaTests
     }
 
     [Fact]
+    public void A_false_start_opens_the_button_two_seconds_later_for_that_player_only()
+    {
+        var h = Table(new { early = "lock" }, nicks: ["Оля", "Петро", "Іра"]);
+        Open(h);
+        // кнопка під час читання «жива» — інакше фальстарту не буває
+        Assert.True(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        var r = h.Act(0, "buzz");
+        Assert.False(r.Ok);
+        Assert.StartsWith("Фальстарт!", r.Message);
+        Assert.StartsWith("Фальстарт уже був", h.Act(0, "buzz").Message);
+        Assert.Equal(Svoya.Reading, Phase(h));
+        Assert.Equal([0], h.View(null).GetProperty("falseStart").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.False(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+
+        Until(h, Svoya.Buzz);
+        Assert.False(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        Assert.Equal(Svoya.FalseStartMs, h.View(0).GetProperty("me").GetProperty("lockMs").GetInt32());
+        Assert.True(h.View(1).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        Assert.StartsWith("Фальстарт — ще", h.Act(0, "buzz").Message);
+
+        h.Clock.AdvanceMs(Svoya.FalseStartMs);
+        h.Tick();
+        Assert.Equal(0, h.View(0).GetProperty("me").GetProperty("lockMs").GetInt32());
+        Assert.True(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        Assert.True(h.Act(0, "buzz").Ok);
+        Assert.Equal(0, h.View(null).GetProperty("answering").GetInt32());
+    }
+
+    [Fact]
+    public void A_false_starter_cannot_queue_up_while_locked_and_the_lock_is_not_renewed_after_a_miss()
+    {
+        var h = Table(new { early = "lock" }, nicks: ["Оля", "Петро", "Іра"]);
+        Open(h);
+        Assert.False(h.Act(2, "buzz").Ok);
+        Until(h, Svoya.Buzz);
+        Assert.True(h.Act(0, "buzz").Ok);
+        Assert.StartsWith("Фальстарт — ще", h.Act(2, "buzz").Message);
+        Assert.False(h.View(2).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        // Оля помилилась через 3 с: кнопка відкривається знову, а блок Іри вже минув і не поновлюється
+        h.Clock.AdvanceMs(3_000);
+        Assert.True(h.Act(0, "answer", new { text = "не те" }).Ok);
+        Assert.Equal(Svoya.Buzz, Phase(h));
+        Assert.Equal(0, h.View(2).GetProperty("me").GetProperty("lockMs").GetInt32());
+        Assert.True(h.Act(2, "buzz").Ok);
+    }
+
+    [Fact]
+    public void With_early_buzz_allowed_there_is_no_false_start()
+    {
+        var h = Table(new { early = "on" });
+        var c = Open(h);
+        Assert.True(h.Act(c, "buzz").Ok);
+        Assert.Empty(h.View(null).GetProperty("falseStart").EnumerateArray());
+    }
+
+    [Fact]
     public void First_press_answers_and_the_rest_queue_up_with_milliseconds()
     {
         var h = Table(nicks: ["Оля", "Петро", "Іра"]);

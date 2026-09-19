@@ -57,12 +57,15 @@ public sealed partial class Svoya : Game
     public const int VoiceWaitMs = 5_000;
     /// <summary>Живий ведучий читає сам; якщо він забув натиснути «Кнопка!» — кнопка відкриється сама.</summary>
     public const int LiveReadMs = 60_000;
+    /// <summary>Фальстарт (early=lock): натиснув під час читання — кнопка для нього відкриється на стільки пізніше за інших.</summary>
+    public const int FalseStartMs = 2_000;
     public const int IntroThemeMs = 1_000;
     public const int MaxAnswer = 120;
     /// <summary>Скільки знаків за секунду «читає» ведучий без голосу (оцінка для таймера).</summary>
     const double CharsPerSec = 14;
 
     public const string Auto = "auto", Live = "live";
+    public const string EarlyOn = "on", EarlyOff = "off", EarlyLock = "lock";
     public static readonly int[] AnswerChoices = [10, 15, 20];
     public static readonly int[] BuzzChoices = [5, 10, 15];
 
@@ -77,7 +80,8 @@ public sealed partial class Svoya : Game
             new GameOption("host", "Ведучий", [(Auto, "Автомат із голосом"), (Live, "Жива людина (господар)")], Auto),
             new GameOption("answer", "На відповідь", [.. AnswerChoices.Select(n => (n.ToString(), $"{n} с"))], "15"),
             new GameOption("buzz", "На кнопку", [.. BuzzChoices.Select(n => (n.ToString(), $"{n} с"))], "10"),
-            new GameOption("early", "Кнопка під час читання", [("on", "Можна одразу"), ("off", "Лише після читання")], "on"),
+            new GameOption("early", "Кнопка під час читання",
+                [(EarlyOn, "Можна одразу"), (EarlyOff, "Лише після читання"), (EarlyLock, $"Фальстарт: блок на {FalseStartMs / 1000} с")], EarlyOn),
             new GameOption("voice", "Голос ведучого", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
         ],
         Hint: "Поле тем і цін, хто перший натиснув — той відповідає. Пакет обирає господар; ведучий — автомат або ти сам");
@@ -90,7 +94,7 @@ public sealed partial class Svoya : Game
     SvoyaPhrases _phrases = SvoyaPhrases.Plain;
     string _mode = Auto;
     int _answerSec = 15, _buzzSec = 10;
-    bool _early = true;
+    string _early = EarlyOn;
     string _voiceName = "ostap";
     /// <summary>Живий ведучий попросив, щоб запитання читав голос (тумблер на пульті).</summary>
     bool _liveVoice;
@@ -116,6 +120,11 @@ public sealed partial class Svoya : Game
     readonly List<Verdict> _verdicts = [];
     readonly List<Press> _presses = [];
     DateTimeOffset _opened;
+    /// <summary>Хто натиснув під час читання при early=lock — їм кнопка відкриється на <see cref="FalseStartMs"/> пізніше.</summary>
+    readonly HashSet<int> _falseStart = [];
+    /// <summary>Коли для фальстартерів відкриється кнопка (виставляється, щойно кнопка відкрилась усім); чи вже розповіли, що відкрилась.</summary>
+    DateTimeOffset? _lockUntil;
+    bool _unlocked;
     /// <summary>Коли голос дочитає запитання (і скільки читання тривало всього) — натиснули раніше, а він дочитує.</summary>
     DateTimeOffset? _readEnd;
     int _readMs;
@@ -183,7 +192,7 @@ public sealed partial class Svoya : Game
         _mode = options.GetValueOrDefault("host") == Live ? Live : Auto;
         if (int.TryParse(options.GetValueOrDefault("answer"), out var a) && AnswerChoices.Contains(a)) _answerSec = a;
         if (int.TryParse(options.GetValueOrDefault("buzz"), out var b) && BuzzChoices.Contains(b)) _buzzSec = b;
-        _early = options.GetValueOrDefault("early") != "off";
+        _early = options.GetValueOrDefault("early") is EarlyOff or EarlyLock ? options["early"] : EarlyOn;
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
     }
 
@@ -336,6 +345,7 @@ public sealed partial class Svoya : Game
     {
         var now = Now;
         if (_phase is Done or Lobby) return Flush();
+        if (_lockUntil is { } lu && !_unlocked && now >= lu) { _unlocked = true; _dirty = true; }
         if (_pending is not null)
         {
             var clip = Clip(_pending);
@@ -487,6 +497,7 @@ public sealed partial class Svoya : Game
         }
         Phase(Buzz);
         _opened = Now;
+        if (_falseStart.Count > 0 && _lockUntil is null) _lockUntil = Now.AddMilliseconds(FalseStartMs);
         Arm();
     }
 
@@ -580,6 +591,9 @@ public sealed partial class Svoya : Game
         _tries.Clear();
         _verdicts.Clear();
         _presses.Clear();
+        _falseStart.Clear();
+        _lockUntil = null;
+        _unlocked = false;
         _readEnd = null;
         _appeals.Clear();
         ClearSpecial();
@@ -730,7 +744,15 @@ public sealed partial class Svoya : Game
         if (_paused) return ActResult.Fail("Пауза");
         if (_solo is not null) return ActResult.Fail(_solo == seat ? "Відповідай — кнопка тут не потрібна" : "Це запитання — лише для одного гравця");
         if (_wrong.Contains(seat)) return ActResult.Fail("Свою спробу на це запитання ти вже використав(-ла)");
-        if (_phase == Reading && !_early) return ActResult.Fail("Ще читають — зачекай");
+        if (_phase == Reading && _early == EarlyOff) return ActResult.Fail("Ще читають — зачекай");
+        if (_phase == Reading && _early == EarlyLock)
+        {
+            // фальстарт: кнопка «жива», але хто не дотерпів — той відкриється пізніше за інших
+            if (!_falseStart.Add(seat)) return ActResult.Fail("Фальстарт уже був — дочекайся кінця читання");
+            _dirty = true;
+            return ActResult.Fail($"Фальстарт! Кнопка відкриється для тебе на {FalseStartMs / 1000} с пізніше");
+        }
+        if (LockLeftMs(seat) is > 0 and var left) return ActResult.Fail($"Фальстарт — ще {left / 1000.0:0.#} с");
         if (_phase is Answering && _answering is { } who)
         {
             if (who == seat) return ActResult.Fail("Ти вже відповідаєш");
@@ -746,6 +768,9 @@ public sealed partial class Svoya : Game
         BeginAnswering(seat);
         return ActResult.Done;
     }
+
+    /// <summary>Скільки ще фальстартеру чекати кнопки (0 — не чекати).</summary>
+    int LockLeftMs(int seat) => _falseStart.Contains(seat) && _lockUntil is { } u && u > Now ? (int)(u - Now).TotalMilliseconds : 0;
 
     /// <summary>Записати натискання з мілісекундами від відкриття кнопки — це й черга, і те, що бачать усі.</summary>
     void Note(int seat)
@@ -953,16 +978,19 @@ public sealed partial class Svoya : Game
             wrong = _wrong.Order().ToArray(),
             tries = _tries.Select(t => new { seat = t.Seat, text = t.Text, ok = t.Ok }).ToArray(),
             presses = _presses.Select(p => new { seat = p.Seat, ms = p.Ms }).ToArray(),
+            falseStart = _falseStart.Order().ToArray(),
             appeals = _appeals.Select(a => new { seat = a.Seat, text = a.Text }).ToArray(),
             say = _say is { } say ? new { id = say.Id, text = say.Text, url = say.Url } : null,
             me = seat is not { } me ? null : new
             {
                 isHost,
                 canPick = _phase == Board && !_paused && (me == _chooser || isHost),
-                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _solo is null
+                // при early=lock кнопка під час читання «жива» (інакше фальстарту не буває), а хто не дотерпів — чекає
+                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _solo is null && LockLeftMs(me) == 0
                     && (_answering is null
-                        ? _phase == Buzz || (_phase == Reading && _early)
+                        ? _phase == Buzz || (_phase == Reading && (_early == EarlyOn || (_early == EarlyLock && !_falseStart.Contains(me))))
                         : _phase == Answering && _answering != me && !_presses.Any(p => p.Seat == me)),
+                lockMs = LockLeftMs(me),
                 canAnswer = _mode == Auto && _phase == Answering && _answering == me,
                 canAppeal = _mode == Auto && _phase == Reveal && !_appeals.Any(a => a.Seat == me)
                     && _tries.Any(t => t.Seat == me && !t.Ok && t.Text is not null),
