@@ -105,8 +105,12 @@ audio.svmedia { width: min(420px, 100%); }
 .svrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .svok { background: var(--ok); color: #0f1f18; }
 .svno { color: var(--danger); }
-.svpresses { display: flex; flex-wrap: wrap; gap: 8px; font-size: .9em; }
-.svpresses span.first { color: var(--accent); font-weight: 700; }
+
+/* ---------- черга на кнопку (усім) ---------- */
+.svpresses { display: flex; flex-wrap: wrap; gap: 8px; font-size: .9em; justify-content: center; }
+.svpresses span.now { color: var(--accent); font-weight: 700; }
+.svpresses span.ok { color: var(--ok); font-weight: 700; }
+.svpresses span.no { color: var(--muted); text-decoration: line-through; }
 .svpresses i { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- рахунок ---------- */

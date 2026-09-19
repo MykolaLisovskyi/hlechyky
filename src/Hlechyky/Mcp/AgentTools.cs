@@ -322,7 +322,8 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
           strike → bet → final → finale → done. Спецклітинки: cat (кіт у мішку) і auction (аукціон).
         Дії (act):
           pick {theme, q}         — у board, якщо ти обирач (view.chooser == твоє місце);
-          buzz                    — кнопка: у buzz (і в reading, якщо view.options.early);
+          buzz                    — кнопка: у buzz (і в reading, якщо view.options.early); поки хтось
+                                    відповідає — стаєш у чергу (view.presses): він помилиться — відповідаєш ти;
           answer {text}           — коли view.answering == твоє місце, і у фіналі (фаза final);
           appeal / judge {seat, accept} — оскаржити промах у reveal / господар вирішує;
           give {seat}, catPrice {max} — кіт у мішку; bid {amount}, pass, allin — аукціон на своєму ході;

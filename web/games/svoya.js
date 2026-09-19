@@ -186,11 +186,26 @@
     if (v.voice && v.voice.available)
       row.push(btn('voice', v.voice.on ? '🗣 Читає голос — вимкнути' : '🗣 Хай читає голос', 'ghost', ' data-on="' + (v.voice.on ? '0' : '1') + '"'));
     html += '<div class="svrow">' + row.join('') + '</div>';
-    if ((v.presses || []).length) {
-      html += '<div class="svpresses">🔔 ' + v.presses.map((p, i) => '<span' + (i === 0 ? ' class="first"' : '') + '>'
-        + esc(nick(ctx, p.seat)) + ' <i>' + (p.ms / 1000).toFixed(2) + ' с</i></span>').join('') + '</div>';
-    }
     return html + '</div>';
+  }
+
+  /// Черга на кнопку — усім: хто натиснув першим, другим…; помилився — закреслено, відповідає — виділено.
+  function pressesHtml(ctx, v) {
+    const p = v.presses || [];
+    if (!p.length) return '';
+    const wrong = v.wrong || [];
+    return '<div class="svpresses">🔔 ' + p.map((x, i) => {
+      const cls = x.seat === v.answering ? 'now' : x.seat === v.correct ? 'ok' : wrong.indexOf(x.seat) >= 0 ? 'no' : '';
+      return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + (i + 1) + '. ' + esc(nick(ctx, x.seat))
+        + ' <i>' + (x.ms / 1000).toFixed(2) + ' с</i>' + (x.seat === v.answering ? ' 🎤' : '') + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /// Моє місце в черзі (1 — наступний після того, хто відповідає), 0 — не в черзі.
+  function queuePlace(ctx, v) {
+    const q = (v.presses || []).map((x) => x.seat)
+      .filter((s) => s !== v.answering && (v.wrong || []).indexOf(s) < 0);
+    return q.indexOf(ctx.seat) + 1;
   }
 
   // ---------- рахунок ----------
@@ -277,6 +292,20 @@
     if (a && !a.paused) a.pause();
     if (window.speechSynthesis && s.speaking) { try { speechSynthesis.cancel(); } catch { /* нема */ } }
     s.speaking = false;
+    s.question = false;
+    s.next = null;
+    duck(s, false);
+  }
+
+  /// Репліка скінчилась: якщо за запитанням чекала наступна (відповідь після раннього натиску) — тепер її черга.
+  function spoke(root) {
+    const s = st(root);
+    s.speaking = false;
+    s.question = false;
+    const next = s.next;
+    s.next = null;
+    const ctx = root._ctx;
+    if (next && ctx && ctx.playing && speakerOn(ctx)) { say(root, next, false); return; }
     duck(s, false);
   }
 
@@ -287,26 +316,38 @@
 
   function voice(root, ctx, v) {
     const s = st(root);
-    const say = v.say;
-    if (v.phase === 'answering' || v.phase === 'done' || v.phase === 'lobby') { if (s.speaking) hush(root); }
-    if (!say || say.id === s.sayId) return;
-    s.sayId = say.id;
+    if (v.phase === 'done' || v.phase === 'lobby') { if (s.speaking) hush(root); }
+    const line = v.say;
+    if (!line || line.id === s.sayId) return;
+    s.sayId = line.id;
     if (!speakerOn(ctx) || !ctx.playing) return;
+    // запитання голос дочитує завжди, навіть коли вже хтось відповідає: наступна репліка чекає на нього
+    if (s.speaking && s.question) { s.next = line; return; }
     hush(root);
-    if (say.url) {
+    say(root, line, v.phase === 'reading');
+  }
+
+  function say(root, line, question) {
+    const s = st(root);
+    // обірвана репліка ще може озватись (onerror після cancel, catch після зміни src) — її кінець не наш
+    const n = s.line = (s.line || 0) + 1;
+    const end = () => { if (s.line === n) spoke(root); };
+    if (line.url) {
       const a = root.querySelector('.svvoice');
-      a.src = say.url;
+      a.src = line.url;
       duck(s, true);
       s.speaking = true;
-      a.play().catch(() => { s.speaking = false; duck(s, false); });
+      s.question = question;
+      a.play().catch(end);
     } else {
       const uk = ukVoice();
-      if (!uk) return;                                         // без українського голосу краще тиша, ніж англійський акцент
-      const u = new SpeechSynthesisUtterance(say.text);
+      if (!uk) { spoke(root); return; }                       // без українського голосу краще тиша, ніж англійський акцент
+      const u = new SpeechSynthesisUtterance(line.text);
       u.voice = uk; u.lang = uk.lang; u.rate = 1.05;
-      u.onend = u.onerror = () => { s.speaking = false; duck(s, false); };
+      u.onend = u.onerror = end;
       duck(s, true);
       s.speaking = true;
+      s.question = question;
       speechSynthesis.speak(u);
     }
   }
@@ -468,7 +509,7 @@
     if (v.phase === 'cat') return catHtml(ctx, v);
     if (v.phase === 'auction') return auctionHtml(ctx, v);
     if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
-    return tvHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
+    return tvHtml(ctx, v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
   }
 
   function set(el, html) { if (el._html !== html) { el._html = html; el.innerHTML = html; } }
@@ -493,8 +534,11 @@
     buzz.hidden = !showBuzz;
     buzz.disabled = !me.canBuzz;
     buzz.classList.toggle('live', !!me.canBuzz);
+    const place = v.answering != null ? queuePlace(ctx, v) : 0;
     buzz.textContent = v.answering === ctx.seat ? '🎤 Відповідай!' : (v.wrong || []).indexOf(ctx.seat) >= 0 ? 'Спробу використано'
-      : v.answering != null ? '🎤 ' + nick(ctx, v.answering) : me.canBuzz ? '🔔 Я знаю!' : v.phase === 'reading' ? 'Слухаємо…' : '🔔';
+      : place ? '⏳ Ти в черзі ' + place + '-й'
+      : v.answering != null ? (me.canBuzz ? '🔔 Я теж знаю! (у чергу)' : '🎤 ' + nick(ctx, v.answering))
+      : me.canBuzz ? '🔔 Я знаю!' : v.phase === 'reading' ? 'Слухаємо…' : '🔔';
 
     // поле відповіді (лише в auto, лише тому, хто натиснув)
     const form = root.querySelector('.svform');
@@ -598,8 +642,7 @@
         speakerBtn(root, c);
       });
       const a = root.querySelector('.svvoice');
-      const done = () => { s.speaking = false; duck(s, false); };
-      a.addEventListener('ended', done);
+      a.addEventListener('ended', () => spoke(root));
       // F5 посеред репліки — стару не повторюємо: звучить лише те, що ведучий скаже вже при нас
       s.sayId = (ctx.view && ctx.view.say && ctx.view.say.id) || 0;
       const search = root.querySelector('.svsearch');

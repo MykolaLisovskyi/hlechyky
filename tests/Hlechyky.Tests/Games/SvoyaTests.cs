@@ -217,20 +217,89 @@ public class SvoyaTests
     }
 
     [Fact]
-    public void First_press_answers_and_the_rest_are_logged_with_milliseconds()
+    public void First_press_answers_and_the_rest_queue_up_with_milliseconds()
     {
         var h = Table(nicks: ["Оля", "Петро", "Іра"]);
         Open(h);
         Until(h, Svoya.Buzz);
         h.Clock.AdvanceMs(300);
         Assert.True(h.Act(2, "buzz").Ok);
+        Assert.True(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
         h.Clock.AdvanceMs(120);
-        Assert.StartsWith("Не встиг — відповідає Іра", h.Act(0, "buzz").Message);
-        var presses = h.View(null).GetProperty("presses");
+        Assert.Equal("Ти в черзі 1-й, після Іра", h.Act(0, "buzz").Message);
+        Assert.Equal("Ти вже в черзі", h.Act(0, "buzz").Message);
+        Assert.False(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        Assert.Equal("Ти вже відповідаєш", h.Act(2, "buzz").Message);
+        var presses = h.View(1).GetProperty("presses");     // черга видна всім, не лише ведучому
         Assert.Equal(2, presses[0].GetProperty("seat").GetInt32());
         Assert.Equal(300, presses[0].GetProperty("ms").GetInt32());
+        Assert.Equal(0, presses[1].GetProperty("seat").GetInt32());
         Assert.Equal(420, presses[1].GetProperty("ms").GetInt32());
         Assert.Equal(2, h.View(null).GetProperty("answering").GetInt32());
+    }
+
+    [Fact]
+    public void Wrong_answer_hands_the_question_to_the_next_in_the_queue()
+    {
+        var h = Table(nicks: ["Оля", "Петро", "Іра"]);
+        Open(h);
+        Until(h, Svoya.Buzz);
+        Assert.True(h.Act(2, "buzz").Ok);
+        Assert.True(h.Act(0, "buzz").Ok);
+        Assert.True(h.Act(1, "buzz").Ok);
+        Assert.Equal("❌ −100", h.Act(2, "answer", new { text = "Шевченко" }).Message);
+        var v = h.View(null);
+        Assert.Equal(Svoya.Answering, v.GetProperty("phase").GetString());
+        Assert.Equal(0, v.GetProperty("answering").GetInt32());
+        Assert.Equal("Шевченко", v.GetProperty("tries")[0].GetProperty("text").GetString());   // помилку бачать усі
+        h.Act(0, "answer", new { text = "Франко" });
+        Assert.Equal(1, h.View(null).GetProperty("answering").GetInt32());
+        h.Act(1, "answer", new { text = "Леся" });
+        Assert.Equal(Svoya.Reveal, Phase(h));                // усі троє помилились
+    }
+
+    [Fact]
+    public void Queued_player_who_left_is_skipped()
+    {
+        var h = Table(nicks: ["Оля", "Петро", "Іра"]);
+        Open(h);
+        Until(h, Svoya.Buzz);
+        h.Act(2, "buzz");
+        h.Act(0, "buzz");
+        h.Leave("Оля");
+        h.Act(2, "answer", new { text = "ні" });
+        Assert.Equal(Svoya.Buzz, Phase(h));                  // черга порожня — кнопка знову відкрита
+    }
+
+    [Fact]
+    public void Early_wrong_answer_goes_back_to_reading_until_the_voice_finishes()
+    {
+        var h = Table(voice: new FakeSvoyaVoice(seconds: 6));
+        var c = Open(h);
+        var o = Other(h, c);
+        var until = h.View(null).GetProperty("until").GetDateTimeOffset();
+        h.Clock.AdvanceMs(1_000);
+        Assert.True(h.Act(c, "buzz").Ok);
+        var said = h.View(null).GetProperty("say").GetProperty("id").GetInt32();
+        Assert.Equal("❌ −100", h.Act(c, "answer", new { text = "Шевченко" }).Message);
+        var v = h.View(null);
+        Assert.Equal(Svoya.Reading, v.GetProperty("phase").GetString());   // голос ще читає — читання триває
+        Assert.Equal(until, v.GetProperty("until").GetDateTimeOffset());
+        Assert.Equal(said, v.GetProperty("say").GetProperty("id").GetInt32());   // «Ні» не перебиває запитання
+        Assert.True(h.View(o).GetProperty("me").GetProperty("canBuzz").GetBoolean());
+        Until(h, Svoya.Buzz);
+    }
+
+    [Fact]
+    public void Early_right_answer_waits_for_the_voice_before_the_reveal_ends()
+    {
+        var h = Table(voice: new FakeSvoyaVoice(seconds: 6));
+        var c = Open(h);
+        var readUntil = h.View(null).GetProperty("until").GetDateTimeOffset();
+        Assert.True(h.Act(c, "buzz").Ok);
+        Assert.Equal("✅ +100", h.Act(c, "answer", new { text = "Котляревський" }).Message);
+        var reveal = h.View(null).GetProperty("until").GetDateTimeOffset();
+        Assert.True(reveal - readUntil >= TimeSpan.FromSeconds(3), $"розкриття {reveal:T}, читання до {readUntil:T}");
     }
 
     [Fact]
@@ -278,6 +347,7 @@ public class SvoyaTests
         var h = Table();
         var c = Open(h);
         var o = Other(h, c);
+        Until(h, Svoya.Buzz);                 // запитання дочитане: після помилки — знову кнопка
         Assert.True(h.Act(c, "buzz").Ok);
         Assert.Equal("❌ −100", h.Act(c, "answer", new { text = "Шевченко" }).Message);
         Assert.Equal(-100, Score(h, c));
@@ -349,6 +419,7 @@ public class SvoyaTests
         h.Act(c, "buzz");
         h.Act(c, "answer", new { text = "ріка Дніпр" });      // автомат не взяв
         Assert.Equal(-200, Score(h, c));
+        Until(h, Svoya.Buzz);                                  // дочитали запитання
         h.Clock.AdvanceMs(10_000);
         h.Tick();
         Assert.Equal(Svoya.Reveal, Phase(h));

@@ -113,6 +113,9 @@ public sealed partial class Svoya : Game
     readonly List<Try> _tries = [];
     readonly List<Press> _presses = [];
     DateTimeOffset _opened;
+    /// <summary>Коли голос дочитає запитання (і скільки читання тривало всього) — натиснули раніше, а він дочитує.</summary>
+    DateTimeOffset? _readEnd;
+    int _readMs;
     readonly List<Appeal> _appeals = [];
     readonly int[] _scores = new int[Seats];
     readonly HashSet<int> _left = [];
@@ -287,7 +290,8 @@ public sealed partial class Svoya : Game
             Reading => ReadMs(),
             Buzz => _buzzSec * 1000,
             Answering => _answerSec * 1000,
-            Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + 1200),
+            // правильно відповіли, поки голос ще читав: репліка про відповідь прозвучить після запитання
+            Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + 1200) + ReadLeftMs(),
             _ => SpecialMs(),
         };
         _totalMs = ms;
@@ -302,6 +306,8 @@ public sealed partial class Svoya : Game
         if (_mode == Live && !_liveVoice) return _q is { Text.Length: 0 } && media > 0 ? media + 500 : LiveReadMs;
         return Math.Max((int)(_speech * 1000), media) + 400;
     }
+
+    int ReadLeftMs() => _readEnd is { } e && e > Now ? (int)(e - Now).TotalMilliseconds : 0;
 
     // =========================================================================================
     // Фази
@@ -366,6 +372,14 @@ public sealed partial class Svoya : Game
     {
         _answering = null;
         if (!Players().Any(s => !_wrong.Contains(s))) { BeginReveal(); return; }
+        if (_readEnd is { } end && end > Now)
+        {
+            // натиснули раніше й помилились, а голос ще читає: дочитуємо, кнопка — як і була, під час читання
+            Phase(Reading);
+            _totalMs = _readMs;
+            _until = end;
+            return;
+        }
         Phase(Buzz);
         _opened = Now;
         Arm();
@@ -399,8 +413,16 @@ public sealed partial class Svoya : Game
         _answering = null;
         // кіт і аукціон — для одного: помилився, і запитання закрите
         if (_solo is not null) { BeginReveal(); return; }
-        if (_mode == Auto) Speak(WrongLine(), wait: false);
-        BeginBuzz();
+        // голос ще читає — не перебиваємо його «Ні»: хрестик і мінус і так видно
+        if (_mode == Auto && ReadLeftMs() == 0) Speak(WrongLine(), wait: false);
+        NextOrBuzz();
+    }
+
+    /// <summary>Хто натиснув слідом (і ще не помилявся) — відповідає одразу; черга порожня — кнопка знову відкрита.</summary>
+    void NextOrBuzz()
+    {
+        var next = _presses.Select(p => (int?)p.Seat).FirstOrDefault(s => !_wrong.Contains(s!.Value) && IsPlayer(s.Value));
+        if (next is { } n) BeginAnswering(n); else BeginBuzz();
     }
 
     void BeginReveal()
@@ -437,6 +459,7 @@ public sealed partial class Svoya : Game
         _wrong.Clear();
         _tries.Clear();
         _presses.Clear();
+        _readEnd = null;
         _appeals.Clear();
         ClearSpecial();
     }
@@ -487,8 +510,8 @@ public sealed partial class Svoya : Game
         if (_chooser == seat) _chooser = Players().First();
         if (_answering == seat)
         {
-            // пішов, не відповівши: звичайне запитання — кнопка знову відкрита, кіт чи аукціон — закрите; без штрафу
-            if (_solo == seat) BeginReveal(); else BeginBuzz();
+            // пішов, не відповівши: звичайне запитання — наступний у черзі або кнопка, кіт чи аукціон — закрите; без штрафу
+            if (_solo == seat) BeginReveal(); else NextOrBuzz();
             return;
         }
         SpecialLeave(seat);
@@ -529,6 +552,11 @@ public sealed partial class Svoya : Game
         _pending = null;
         _say = new Say(++_sayId, text, clip?.Url);
         _speech = clip?.Seconds ?? Math.Max(1.5, text.Length / CharsPerSec);
+        if (_phase == Reading)
+        {
+            _readMs = ReadMs();
+            _readEnd = Now.AddMilliseconds(_readMs);
+        }
         _dirty = true;
     }
 
@@ -578,8 +606,12 @@ public sealed partial class Svoya : Game
         if (_phase == Reading && !_early) return ActResult.Fail("Ще читають — зачекай");
         if (_phase is Answering && _answering is { } who)
         {
+            if (who == seat) return ActResult.Fail("Ти вже відповідаєш");
+            if (_presses.Any(p => p.Seat == seat)) return ActResult.Fail("Ти вже в черзі");
+            // відповідає інший — стаєш у чергу: помилиться він, відповідатимеш ти
             Note(seat);
-            return ActResult.Fail(who == seat ? "Ти вже відповідаєш" : $"Не встиг — відповідає {Ctx.NickOf(who)}");
+            var place = _presses.Where(p => !_wrong.Contains(p.Seat) && p.Seat != who).Count();
+            return ActResult.Accept($"Ти в черзі {place}-й, після {Ctx.NickOf(who)}");
         }
         if (_phase is not (Reading or Buzz)) return ActResult.Fail("Кнопка закрита");
         if (_phase == Reading) _opened = Now;
@@ -588,7 +620,7 @@ public sealed partial class Svoya : Game
         return ActResult.Done;
     }
 
-    /// <summary>Записати натискання з мілісекундами від відкриття кнопки — живий ведучий бачить черговість.</summary>
+    /// <summary>Записати натискання з мілісекундами від відкриття кнопки — це й черга, і те, що бачать усі.</summary>
     void Note(int seat)
     {
         if (_presses.Any(p => p.Seat == seat)) return;
@@ -772,8 +804,10 @@ public sealed partial class Svoya : Game
             {
                 isHost,
                 canPick = _phase == Board && !_paused && (me == _chooser || isHost),
-                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _answering is null && _solo is null
-                    && (_phase == Buzz || (_phase == Reading && _early)),
+                canBuzz = !isHost && IsPlayer(me) && !_paused && !_wrong.Contains(me) && _solo is null
+                    && (_answering is null
+                        ? _phase == Buzz || (_phase == Reading && _early)
+                        : _phase == Answering && _answering != me && !_presses.Any(p => p.Seat == me)),
                 canAnswer = _mode == Auto && _phase == Answering && _answering == me,
                 canAppeal = _mode == Auto && _phase == Reveal && !_appeals.Any(a => a.Seat == me)
                     && _tries.Any(t => t.Seat == me && !t.Ok && t.Text is not null),
