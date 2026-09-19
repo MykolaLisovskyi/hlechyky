@@ -510,4 +510,41 @@ public class MelodyTests
         var all = MelodyLibrary.Choose([.. list], 4, new Random(1));
         Assert.Equal(3, all.Count);   // дві копії «Старих фотографій» — одна пісня
     }
+
+    // ---------------------------------------------------------------- який трек з YouTube Music брати
+
+    static SearchResult R(string id, string artist, string title, int dur = 200) => new(id, title, artist, null, dur, null);
+
+    [Fact]
+    public void Picks_only_the_song_with_both_artist_and_title_matching()
+    {
+        // реальні промахи з проду: чужа «наше літо», інший трек тієї ж співачки, перший-ліпший результат
+        var want = new MelodyTrack("", "Наше літо", "Тартак", 0, null, "");
+        Assert.Null(MelodyLibrary.Pick([R("k", "KRYLATA", "наше літо")], want));
+        Assert.Equal("t", MelodyLibrary.Pick([R("k", "KRYLATA", "наше літо"), R("t", "Тартак", "Наше літо")], want)!.Id);
+
+        var hormony = new MelodyTrack("", "гормони", "DOROFEEVA", 0, null, "");
+        Assert.Null(MelodyLibrary.Pick([R("x", "DOROFEEVA", "охололо")], hormony));
+        Assert.Equal("h", MelodyLibrary.Pick([R("x", "DOROFEEVA", "охололо"), R("h", "DOROFEEVA, Надія Дорофєєва", "гормони")], hormony)!.Id);
+
+        // дужки, транслітерація, «feat.» — як у здогадках гравців
+        Assert.Equal("q", MelodyLibrary.Pick([R("q", "Queen Official", "We Are The Champions (Remastered 2011)")], new MelodyTrack("", "We Are the Champions", "Queen", 0, null, ""))!.Id);
+        Assert.Equal("h", MelodyLibrary.Pick([R("h", "The HARDKISS, MONATIK", "Кобра (feat. MONATIK)")], new MelodyTrack("", "Кобра", "The Hardkiss", 0, null, ""))!.Id);
+        Assert.Equal("r", MelodyLibrary.Pick([R("r", "Ruslana", "Дикі танці")], new MelodyTrack("", "Дикі танці", "Руслана", 0, null, ""))!.Id);
+    }
+
+    [Fact]
+    public void Skips_instrumentals_and_prefers_the_studio_version()
+    {
+        var dyki = new MelodyTrack("", "Дикі танці", "Руслана", 0, null, "");
+        Assert.Null(MelodyLibrary.Pick([R("i", "Ruslana", "Дикі танці (instrumental Version)"), R("k", "Руслана", "Дикі танці (караоке)")], dyki));
+
+        var layla = new MelodyTrack("", "Layla", "Eric Clapton", 0, null, "");
+        Assert.Equal("s", MelodyLibrary.Pick([R("a", "Eric Clapton", "Layla (Acoustic Live)"), R("s", "Eric Clapton", "Layla")], layla)!.Id);
+        Assert.Equal("a", MelodyLibrary.Pick([R("a", "Eric Clapton", "Layla (Acoustic Live)")], layla)!.Id);   // краще наживо, ніж нічого
+
+        var survive = new MelodyTrack("", "I Will Survive", "Gloria Gaynor", 0, null, "");
+        Assert.Equal("s", MelodyLibrary.Pick([R("e", "Gloria Gaynor", "I Will Survive (Extended Version)", 482), R("s", "Gloria Gaynor", "I Will Survive", 198)], survive)!.Id);
+        Assert.Null(MelodyLibrary.Pick([R("s", "Gloria Gaynor", "I Will Survive", 30)], survive));   // коротше за 45 с — не пісня
+    }
 }

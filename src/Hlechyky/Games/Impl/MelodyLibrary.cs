@@ -242,14 +242,12 @@ public sealed class MelodyLibrary(
                 return new MelodyTrack(id, want.Title, want.Artist, dur, known?.ThumbUrl, path);
             }
             using var cts = new CancellationTokenSource(FetchTimeout);
-            var hit = await ytm!.ResolveAsync(want.Artist, want.Title, cts.Token)
-                      ?? (await ytm.SearchSongsAsync($"{want.Artist} {want.Title}", 1, cts.Token)).FirstOrDefault();
+            var hit = Pick(await ytm!.SearchSongsAsync($"{want.Artist} {want.Title}", 10, cts.Token), want);
             if (hit is null)
             {
                 log?.LogInformation("мелодія: «{Artist} — {Title}» на YouTube Music не знайшлась", want.Artist, want.Title);
                 return null;
             }
-            if (hit.DurationSec > 0 && hit.DurationSec < MinDuration) return null;
             // у базі — під назвою з добірки: вона і є правильна відповідь, а ютубівська буває «(Remastered 2011)»
             var info = new TrackInfo(hit.Id, want.Title, want.Artist, hit.DurationSec, hit.ThumbUrl, "https://music.youtube.com/watch?v=" + hit.Id, hit.Album);
             db.UpsertTrack(info);
@@ -265,6 +263,44 @@ public sealed class MelodyLibrary(
             log?.LogWarning("мелодія: «{Artist} — {Title}» не скачалась: {Err}", want.Artist, want.Title, ex.Message);
             return null;
         }
+    }
+
+    /// <summary>Не пісня, а її підміна: інструментал, караоке, кавер, «сповільнена», мінусовка — таке не беремо ніколи.</summary>
+    static readonly System.Text.RegularExpressions.Regex Fake = new(
+        @"instrumental|karaoke|караоке|cover|кавер|nightcore|sped.?up|slowed|reverb|8d|tribute|minus|мінус|backing|lullaby|kids|piano version|orchestra",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Та сама пісня, але не «та»: наживо, акустика, подовжена, ремікс, демо — беремо лише коли іншого нема.</summary>
+    static readonly System.Text.RegularExpressions.Regex Variant = new(
+        @"\blive\b|наживо|acoustic|акустич|unplugged|extended|remix|\bmix\b|demo|rehearsal|medley|reprise|edit\b.*\b(club|dance)|version",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Який із результатів пошуку YouTube Music — саме та пісня з добірки. Виконавець І назва мають збігтись за
+    /// тими ж правилами, що й здогадка гравця (<see cref="MelodyAnswer.Hits"/>: без регістру, з транслітом, дужки
+    /// не рахуються) — інакше «Тартак — Наше літо» стає «наше літо» іншого гурту, а «гормони» — першим-ліпшим треком
+    /// тієї ж співачки. Підміни (<see cref="Fake"/>) — геть; наживо/подовжені (<see cref="Variant"/>) і довші за
+    /// 8 хвилин — у кінець черги. Серед рівних — перший, як його поставив YouTube.
+    /// </summary>
+    public static SearchResult? Pick(IEnumerable<SearchResult> results, MelodyTrack want)
+    {
+        var artists = MelodyAnswer.Artists(want);
+        var titles = MelodyAnswer.Titles(want);
+        SearchResult? best = null;
+        var bestRank = int.MaxValue;
+        foreach (var r in results)
+        {
+            if (r.DurationSec > 0 && r.DurationSec < MinDuration) continue;
+            if (Fake.IsMatch(r.Title)) continue;
+            var found = new MelodyTrack(r.Id, r.Title, r.Artist, r.DurationSec, r.ThumbUrl, "");
+            var artistOk = MelodyAnswer.Hits(r.Artist, artists) || MelodyAnswer.Hits(want.Artist, MelodyAnswer.Artists(found));
+            var titleOk = MelodyAnswer.Hits(r.Title, titles) || MelodyAnswer.Hits(want.Title, MelodyAnswer.Titles(found));
+            if (!artistOk || !titleOk) continue;
+            var rank = (Variant.IsMatch(r.Title) ? 1 : 0) + (r.DurationSec > 8 * 60 ? 1 : 0);
+            if (rank < bestRank) { best = r; bestRank = rank; }
+            if (rank == 0) break;
+        }
+        return best;
     }
 
     /// <summary>Свіжа позначка на файлі, який щойно брали: <see cref="Trim"/> видаляє найдавніше взяте.</summary>
