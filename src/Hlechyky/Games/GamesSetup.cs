@@ -36,6 +36,7 @@ public static class GamesSetup
             sp.GetService<YtMusicClient>(), sp.GetService<YtDlpService>(), Impl.MelodyClassics.Default,
             sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<MelodyOptions>>(), sp.GetService<ILogger<Impl.MelodyLibrary>>()));
         services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
+        Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
         return services;
     }
 
@@ -45,6 +46,7 @@ public static class GamesSetup
         app.MapGet("/api/games/catalog", (Registry registry) => new Catalog(registry.Catalog, Rooms.Stakes));
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
+        Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         return app;
     }
 }
