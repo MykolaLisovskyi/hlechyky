@@ -28,12 +28,29 @@ public static class SvoyaSetup
         services.AddSingleton<TtsService>();
         services.AddHostedService(sp => sp.GetRequiredService<TtsService>());
         services.AddSingleton<ISvoyaVoice, SvoyaVoice>();
+        // прогрів: усі вбудовані пакети й чисті фрази ведучого — в чергу на старті (не терміново: партія свої репліки
+        // ставить наперед черги), щоб після зміни голосу/темпу гра не чекала на кожну репліку
+        services.AddHostedService<SvoyaWarmup>();
         services.TryAddSingleton<ISvoyaTranscoder, FfmpegTranscoder>();
         services.AddSingleton<SvoyaUploads>();
         services.AddSingleton<SvoyaPacks>();
         services.AddSingleton<SvoyaImport>();
         services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
         return services;
+    }
+
+    /// <summary>Озвучити наперед усе вбудоване: пакети «Глечиків» і репліки ведучого без підстановок.</summary>
+    sealed class SvoyaWarmup(ISvoyaVoice voice, SvoyaBuiltin builtin, SvoyaPhrases phrases) : IHostedService
+    {
+        public Task StartAsync(CancellationToken ct)
+        {
+            if (!voice.Enabled) return Task.CompletedTask;
+            voice.Prepare(SvoyaPacks.VoiceName, phrases.Pure());
+            foreach (var pack in builtin.Packs) voice.Prepare(SvoyaPacks.VoiceName, SvoyaLines.All(pack));
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
     public sealed record HideRequest(bool Hidden);

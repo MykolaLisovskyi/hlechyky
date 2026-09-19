@@ -12,8 +12,13 @@ public sealed class TtsOptions
     /// <summary>Чим запускати <c>python -m edge_tts</c>.</summary>
     public string Python { get; set; } = "python";
     public string CacheDir { get; set; } = "cache/tts";
-    /// <summary>Швидкість edge-tts («+0%», «-4%»). Входить у ключ кешу: змінив — репліки озвучаться наново.</summary>
-    public string Rate { get; set; } = "+0%";
+    /// <summary>Швидкість edge-tts («+50%», «-4%»). Входить у ключ кешу: змінив — репліки озвучаться наново.</summary>
+    public string Rate { get; set; } = "+50%";
+    /// <summary>
+    /// Стелю пауз усередині репліки, мс: edge-tts кладе ~1 с тиші після кожної крапки й ~0,9 с у хвості, ведучий від
+    /// того тягне. Довші паузи ffmpeg стискає до цієї, хвіст — до ~0,1 с. 0 — не чіпати. Входить у ключ кешу.
+    /// </summary>
+    public int PauseMs { get; set; } = 300;
     public int TimeoutSeconds { get; set; } = 20;
     /// <summary>Більше черга не росте: зайве мовчки відкидається (гра тоді читає без голосу).</summary>
     public int MaxQueue { get; set; } = 3000;
@@ -25,8 +30,11 @@ public sealed record TtsClip(string Hash, string FilePath, double Seconds);
 /// <summary>Той, хто справді озвучує. Окремо від черги — щоб черга й кеш тестувались без edge-tts і мережі.</summary>
 public interface ITtsEngine
 {
-    /// <summary>Озвучити в <paramref name="outPath"/> (mp3). Невдача — false, не виняток.</summary>
-    Task<bool> SynthesizeAsync(string voice, string text, string rate, string outPath, CancellationToken ct);
+    /// <summary>
+    /// Озвучити в <paramref name="outPath"/> (mp3), паузи довші за <paramref name="pauseMs"/> стиснути (0 — як є).
+    /// Невдача — false, не виняток.
+    /// </summary>
+    Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct);
     /// <summary>Тривалість mp3 у секундах; 0 — не вийшло поміряти.</summary>
     Task<double> DurationAsync(string path, CancellationToken ct);
 }
@@ -34,14 +42,45 @@ public interface ITtsEngine
 /// <summary>edge-tts через <c>python -m edge_tts</c>, тривалість — ffprobe з <c>YtDlp:FfmpegDir</c>.</summary>
 public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsMonitor<YtDlpOptions> yt, ILogger<EdgeTtsEngine> log) : ITtsEngine
 {
-    public async Task<bool> SynthesizeAsync(string voice, string text, string rate, string outPath, CancellationToken ct)
+    public async Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct)
     {
         var o = options.CurrentValue;
         var (code, err) = await RunAsync(o.Python, ["-m", "edge_tts", "--voice", voice, "--rate=" + rate, "--text", text, "--write-media", outPath],
             TimeSpan.FromSeconds(Math.Clamp(o.TimeoutSeconds, 5, 120)), ct);
-        if (code == 0 && File.Exists(outPath) && new FileInfo(outPath).Length > 0) return true;
-        log.LogWarning("edge-tts не озвучив ({Code}): {Err}", code, err.Trim().Split('\n').LastOrDefault());
-        return false;
+        if (code != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length == 0)
+        {
+            log.LogWarning("edge-tts не озвучив ({Code}): {Err}", code, err.Trim().Split('\n').LastOrDefault());
+            return false;
+        }
+        if (pauseMs > 0) await TightenAsync(outPath, pauseMs, ct);
+        return true;
+    }
+
+    /// <summary>Хвіст тиші (мс), який лишаємо в кінці репліки — щоб останнє слово не обрубалось.</summary>
+    public const int TailMs = 120;
+
+    /// <summary>
+    /// Стиснути паузи: тиша всередині довша за <paramref name="pauseMs"/> → рівно стільки, хвіст → <see cref="TailMs"/>.
+    /// ffmpeg silenceremove копіює перші stop_duration тиші й лишає ще stop_silence, тож стеля = їхня сума.
+    /// Не вийшло — лишаємо репліку як озвучив edge-tts (гра нічого не помічає, лише паузи довші).
+    /// </summary>
+    async Task TightenAsync(string path, int pauseMs, CancellationToken ct)
+    {
+        var ffmpeg = Path.Combine(Paths.Resolve(yt.CurrentValue.FfmpegDir), OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+        var tight = path + ".tight.mp3";
+        var keep = Math.Max(pauseMs, 100) / 1000.0;
+        var filter = string.Create(CultureInfo.InvariantCulture,
+            $"silenceremove=stop_periods=-1:stop_duration={keep * 0.6:0.###}:stop_silence={keep * 0.4:0.###}:stop_threshold=-40dB,"
+            + $"areverse,silenceremove=start_periods=1:start_silence={TailMs / 1000.0:0.###}:start_threshold=-40dB,areverse");
+        var (code, err) = await RunAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", path, "-af", filter, "-c:a", "libmp3lame", "-b:a", "48k", tight],
+            TimeSpan.FromSeconds(30), ct);
+        if (code == 0 && File.Exists(tight) && new FileInfo(tight).Length > 0)
+        {
+            try { File.Move(tight, path, overwrite: true); return; }
+            catch (IOException e) { err = e.Message; }
+        }
+        log.LogWarning("ffmpeg не стиснув паузи ({Code}): {Err} — репліка лишається як є", code, err.Trim().Split('\n').LastOrDefault());
+        try { if (File.Exists(tight)) File.Delete(tight); } catch (IOException) { }
     }
 
     public async Task<double> DurationAsync(string path, CancellationToken ct)
@@ -104,7 +143,7 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
     readonly HashSet<string> _failed = [];
     readonly SemaphoreSlim _signal = new(0);
 
-    sealed record Job(string Hash, string Voice, string Text, string Rate);
+    sealed record Job(string Hash, string Voice, string Text, string Rate, int PauseMs);
 
     TtsOptions O => options.CurrentValue;
     public bool Enabled => O.Enabled;
@@ -113,7 +152,10 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
     public static string Hash(string voice, string rate, string text) =>
         Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{voice}|{rate}|{text.Trim()}"))).ToLowerInvariant();
 
-    public string HashOf(string voice, string text) => Hash(voice, O.Rate, text);
+    /// <summary>Що з налаштувань міняє звук — те й у ключі кешу: швидкість і стеля пауз (без стискання — сама швидкість, як раніше).</summary>
+    public static string Shape(string rate, int pauseMs) => pauseMs > 0 ? $"{rate}|p{pauseMs}" : rate;
+
+    public string HashOf(string voice, string text) => Hash(voice, Shape(O.Rate, O.PauseMs), text);
 
     /// <summary>Готова репліка або null. Файл із попереднього запуску підхоплюється за його <c>.sec</c>.</summary>
     public TtsClip? TryGet(string voice, string text)
@@ -150,6 +192,8 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
     {
         if (!Enabled) return;
         var rate = O.Rate;
+        var pause = O.PauseMs;
+        var shape = Shape(rate, pause);
         var added = false;
         lock (_lock)
         {
@@ -157,7 +201,7 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
             {
                 var text = raw?.Trim() ?? "";
                 if (text.Length == 0) continue;
-                var hash = Hash(voice, rate, text);
+                var hash = Hash(voice, shape, text);
                 if (_ready.ContainsKey(hash) || _failed.Contains(hash)) continue;
                 if (_queued.TryGetValue(hash, out var node))
                 {
@@ -166,7 +210,7 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
                     continue;
                 }
                 if (_queue.Count >= O.MaxQueue) continue;
-                var job = new Job(hash, voice, text, rate);
+                var job = new Job(hash, voice, text, rate, pause);
                 _queued[hash] = urgent ? _queue.AddFirst(job) : _queue.AddLast(job);
                 added = true;
             }
@@ -214,7 +258,7 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
         var part = Path.Combine(CacheDir, job.Hash + ".part.mp3");
         try
         {
-            if (!await engine.SynthesizeAsync(Voice(job.Voice), job.Text, job.Rate, part, ct)) { Fail(job); return; }
+            if (!await engine.SynthesizeAsync(Voice(job.Voice), job.Text, job.Rate, job.PauseMs, part, ct)) { Fail(job); return; }
             var seconds = await engine.DurationAsync(part, ct);
             if (seconds <= 0) { Fail(job); return; }
             File.Move(part, mp3, overwrite: true);

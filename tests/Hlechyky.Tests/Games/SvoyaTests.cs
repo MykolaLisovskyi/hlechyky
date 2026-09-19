@@ -680,7 +680,7 @@ public class SvoyaTests
         var say = h.View(null).GetProperty("say");
         Assert.Equal("Хто написав «Енеїду»?", say.GetProperty("text").GetString());
         Assert.StartsWith("/tts/", say.GetProperty("url").GetString());
-        Assert.Equal(3400, h.View(null).GetProperty("totalMs").GetInt32());
+        Assert.Equal(3000 + Svoya.AfterReadMs, h.View(null).GetProperty("totalMs").GetInt32());
     }
 
     [Fact]

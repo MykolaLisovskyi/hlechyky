@@ -13,7 +13,7 @@ sealed class FakeTtsEngine : ITtsEngine
     /// <summary>Що зробити посеред озвучки — щоб перевірити чергу, поки воркер зайнятий.</summary>
     public Action<string>? During;
 
-    public Task<bool> SynthesizeAsync(string voice, string text, string rate, string outPath, CancellationToken ct)
+    public Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct)
     {
         Said.Add(text);
         During?.Invoke(text);

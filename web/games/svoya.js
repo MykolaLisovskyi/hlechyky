@@ -358,7 +358,7 @@
       const uk = ukVoice();
       if (!uk) { spoke(root); return; }                       // без українського голосу краще тиша, ніж англійський акцент
       const u = new SpeechSynthesisUtterance(line.text);
-      u.voice = uk; u.lang = uk.lang; u.rate = 1.05;
+      u.voice = uk; u.lang = uk.lang; u.rate = 1.5;                   // темп як у Остапа з сервера (+50%)
       u.onend = u.onerror = end;
       duck(s, true);
       s.speaking = true;

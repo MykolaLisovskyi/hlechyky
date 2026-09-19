@@ -51,7 +51,8 @@ public sealed partial class Svoya : Game
     public const int TickMs = 250;
     const int Seats = 9;
     public const int PickMs = 30_000;
-    public const int RevealMs = 5_000;
+    /// <summary>Найменше показу відповіді; репліка ведучого довша — показ триває, поки він говорить (+ <see cref="AfterSpeechMs"/>).</summary>
+    public const int RevealMs = 3_000;
     public const int AppealMs = 15_000;
     /// <summary>Скільки чекати на репліку, що ще озвучується, перш ніж іти далі мовчки.</summary>
     public const int VoiceWaitMs = 5_000;
@@ -59,7 +60,11 @@ public sealed partial class Svoya : Game
     public const int LiveReadMs = 60_000;
     /// <summary>Фальстарт (early=lock): натиснув під час читання — кнопка для нього відкриється на стільки пізніше за інших.</summary>
     public const int FalseStartMs = 2_000;
-    public const int IntroThemeMs = 1_000;
+    public const int IntroThemeMs = 500;
+    /// <summary>Пауза після репліки, перш ніж гра піде далі: щоб останнє слово не обрубалось, але без затяжки.</summary>
+    public const int AfterSpeechMs = 500;
+    /// <summary>Скільки після голосу (чи медіа) чекати з кнопкою: голос дочитав — кнопка майже одразу.</summary>
+    public const int AfterReadMs = 200;
     public const int MaxAnswer = 120;
     /// <summary>Скільки знаків за секунду «читає» ведучий без голосу (оцінка для таймера).</summary>
     const double CharsPerSec = 14;
@@ -397,13 +402,13 @@ public sealed partial class Svoya : Game
     {
         var ms = _phase switch
         {
-            Intro => Math.Max((int)(_speech * 1000) + 800, R.Themes.Count * IntroThemeMs + 1500),
+            Intro => Math.Max((int)(_speech * 1000) + AfterSpeechMs, R.Themes.Count * IntroThemeMs + AfterSpeechMs),
             Board => PickMs,
             Reading => ReadMs(),
             Buzz => _buzzSec * 1000,
             Answering => _answerSec * 1000,
             // правильно відповіли, поки голос ще читав: репліка про відповідь прозвучить після запитання
-            Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + 1200) + ReadLeftMs(),
+            Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + AfterSpeechMs) + ReadLeftMs(),
             _ => SpecialMs(),
         };
         _totalMs = ms;
@@ -416,7 +421,7 @@ public sealed partial class Svoya : Game
         var media = (_q?.Media?.Seconds ?? 0) * 1000;
         // живий ведучий читає сам; якщо ж голос читає за нього — кнопка відкривається, як у автомата
         if (_mode == Live && !_liveVoice) return _q is { Text.Length: 0 } && media > 0 ? media + 500 : LiveReadMs;
-        return Math.Max((int)(_speech * 1000), media) + 400;
+        return Math.Max((int)(_speech * 1000), media) + AfterReadMs;
     }
 
     int ReadLeftMs() => _readEnd is { } e && e > Now ? (int)(e - Now).TotalMilliseconds : 0;

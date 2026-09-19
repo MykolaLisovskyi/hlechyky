@@ -13,7 +13,7 @@ public sealed partial class Svoya
     public const int StrikeMs = 15_000;
     public const int BetMs = 30_000;
     public const int FinalAnswerMs = 30_000;
-    public const int FinalRevealMs = 4_000;
+    public const int FinalRevealMs = 3_000;
 
     public const string Cat = "cat", Auction = "auction", Strike = "strike", Bet = "bet", FinalQuestion = "final",
         FinalJudge = "judging", FinalReveal = "finale";
@@ -79,7 +79,7 @@ public sealed partial class Svoya
         Bet => BetMs,
         FinalQuestion => (int)(_speech * 1000) + (_q?.Media?.Seconds ?? 0) * 1000 + FinalAnswerMs,
         FinalJudge => 0,
-        FinalReveal => Math.Max(FinalRevealMs, (int)(_speech * 1000) + 800),
+        FinalReveal => Math.Max(FinalRevealMs, (int)(_speech * 1000) + AfterSpeechMs),
         _ => 0,
     };
 
