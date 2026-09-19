@@ -353,6 +353,16 @@ public class AgentToolsTests
     }
 
     [Fact]
+    public void The_rules_tool_explains_svoya_with_every_action_and_the_builtin_packs()
+    {
+        var v = new VillageHarness();
+        var text = J(v.Tools.Help("svoya")).GetProperty("text").GetString()!;
+
+        foreach (var word in new[] { "pack", "pick", "buzz", "answer", "appeal", "give", "bid", "allin", "strike", "bet", "b_ukraina" })
+            Assert.Contains(word, text);
+    }
+
+    [Fact]
     public void The_rules_tool_does_not_pretend_to_know_a_game_that_is_not_here()
     {
         var v = new VillageHarness();

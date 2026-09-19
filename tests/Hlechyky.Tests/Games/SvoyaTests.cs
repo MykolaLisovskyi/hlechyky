@@ -429,6 +429,21 @@ public class SvoyaTests
     }
 
     [Fact]
+    public void Winner_over_someone_asks_for_the_achievement()
+    {
+        var h = Table(pack: "b_nofinal");
+        PlayRound(h, i => i == 3 ? 0 : 1);
+        Until(h, Svoya.Done, 400);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:svoya-win" && a.Nick == "Петро");
+        Assert.DoesNotContain(h.Awards, a => a.Nick == "Оля");
+
+        var solo = Table(nicks: ["Оля"], pack: "b_nofinal");
+        PlayRound(solo, _ => 0);
+        Until(solo, Svoya.Done, 400);
+        Assert.DoesNotContain(solo.Awards, a => a.Reason == "ach:svoya-win");   // із самим автоматом — не рахується
+    }
+
+    [Fact]
     public void Rematch_keeps_the_pack()
     {
         var h = Table(pack: "b_nofinal");

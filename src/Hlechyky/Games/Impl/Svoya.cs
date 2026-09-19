@@ -453,6 +453,8 @@ public sealed partial class Svoya : Game
         var best = seats.Length == 0 ? 0 : seats.Max(s => _scores[s]);
         int[] winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
+        // «Знавець» — лише за перемогу над кимось: соло-партія з автоматом ачівки не дає
+        if (seats.Length >= 2) foreach (var w in winners) Ctx.Award(w, 0, "ach:svoya-win");
         _result = new { winners, scores = (int[])_scores.Clone() };
         if (error is not null && seats.Length == 0)
         {

@@ -423,4 +423,32 @@ public sealed class SvoyaPacksTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // ---------- справжні вбудовані пакети з репозиторію ----------
+
+    [Fact]
+    public void Repo_builtin_packs_are_all_playable_classic_packs()
+    {
+        var b = new SvoyaBuiltin(Paths.Resolve("data/svoya/builtin"));
+        Assert.Empty(b.Problems);
+        Assert.True(b.Packs.Count >= 4, $"вбудованих пакетів лише {b.Packs.Count}");
+        Assert.Equal(b.Packs.Count, b.Packs.Select(p => p.Id).Distinct().Count());
+        foreach (var p in b.Packs)
+        {
+            Assert.Equal(80, p.QuestionCount);
+            Assert.True(p.Rounds[^1].IsFinal, p.Id);
+            foreach (var r in p.Rounds.Where(r => !r.IsFinal))
+            {
+                var qs = r.Themes.SelectMany(t => t.Questions).ToList();
+                Assert.Equal(1, qs.Count(q => q.Type == SvoyaQuestion.Cat));
+                Assert.Equal(1, qs.Count(q => q.Type == SvoyaQuestion.Auction));
+            }
+            // кожна відповідь зараховується сама на себе — інакше автомат не прийняв би навіть ідеальну відповідь
+            foreach (var q in p.Rounds.SelectMany(r => r.Themes).SelectMany(t => t.Questions))
+            {
+                Assert.True(SvoyaAnswer.Hits(q.Answer, q.Answers), $"{p.Id}: «{q.Answer}» не зараховується");
+                Assert.DoesNotContain(q.Answer, q.Text, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
 }

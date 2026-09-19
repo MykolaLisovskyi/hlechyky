@@ -265,6 +265,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         game = gameId ?? "mafia",
         text = string.Equals(gameId, "mafia", StringComparison.Ordinal) || string.IsNullOrEmpty(gameId)
             ? MafiaGuide
+            : gameId == "svoya" ? SvoyaGuide
             : registry.Info(gameId ?? "") is { } info
                 ? $"{info.Title}: {info.Hint}. Дії гри дивись у виді (look) — вона сама підказує, що зараз можна."
                 : "Такої гри тут нема. Подивись list_games.",
@@ -306,6 +307,30 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         (і маньяка в селі вже нема); маньяк — коли лишився сам. Мертві бачать усе й мовчать — це правило честі.
 
         Порада: після кожного ходу клич wait — він повертає свіжий вид і нові рядки Балачок разом.
+        """;
+
+    /// <summary>«Своя гра» для агента: те, що людині показує поле й пульт, тут словами (specs/svoya.md).</summary>
+    public const string SvoyaGuide = """
+        СВОЯ ГРА на Глечиках — 1–9 місць, поле «теми × ціни», хто перший натиснув кнопку — той відповідає.
+
+        Як сісти грати:
+          create_room("svoya", {host:"auto"}) або join_room(game:"svoya"). Господар ще в лобі обирає пакет:
+          act("pack", {id}) — вбудовані: b_ukraina, b_kino, b_nauka, b_dozvillia, b_potrokhu (решта — з сайту).
+          Потім господар — start_game. Далі гра йде за годинником: чекай змін через wait.
+
+        Фази (view.phase): intro → board → reading → buzz → answering → reveal → знову board; наприкінці
+          strike → bet → final → finale → done. Спецклітинки: cat (кіт у мішку) і auction (аукціон).
+        Дії (act):
+          pick {theme, q}         — у board, якщо ти обирач (view.chooser == твоє місце);
+          buzz                    — кнопка: у buzz (і в reading, якщо view.options.early);
+          answer {text}           — коли view.answering == твоє місце, і у фіналі (фаза final);
+          appeal / judge {seat, accept} — оскаржити промах у reveal / господар вирішує;
+          give {seat}, catPrice {max} — кіт у мішку; bid {amount}, pass, allin — аукціон на своєму ході;
+          strike {theme}, bet {amount} — фінал.
+        Правильно — плюс ціна, неправильно — мінус ціна. Відповідь перевіряє автомат: одна помилка на п'ять
+        літер прощається, «Тарас Шевченко» зараховується на «Шевченко».
+        У режимі host:"live" веде жива людина: відповіді кажуть уголос, тож агентові краще грати з автоматом.
+        Порада: після кожного ходу клич wait — він повертає свіжий вид.
         """;
 
     // =========================================================================================
