@@ -27,6 +27,7 @@ public static class SvoyaSetup
         services.TryAddSingleton<ISvoyaTranscoder, FfmpegTranscoder>();
         services.AddSingleton<SvoyaUploads>();
         services.AddSingleton<SvoyaPacks>();
+        services.AddSingleton<SvoyaImport>();
         services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
         return services;
     }
@@ -106,6 +107,28 @@ public static class SvoyaSetup
             if (form.Files["file"] is not { } file) return Reply(SvoyaReply.Fail("Нема файла"));
             await using var body = file.OpenReadStream();
             return Reply(await uploads.UploadAsync(id, User(c), file.FileName, body, ct));
+        });
+
+        // імпорт .siq (SIGame) або нашого zip; архів великий — ліміти тіла й форми піднімаємо саме тут
+        app.MapPost(Root + "/import", async (HttpContext c, SvoyaImport import, CancellationToken ct) =>
+        {
+            if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = SvoyaImport.MaxZipBytes + 1024 * 1024;
+            if (!c.Request.HasFormContentType) return Reply(SvoyaReply.Fail("Архів має прийти формою (поле file)"));
+            c.Features.Set<Microsoft.AspNetCore.Http.Features.IFormFeature>(new Microsoft.AspNetCore.Http.Features.FormFeature(c.Request,
+                new Microsoft.AspNetCore.Http.Features.FormOptions { MultipartBodyLengthLimit = SvoyaImport.MaxZipBytes }));
+            IFormCollection form;
+            try { form = await c.Request.ReadFormAsync(ct); }
+            catch (Exception ex) when (ex is InvalidDataException or BadHttpRequestException) { return Reply(SvoyaReply.Fail("Завеликий архів")); }
+            if (form.Files["file"] is not { } file) return Reply(SvoyaReply.Fail("Нема файла"));
+            await using var body = file.OpenReadStream();
+            return Reply(await import.ImportAsync(User(c), body, ct));
+        });
+
+        app.MapGet(Root + "/{id}/export", async (HttpContext c, string id, SvoyaImport import, CancellationToken ct) =>
+        {
+            var (zip, error, name) = await import.ExportAsync(id, User(c), ct);
+            return zip is null ? Reply(SvoyaReply.Fail(error ?? "Не вийшло")) : Results.File(zip, "application/zip", name);
         });
 
         // роздача — лише за точним іменем (хеш), без списків тек

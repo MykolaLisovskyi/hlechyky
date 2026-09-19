@@ -25,7 +25,7 @@
     pack: null, ready: false, problems: [], showProblems: false,
     round: 0, cell: null,
     saveTimer: 0, saving: false, dirty: false, status: '', statusErr: false,
-    tts: null, ttsTimer: 0, uploading: '',
+    tts: null, ttsTimer: 0, uploading: '', importing: false, warnings: [],
   };
 
   function nickOf() { return (S.ctx && S.ctx.me && S.ctx.me.nick) || ''; }
@@ -92,7 +92,9 @@
     };
     return '<div class="spk-head"><h3>🎯 Своя гра — пакети запитань</h3>'
       + (S.list.canCreate
-        ? '<button type="button" class="primary" data-a="new">＋ Новий пакет</button>'
+        ? '<span class="spk-acts"><label class="ghost spk-upload">' + (S.importing ? '⏳ імпортую…' : '⬆ Імпортувати .siq / zip')
+          + '<input type="file" accept=".siq,.zip" data-import="1" hidden></label>'
+          + '<button type="button" class="primary" data-a="new">＋ Новий пакет</button></span>'
         : '<span class="muted small">Увійди під своїм ніком (не гостем), щоб робити пакети</span>')
       + '</div>'
       + '<input type="search" class="spk-search" placeholder="знайти пакет чи тему…" value="' + esc(S.query) + '">'
@@ -129,6 +131,30 @@
     } catch (e) { toast(e.message, 'err'); }
   }
 
+  /// Імпорт .siq (SIGame) або нашого zip: сервер розбирає, перекодовує медіа і віддає звіт.
+  async function importFile(file) {
+    if (!file) return;
+    S.importing = true;
+    render();
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch(ROOT + '/import', { method: 'POST', body: fd, headers: { 'X-Nick': encodeURIComponent(nickOf()) } });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error((data && data.message) || 'HTTP ' + r.status);
+      toast(data.message, 'ok');
+      const full = await api('GET', ROOT + '/' + encodeURIComponent(data.data.id));
+      S.importing = false;
+      openEditor(full.data);
+      S.warnings = data.data.warnings || [];
+      render();
+    } catch (e) {
+      S.importing = false;
+      toast('Не імпортувалось: ' + e.message, 'err');
+      render();
+    }
+  }
+
   // =============================================================================================
   // Редактор
   // =============================================================================================
@@ -142,6 +168,7 @@
     S.cell = null;
     S.status = '';
     S.tts = null;
+    S.warnings = [];
     render();
   }
 
@@ -230,8 +257,11 @@
     return '<div class="spk-head"><button type="button" class="ghost" data-a="back">← До списку</button>'
       + '<div class="spk-status"></div>'
       + '<div class="spk-acts"><button type="button" class="ghost small" data-a="tts">🗣 Озвучити' + (S.tts ? ' ' + S.tts.ready + '/' + S.tts.total : '') + '</button>'
+      + '<a class="ghost small spk-export" href="' + ROOT + '/' + encodeURIComponent(p.id) + '/export" download>⬇ Експорт</a>'
       + '<button type="button" class="primary small" data-a="playThis">▶ Грати</button></div></div>'
       + '<div class="spk-problems small" hidden></div>'
+      + (S.warnings.length ? '<details class="spk-warn small" open><summary>Імпорт: ' + S.warnings.length + ' попереджень</summary>'
+        + S.warnings.map((w) => '<div>' + esc(w) + '</div>').join('') + '</details>' : '')
       + '<div class="spk-meta">'
       + '<input class="spk-title" data-f="title" maxlength="60" placeholder="Назва пакета" value="' + esc(p.title) + '">'
       + '<textarea data-f="description" maxlength="300" rows="2" placeholder="Опис (необов\'язково)">' + esc(p.description || '') + '</textarea>'
@@ -493,6 +523,7 @@
     });
     host.addEventListener('change', (e) => {
       if (e.target.dataset && e.target.dataset.up) { upload(e.target.dataset.up, e.target.files && e.target.files[0]); return; }
+      if (e.target.dataset && e.target.dataset.import) { importFile(e.target.files && e.target.files[0]); return; }
       if (e.target.tagName === 'SELECT' || e.target.type === 'checkbox') onInput(e);
     });
   }

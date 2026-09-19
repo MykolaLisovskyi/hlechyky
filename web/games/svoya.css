@@ -214,3 +214,5 @@ button.svft:not(:disabled):hover { background: var(--danger); }
 @media (max-width: 640px) {
   .spk-trow { grid-template-columns: 1fr; }
 }
+.spk-warn { background: var(--bg2); border-left: 3px solid var(--accent2); padding: 8px 12px; border-radius: 6px; max-height: 200px; overflow-y: auto; }
+.spk-export { text-decoration: none; padding: 5px 10px; }
