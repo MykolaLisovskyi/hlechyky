@@ -107,6 +107,10 @@ audio.svmedia { width: min(420px, 100%); }
 .svok { background: var(--ok); color: #0f1f18; }
 .svno { color: var(--danger); }
 
+/* ---------- хвіст під кнопкою: репліка, черга, спроби, оскарження ---------- */
+.svtail { display: flex; flex-direction: column; gap: 10px; }
+.svtail:empty { display: none; }
+
 /* ---------- черга на кнопку (усім) ---------- */
 .svpresses { display: flex; flex-wrap: wrap; gap: 8px; font-size: .9em; justify-content: center; }
 .svpresses span.now { color: var(--accent); font-weight: 700; }

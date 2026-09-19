@@ -523,7 +523,14 @@
     if (v.phase === 'cat') return catHtml(ctx, v);
     if (v.phase === 'auction') return auctionHtml(ctx, v);
     if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
-    return tvHtml(ctx, v) + sayHtml(v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
+    return tvHtml(ctx, v);
+  }
+
+  /// Хвіст під кнопкою: репліка ведучого, черга натискань, спроби, оскарження. Живе ПІД кнопкою,
+  /// а не над нею — інакше кожна поява черги зсувала б кнопку саме тоді, коли по ній тиснуть.
+  function tailHtml(ctx, v) {
+    if (['reading', 'buzz', 'answering', 'reveal'].indexOf(v.phase) < 0) return '';
+    return sayHtml(v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
   }
 
   function set(el, html) { if (el._html !== html) { el._html = html; el.innerHTML = html; } }
@@ -537,6 +544,7 @@
     if (head.textContent !== text) head.textContent = text;
     set(root.querySelector('.svstage'), stageHtml(root, ctx, v));
     set(root.querySelector('.svhostbox'), hostHtml(ctx, v));
+    set(root.querySelector('.svtail'), tailHtml(ctx, v));
     set(root.querySelector('.svscores'), ctx.playing || v.phase === 'done' ? scoresHtml(ctx, v) : '');
 
     // пошук пакетів — живе поле, тому не в stage (інакше перемальовка з'їдала б набране)
@@ -643,6 +651,7 @@
         + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
         + '<button class="primary" type="submit">➤</button></form>'
         + '<form class="svnum" hidden><span class="muted small"></span><input type="number" inputmode="numeric"><button class="primary" type="submit"></button></form>'
+        + '<div class="svtail"></div>'
         + '<div class="svscores"></div>'
         + '</div>';
       const s = st(root);
