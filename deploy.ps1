@@ -34,10 +34,17 @@ $Branch = 'main'
 
 New-Item -ItemType Directory -Force (Join-Path $Root 'logs'), (Join-Path $Root 'data') | Out-Null
 
+# Лог не має права вбити деплой: файл на мить може тримати хтось інший (tail -f, «Get-Content -Wait»,
+# антивірус), а з ErrorActionPreference = 'Stop' перший же Add-Content викидав скрипт ще до замка —
+# деплой мовчки не відбувався, хоч позначку про спробу (data\deploy.tried) сервер уже поставив,
+# тому й повторів не було. Кілька спроб, далі пишемо лише в консоль і робимо своє.
 function Write-Log([string]$Message) {
     $line = "{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
-    Add-Content -Path $LogFile -Value $line -Encoding UTF8
     Write-Host $line
+    for ($i = 0; $i -lt 10; $i++) {
+        try { Add-Content -Path $LogFile -Value $line -Encoding UTF8 -ErrorAction Stop; return }
+        catch { Start-Sleep -Milliseconds 200 }
+    }
 }
 
 function Short([string]$Sha) { if ($Sha.Length -gt 7) { $Sha.Substring(0, 7) } else { $Sha } }
