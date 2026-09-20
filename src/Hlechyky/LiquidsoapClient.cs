@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky;
 
 /// <summary>Talks to liquidsoap over its telnet server. One short connection per command.</summary>
-public sealed class LiquidsoapClient(IOptionsMonitor<LiquidsoapOptions> options, ILogger<LiquidsoapClient> log)
+public sealed class LiquidsoapClient(IOptionsMonitor<LiquidsoapOptions> options, IOptionsMonitor<YtDlpOptions> ytdlp, ILogger<LiquidsoapClient> log)
 {
     static readonly char[] Ws = [' ', '\r', '\n', '\t'];
     LiquidsoapOptions O => options.CurrentValue;
@@ -89,7 +89,19 @@ public sealed class LiquidsoapClient(IOptionsMonitor<LiquidsoapOptions> options,
         }
     }
 
-    public string ContainerPath(string hostPath) => O.CacheMount.TrimEnd('/') + "/" + Path.GetFileName(hostPath);
+    /// <summary>
+    /// Шлях до файла всередині контейнера liquidsoap: у нього змонтовано всю теку кешу, тож підтеки
+    /// («Вгадай мелодію» тримає свої пісні в <c>cache/melody</c>) треба зберігати. Пласке
+    /// <c>Path.GetFileName</c> віддавало <c>/cache/x.m4a</c> на файл із <c>cache/melody</c>, liquidsoap
+    /// такого не знаходив, викидав запит — і ефір падав на запасну спотіфай-трансляцію.
+    /// <c>null</c> — файл поза кешем, у контейнері його не видно взагалі, штовхати нема сенсу.
+    /// </summary>
+    public string? ContainerPath(string hostPath)
+    {
+        var rel = Path.GetRelativePath(Paths.Resolve(ytdlp.CurrentValue.CacheDir), Path.GetFullPath(hostPath));
+        if (rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+        return O.CacheMount.TrimEnd('/') + "/" + rel.Replace('\\', '/');
+    }
 
     public static string Annotate(IEnumerable<(string Key, string Value)> meta, string uri)
     {

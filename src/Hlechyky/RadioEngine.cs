@@ -942,9 +942,26 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     async Task DispatchAsync(string queue, QueueItem item, CancellationToken ct)
     {
         if (item.FilePath is null) return;
+        // Файл міг зникнути між скачуванням і ефіром або лежати поза кешем, який бачить контейнер.
+        // Штовхнути liquidsoap такий шлях — найгірше, що можна зробити: він мовчки викине запит,
+        // «main» лишиться без джерела й ефір поїде на запасну спотіфай-трансляцію.
+        var path = File.Exists(item.FilePath) ? _liq.ContainerPath(item.FilePath) : null;
+        if (path is null)
+        {
+            _log.LogWarning("файл {File} для {Label} недоступний liquidsoap", item.FilePath, item.Track.Label);
+            _db.ForgetTrackFile(item.FilePath);
+            lock (_lock)
+            {
+                item.FilePath = null;
+                if (queue == "autoq") { item.Status = ItemStatus.Failed; item.Error = "файл зник із кешу"; }
+                else item.Status = ItemStatus.Queued;   // качаємо наново, черга слухачів не пропадає
+            }
+            Broadcast();
+            return;
+        }
         var uri = LiquidsoapClient.Annotate(
             [("rt_kind", item.Kind), ("rt_item", item.ItemId), ("track_id", item.Track.Id), ("title", item.Track.Title), ("artist", item.Track.Artist)],
-            _liq.ContainerPath(item.FilePath));
+            path);
         string? rid;
         try { rid = await _liq.PushAsync(queue, uri, ct); }
         catch (Exception ex)
@@ -1124,6 +1141,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         var alive = (await _liq.AllRequestsAsync(ct)).ToHashSet();
         var changed = false;
         var failed = new List<QueueItem>();
+        QueueItem? dropped = null;
         lock (_lock)
         {
             foreach (var item in _queue.Where(q => q.Status == ItemStatus.Dispatched && q.Rid is not null).ToList())
@@ -1143,13 +1161,27 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             }
             if (_autoNext is { Status: ItemStatus.Dispatched, Rid: { } arid } && !alive.Contains(arid))
             {
-                _autoNext.Status = ItemStatus.Ready;
-                _autoNext.Rid = null;
+                // той самий запобіжник, що й для черги слухачів: без нього мертвий файл у Глека
+                // штовхався по колу тисячі разів, а ефір усі ці години висів на спотіфай-запасній
+                var n = _redispatches.GetValueOrDefault(_autoNext.ItemId) + 1;
+                _redispatches[_autoNext.ItemId] = n;
+                if (n > 2)
+                {
+                    _autoFailed.Add(_autoNext.Track.Id);
+                    dropped = _autoNext;
+                    _autoNext = null;
+                }
+                else
+                {
+                    _autoNext.Status = ItemStatus.Ready;
+                    _autoNext.Rid = null;
+                }
                 changed = true;
             }
         }
         foreach (var f in failed) SystemChat($"liquidsoap не взяв {f.Track.Label}, прибираю з черги");
         if (failed.Count > 0) { PersistQueue(); Broadcast(); }
+        if (dropped is not null) { SystemChat($"liquidsoap не взяв {dropped.Track.Label}, {Dj} візьме інше"); Broadcast(); }
         if (changed)
         {
             _log.LogWarning("liquidsoap lost pending requests; re-dispatching");

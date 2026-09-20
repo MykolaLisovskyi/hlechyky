@@ -326,16 +326,22 @@ public sealed class MelodyLibrary(
         try { File.SetLastWriteTimeUtc(path, DateTime.UtcNow); } catch (IOException) { /* не біда */ }
     }
 
+    /// <summary>Скільки часу файл із cache/melody вважається потрібним комусь просто зараз.</summary>
+    static readonly TimeSpan Fresh = TimeSpan.FromHours(2);
+
     /// <summary>Тримати <c>cache/melody</c> у межах <see cref="MelodyOptions.ClassicsMaxMb"/>: зайве — те, чого найдовше не брали.</summary>
     public int Trim()
     {
         var limit = (long)Math.Max(0, melody?.CurrentValue.ClassicsMaxMb ?? new MelodyOptions().ClassicsMaxMb) * 1024 * 1024;
         var dir = new DirectoryInfo(ClassicsDir);
         if (limit <= 0 || !dir.Exists) return 0;
-        var files = dir.EnumerateFiles().Where(f => YtDlpService.IsAudio(f.Name)).OrderBy(f => f.LastWriteTimeUtc).ToList();
-        var total = files.Sum(f => f.Length);
+        var all = dir.EnumerateFiles().Where(f => YtDlpService.IsAudio(f.Name)).ToList();
+        var total = all.Sum(f => f.Length);
         var removed = 0;
-        foreach (var f in files)
+        // Свіже не чіпаємо: ці файли бере не лише гра — радіо теж грає їх з cache/melody,
+        // і видалений з-під ефіру файл кидає трансляцію на спотіфай-запасну.
+        var stale = DateTime.UtcNow - Fresh;
+        foreach (var f in all.Where(f => f.LastWriteTimeUtc < stale).OrderBy(f => f.LastWriteTimeUtc))
         {
             if (total <= limit) break;
             try { f.Delete(); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
