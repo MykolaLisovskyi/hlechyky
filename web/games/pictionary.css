@@ -45,6 +45,7 @@
 .pccanvas {
   display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--pcpaper);
   border-radius: 10px; border: 1px solid var(--line); touch-action: auto;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .pccanvas.can { cursor: crosshair; touch-action: none; }
 .pccanvas.can[data-tool="fill"] { cursor: cell; }

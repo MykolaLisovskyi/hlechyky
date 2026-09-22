@@ -271,6 +271,9 @@
     el._bound = true;
     const s = st(root);
 
+    // Довге натискання пальцем (Steam Deck / тач) інакше відкриває меню картинки
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+
     el.addEventListener('pointerdown', (e) => {
       const c = root._ctx;
       if (!c || !canDraw(c)) return;
