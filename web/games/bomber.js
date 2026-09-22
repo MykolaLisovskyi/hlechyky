@@ -31,6 +31,8 @@
     return DIRS[String(e.key || '').toLowerCase()];
   };
   const isBomb = (e) => e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
+  /// Будь-яка кнопка під великим пальцем кладе бомбу: на Steam Deck шукати «ту саму» ніколи.
+  const PAD_BOMB = ['a', 'b', 'x', 'y', 'l1', 'r1', 'l2', 'r2'];
 
   const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5']];
   const GLYPH = { range: '🔥', bomb: '💣', boots: '👟' };
@@ -302,7 +304,7 @@
     if (!root._bomber) {
       root._bomber = {
         cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false,
-        raf: 0, keyup: null, phase: '', round: 0, css: ctx.css,
+        raf: 0, keyup: null, gp: null, phase: '', round: 0, css: ctx.css,
       };
     }
     root._bomber.ctx = ctx;
@@ -349,6 +351,19 @@
         if (st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('move', { dir: -1 });
       };
       document.addEventListener('keyup', st.keyup);
+      // Геймпад (Steam Deck): хрестовина чи стік — той самий «тримаю напрямок», будь-яка кнопка — бомба.
+      // Колбеки беруть живий ctx зі стану: він міняється на кожному update, а слухач ставиться раз.
+      st.gp = HGames.ui.gamepad(
+        (dir) => {
+          const c = st.ctx;
+          if (!c || !c.mine || !c.playing || st.held === dir) return;
+          st.held = dir;
+          c.input('move', { dir });
+        },
+        (btn) => {
+          const c = st.ctx;
+          if (c && c.mine && c.playing && PAD_BOMB.includes(btn)) c.input('bomb');
+        });
       // Після F5 сервер може пам'ятати напрямок, якого свіжий клієнт уже не тримає — скидаємо.
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
       spin(st);
@@ -410,7 +425,10 @@
         return alive.length === 1 ? 'Раунд узяв ' + (ctx.nickOf(alive[0]) || ctx.seatName(alive[0])) : 'Раунд нічий';
       }
       if (f.phase === 'over') return '';
-      return ctx.mine ? 'Стрілки або WASD, пробіл — бомба' : 'Дивишся збоку';
+      if (!ctx.mine) return 'Дивишся збоку';
+      const st = ctx._bomber;
+      if (st && st.gp && st.gp.active) return 'Хрестовина або стік, будь-яка кнопка — бомба';
+      return HGames.ui.coarse() ? 'Хрестовина — бігти, 💣 — бомба' : 'Стрілки або WASD, пробіл — бомба';
     },
 
     unmount(root) {
@@ -418,6 +436,7 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
+      if (st.gp) st.gp.stop();
       root._bomber = null;
     },
   });

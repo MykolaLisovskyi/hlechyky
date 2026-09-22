@@ -203,12 +203,23 @@ ui.dpad(host, onDir(0..3), dirs?)         // з'являється лише пр
 ui.keyboardUa(host, onKey(ch), state)     // state: { 'а': 'G'|'Y'|'B' }
 ui.timerArc(host, untilIso, totalMs)      → { el, set(untilIso, totalMs), stop() }
 ui.hand(host, items, { onItem(item, i, on), selectable, multi?, render? }) → { el, selected(), clear() }
+ui.gamepad(onDir(0..3|-1), onPress(btn))  → { active, stop() }   // Steam Deck, Xbox, DualShock
 ui.lerp(a, b, t);  ui.Interp() → { push(f), at() → { a, b, t }, reset() }
 ui.css(varName, fallback);  ui.coarse()
 ```
 
 Усі вони ідемпотентні: кличте з `mount()` і з кожного `update()` — елемент буде один, а колбеки братимуться
 з останнього виклику. Напрямки скрізь однакові: **0 праворуч, 1 вниз, 2 ліворуч, 3 вгору**.
+
+`ui.gamepad` — виняток: його кличуть **раз у `mount()`** і спиняють у `unmount()` (`handle.stop()`), бо він
+крутить власний rAF. Браузер не шле подій про стан кнопок, тільки про під'єднання, тому стан опитується;
+`onDir` приходить лише на зміну напрямку (хрестовина, а як її не чіпають — лівий стік із зоною 0.5),
+`onPress` — на натиск кнопки (`a`, `b`, `x`, `y`, `l1`, `r1`, `l2`, `r2`; Start і Select не віддаємо — на
+Steam Deck вони системні). Поки геймпада нема, не кличеться нічого, тож клавіатура й палець не страждають.
+`handle.active` — чи бачимо геймпад зараз (для рядка підказки). Два застереження: браузер ховає геймпад,
+доки на ньому не натиснуть **хоч одну кнопку**, а rAF спить, поки вкладку не видно — тобто й опитування теж.
+Колбеки ставляться раз, а `ctx` міняється на кожному `update` — беріть живий `ctx` зі свого стану, не з
+замикання.
 
 Панель поруч із «Профілем» і «Таблицею» — `HGames.registerPanel({ id, title, icon, mount(host, ctx), update? })`.
 Окремого `registerTile` нема: плитки лобі каркас будує сам із каталогу сервера. Ще є `HGames.has(id)`,

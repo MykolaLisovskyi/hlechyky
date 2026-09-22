@@ -315,7 +315,46 @@
     };
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse };
+  /// Хрестовина геймпада: 12 вгору, 13 вниз, 14 ліворуч, 15 праворуч — у наші 0..3.
+  const PAD_DPAD = [[15, 0], [13, 1], [14, 2], [12, 3]];
+  /// Кнопки, які гра може просити на ім'я. Start і Select не чіпаємо: на Steam Deck це системні.
+  const PAD_BTNS = ['a', 'b', 'x', 'y', 'l1', 'r1', 'l2', 'r2'];
+  const PAD_DEAD = 0.5;
+
+  /// Геймпад — Steam Deck, Xbox, DualShock. Браузер не шле подій про стан кнопок, тільки про
+  /// під'єднання, тому опитуємо самі на rAF. Колбеки кличемо лише на зміну: напрямок «тримають»
+  /// (0..3, -1 — відпустили), кнопку — на натиск. Поки геймпада нема, не кличемо нічого: клавіатура
+  /// й палець працюють як працювали. Handle живе, поки гра його не спинить.
+  function gamepad(onDir, onPress) {
+    let raf = 0, dir = -1;
+    let down = new Set();
+    const handle = { active: false, stop() { cancelAnimationFrame(raf); raf = 0; } };
+    // Браузер не показує геймпад, поки на ньому не натиснуть кнопку — тому порожній список це норма.
+    const pads = () => { try { return navigator.getGamepads ? navigator.getGamepads() : []; } catch (_) { return []; } };
+    function tick() {
+      let want = -1, seen = false;
+      const now = new Set();
+      for (const p of pads()) {
+        if (!p || !p.connected) continue;
+        seen = true;
+        for (const [i, d] of PAD_DPAD) if (p.buttons[i] && p.buttons[i].pressed) want = d;
+        const ax = p.axes[0] || 0, ay = p.axes[1] || 0;
+        // Стік — запасний варіант до хрестовини: беремо ту вісь, що відхилилась далі.
+        if (want < 0 && (Math.abs(ax) > PAD_DEAD || Math.abs(ay) > PAD_DEAD))
+          want = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 0 : 2) : (ay > 0 ? 1 : 3);
+        PAD_BTNS.forEach((name, i) => { if (p.buttons[i] && p.buttons[i].pressed) now.add(name); });
+      }
+      handle.active = seen;
+      if (want !== dir) { dir = want; if (onDir) onDir(dir); }
+      if (onPress) for (const name of now) if (!down.has(name)) onPress(name);
+      down = now;
+      raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return handle;
+  }
+
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, gamepad, css: cssVar, coarse };
 
   // =============================================================================================
   // Хаб
